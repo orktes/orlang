@@ -235,7 +235,7 @@ loop:
 				s.unread()
 				continue loop
 			}
-			if next != start {
+			if next != start && next != '\\' {
 				val.WriteRune(ch)
 			}
 			val.WriteRune(next)

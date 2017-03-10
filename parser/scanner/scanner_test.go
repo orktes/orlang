@@ -48,10 +48,10 @@ var tests = []struct {
 		},
 	},
 	{
-		src: "\"fo\nbar\"",
+		src: `"foo\nbar"`,
 		results: []Token{
-			Token{Type: TokenTypeString, Text: "\"fo\nbar\"", Value: "fo\nbar"},
-			Token{Type: TokenTypeEOF, Line: 1, Column: 4, Text: ``},
+			Token{Type: TokenTypeString, Text: `"foo\nbar"`, Value: "foo\\nbar"},
+			Token{Type: TokenTypeEOF, Line: 0, Column: 10, Text: ``},
 		},
 	},
 	{
