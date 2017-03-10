@@ -48,6 +48,13 @@ var tests = []struct {
 		},
 	},
 	{
+		src: "\"fo\nbar\"",
+		results: []Token{
+			Token{Type: TokenTypeString, Text: "\"fo\nbar\"", Value: "fo\nbar"},
+			Token{Type: TokenTypeEOF, Line: 1, Column: 4, Text: ``},
+		},
+	},
+	{
 		src: "[]{},.:;+-=*&()<>!#",
 		results: []Token{
 			Token{Type: TokenTypeLBRACK, Column: 0, Text: `[`},

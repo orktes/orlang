@@ -230,13 +230,16 @@ loop:
 			return TokenTypeUnknown, buf.String(), ""
 		case '\\':
 			buf.WriteRune(ch)
-			ch = s.read()
-			if ch == eof {
+			next := s.read()
+			if next == eof {
 				s.unread()
 				continue loop
 			}
-			val.WriteRune(ch)
-			buf.WriteRune(ch)
+			if next != start {
+				val.WriteRune(ch)
+			}
+			val.WriteRune(next)
+			buf.WriteRune(next)
 		default:
 			buf.WriteRune(ch)
 			if ch == start {
