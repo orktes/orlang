@@ -234,7 +234,10 @@ func (s *Scanner) scanIdent() (t TokenType, text string, val interface{}) {
 	t = TokenTypeIdent
 
 	for {
-		if ch := s.read(); ch == eof || !isLetter(ch) {
+		if ch := s.read(); ch == eof {
+			s.unread()
+			break
+		} else if !isLetter(ch) && !isNumber(ch) {
 			s.unread()
 			break
 		} else {

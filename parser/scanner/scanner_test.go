@@ -13,14 +13,14 @@ var tests = []struct {
 	results []Token
 }{
 	{
-		src: "export fn\nfn",
+		src: "export fn\nfn1",
 		results: []Token{
 			Token{Type: TokenTypeIdent, Text: "export"},
 			Token{Type: TokenTypeWhitespace, Column: 6, Text: " "},
 			Token{Type: TokenTypeIdent, Column: 7, Text: "fn"},
 			Token{Type: TokenTypeWhitespace, Column: 9, Text: "\n"},
-			Token{Type: TokenTypeIdent, Line: 1, Text: "fn"},
-			Token{Type: TokenTypeEOF, Line: 1, Column: 2, Text: ""},
+			Token{Type: TokenTypeIdent, Line: 1, Text: "fn1"},
+			Token{Type: TokenTypeEOF, Line: 1, Column: 3, Text: ""},
 		},
 	},
 	{
