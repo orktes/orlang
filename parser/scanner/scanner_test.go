@@ -48,7 +48,7 @@ var tests = []struct {
 		},
 	},
 	{
-		src: "[]{},.:;+-=*&()<>",
+		src: "[]{},.:;+-=*&()<>!#",
 		results: []Token{
 			Token{Type: TokenTypeLBRACK, Column: 0, Text: `[`},
 			Token{Type: TokenTypeRBRACK, Column: 1, Text: `]`},
@@ -67,7 +67,9 @@ var tests = []struct {
 			Token{Type: TokenTypeRPAREN, Column: 14, Text: `)`},
 			Token{Type: TokenTypeLCHEV, Column: 15, Text: `<`},
 			Token{Type: TokenTypeRCHEV, Column: 16, Text: `>`},
-			Token{Type: TokenTypeEOF, Column: 17, Text: ``},
+			Token{Type: TokenTypeEXCL, Column: 17, Text: `!`},
+			Token{Type: TokenTypeHASHBANG, Column: 18, Text: `#`},
+			Token{Type: TokenTypeEOF, Column: 19, Text: ``},
 		},
 	},
 	{
@@ -139,6 +141,48 @@ func TestScannerTable(t *testing.T) {
 			}
 		}
 
+	}
+}
+
+func TestTokenizesC(t *testing.T) {
+	s := NewScanner(strings.NewReader(`
+    #include <stdio.h>
+    int main()
+    {
+      // printf() displays the string inside quotation
+      printf("Hello, World!");
+      return 0;
+    }
+  `))
+
+	for {
+		token := s.Scan()
+		if token.Type == TokenTypeEOF {
+			break
+		}
+		if token.Type == TokenTypeUnknown {
+			t.Errorf("Encountered an unknown token %s", token)
+		}
+	}
+}
+
+func TestTokenizesGO(t *testing.T) {
+	s := NewScanner(strings.NewReader(`
+    package main
+    import "fmt"
+    func main() {
+      fmt.Println("hello world")
+    }
+  `))
+
+	for {
+		token := s.Scan()
+		if token.Type == TokenTypeEOF {
+			break
+		}
+		if token.Type == TokenTypeUnknown {
+			t.Errorf("Encountered an unknown token %s", token)
+		}
 	}
 }
 

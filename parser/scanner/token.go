@@ -58,6 +58,10 @@ const (
 	TokenTypeASTERIX
 	// TokenTypeAMPERSAND ampersan &
 	TokenTypeAMPERSAND
+	// TokenTypeHASHBANG hashbang #
+	TokenTypeHASHBANG
+	// TokenTypeEXCL exclamation mark
+	TokenTypeEXCL
 )
 
 var tokenNames = [...]string{
@@ -93,6 +97,8 @@ var tokenNames = [...]string{
 	TokenTypeAMPERSAND:  "AMPERSAND",
 	TokenTypeASTERIX:    "ASTERIX",
 	TokenTypeWhitespace: "WHITESPACE",
+	TokenTypeHASHBANG:   "HASHBANG",
+	TokenTypeEXCL:       "EXCLAMATION",
 }
 
 func (typ TokenType) String() string {

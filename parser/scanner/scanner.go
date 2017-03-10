@@ -127,6 +127,14 @@ func (s *Scanner) Scan() (token Token) {
 		t = TokenTypeRBRACE
 		text = string(ch)
 
+	case ch == '#':
+		t = TokenTypeHASHBANG
+		text = string(ch)
+
+	case ch == '!':
+		t = TokenTypeEXCL
+		text = string(ch)
+
 	case ch == '=':
 		t = TokenTypeASSIGN
 		text = string(ch)
