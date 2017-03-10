@@ -30,19 +30,18 @@ func NewScanner(r io.Reader) *Scanner {
 	return &Scanner{r: bufio.NewReader(r)}
 }
 
-// ScanChannel return read only channel for tokens
+// ScanChannel return read only channel for tokens (closes on EOF)
 func (s *Scanner) ScanChannel() (token <-chan Token) {
 	c := make(chan Token, TokenChannelSize)
 	go func(c chan<- Token) {
 		for {
 			token := s.Scan()
+			c <- token
 			if token.Type == TokenTypeEOF {
 				break
 			}
 
-			c <- token
 		}
-
 		close(c)
 	}(c)
 
