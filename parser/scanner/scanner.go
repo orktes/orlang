@@ -7,6 +7,9 @@ import (
 	"strconv"
 )
 
+// TokenChannelSize how many tokens can be buffered into the scan channel
+var TokenChannelSize = 10
+
 const eof = rune(0)
 
 // Scanner scans given io.Reader for tokens
@@ -25,6 +28,25 @@ type Scanner struct {
 // NewScanner returns a new scanner for io.Reader
 func NewScanner(r io.Reader) *Scanner {
 	return &Scanner{r: bufio.NewReader(r)}
+}
+
+// ScanChannel return read only channel for tokens
+func (s *Scanner) ScanChannel() (token <-chan Token) {
+	c := make(chan Token, TokenChannelSize)
+	go func(c chan<- Token) {
+		for {
+			token := s.Scan()
+			if token.Type == TokenTypeEOF {
+				break
+			}
+
+			c <- token
+		}
+
+		close(c)
+	}(c)
+
+	return c
 }
 
 // Scan returns next token

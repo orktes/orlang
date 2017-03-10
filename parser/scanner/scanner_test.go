@@ -116,8 +116,7 @@ func TestScannerTable(t *testing.T) {
 	for _, test := range tests {
 		s := NewScanner(strings.NewReader(test.src))
 		tokens := []Token{}
-		for {
-			token := s.Scan()
+		for token := range s.ScanChannel() {
 			tokens = append(tokens, token)
 			if token.Type == TokenTypeEOF {
 				break
@@ -155,11 +154,7 @@ func TestTokenizesC(t *testing.T) {
     }
   `))
 
-	for {
-		token := s.Scan()
-		if token.Type == TokenTypeEOF {
-			break
-		}
+	for token := range s.ScanChannel() {
 		if token.Type == TokenTypeUnknown {
 			t.Errorf("Encountered an unknown token %s", token)
 		}
@@ -175,11 +170,7 @@ func TestTokenizesGO(t *testing.T) {
     }
   `))
 
-	for {
-		token := s.Scan()
-		if token.Type == TokenTypeEOF {
-			break
-		}
+	for token := range s.ScanChannel() {
 		if token.Type == TokenTypeUnknown {
 			t.Errorf("Encountered an unknown token %s", token)
 		}
@@ -202,11 +193,7 @@ func ExampleNewScanner() {
     } // 12
   `))
 	tokens := []string{}
-	for {
-		token := s.Scan()
-		if token.Type == TokenTypeEOF {
-			break
-		}
+	for token := range s.ScanChannel() {
 		if token.Type != TokenTypeWhitespace {
 			tokens = append(tokens, strings.Replace(token.String(), "\n", "[NL]", -1))
 		}
