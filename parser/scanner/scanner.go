@@ -7,7 +7,7 @@ import (
 	"strconv"
 )
 
-// TokenChannelSize how many tokens can be buffered into the scan channel
+// TokenChannelSize how many tokens can be buffered into the scan channel (default to 10)
 var TokenChannelSize = 10
 
 const eof = rune(0)
