@@ -295,6 +295,39 @@ func TestTokenizesJSX(t *testing.T) {
 	}
 }
 
+func TestTokenizesJSON(t *testing.T) {
+	s := NewScanner(strings.NewReader(`
+    {
+    "glossary": {
+        "title": "example glossary",
+		"GlossDiv": {
+            "title": "S",
+			"GlossList": {
+                "GlossEntry": {
+                    "ID": "SGML",
+					"SortAs": "SGML",
+					"GlossTerm": "Standard Generalized Markup Language",
+					"Acronym": "SGML",
+					"Abbrev": "ISO 8879:1986",
+					"GlossDef": {
+                        "para": "A meta-markup language, used to create markup languages such as DocBook.",
+						"GlossSeeAlso": ["GML", "XML"]
+                    },
+					"GlossSee": "markup"
+                }
+            }
+        }
+    }
+}
+  `))
+
+	for token := range s.ScanChannel() {
+		if token.Type == TokenTypeUnknown {
+			t.Errorf("Encountered an unknown token %s", token)
+		}
+	}
+}
+
 func ExampleNewScanner() {
 	s := NewScanner(strings.NewReader(`
     fn test(foo: Int, bar: Test) Foo { // 1
