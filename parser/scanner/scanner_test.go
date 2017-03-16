@@ -189,6 +189,39 @@ func TestScannerTable(t *testing.T) {
 	}
 }
 
+func BenchmarkScannerTable(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		for _, test := range tests {
+			s := NewScanner(strings.NewReader(test.src))
+			tokens := []Token{}
+			for token := range s.ScanChannel() {
+				tokens = append(tokens, token)
+				if token.Type == TokenTypeEOF {
+					break
+				}
+			}
+
+			once := sync.Once{}
+
+			for i, token := range tokens {
+				var expectedToken Token
+				if len(test.results) > i {
+					expectedToken = test.results[i]
+				} else {
+					b.Error("Too many token returned")
+				}
+				if !reflect.DeepEqual(expectedToken, token) {
+					once.Do(func() {
+						b.Error("source", test.src)
+					})
+					b.Errorf("Token (%d): %#v didn't match expected %#v", i, token, expectedToken)
+				}
+			}
+
+		}
+	}
+}
+
 func TestTokenizesC(t *testing.T) {
 	s := NewScanner(strings.NewReader(`
     #include <stdio.h>
@@ -207,6 +240,26 @@ func TestTokenizesC(t *testing.T) {
 	}
 }
 
+func BenchmarkTokenizesC(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		s := NewScanner(strings.NewReader(`
+    #include <stdio.h>
+    int main()
+    {
+      // printf() displays the string inside quotation
+      printf("Hello, World!");
+      return 0;
+    }
+  `))
+
+		for token := range s.ScanChannel() {
+			if token.Type == TokenTypeUnknown {
+				b.Errorf("Encountered an unknown token %s", token)
+			}
+		}
+	}
+}
+
 func TestTokenizesGO(t *testing.T) {
 	s := NewScanner(strings.NewReader(`
     package main
@@ -217,6 +270,26 @@ func TestTokenizesGO(t *testing.T) {
   `))
 
 	for token := range s.ScanChannel() {
+		if token.Type == TokenTypeUnknown {
+			t.Errorf("Encountered an unknown token %s", token)
+		}
+	}
+}
+
+func TestTokenizesJSX(t *testing.T) {
+	s := NewScanner(strings.NewReader(`
+    <div>
+        <h3>TODO</h3>
+        <TodoList items={this.state.items} />
+        <form onSubmit={this.handleSubmit}>
+          <input onChange={this.handleChange} value={this.state.text} />
+          <button>{'Add #' + (this.state.items.length + 1)}</button>
+        </form>
+      </div>
+  `))
+
+	for token := range s.ScanChannel() {
+		println(token.String())
 		if token.Type == TokenTypeUnknown {
 			t.Errorf("Encountered an unknown token %s", token)
 		}
