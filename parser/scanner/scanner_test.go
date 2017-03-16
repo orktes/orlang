@@ -289,7 +289,6 @@ func TestTokenizesJSX(t *testing.T) {
   `))
 
 	for token := range s.ScanChannel() {
-		println(token.String())
 		if token.Type == TokenTypeUnknown {
 			t.Errorf("Encountered an unknown token %s", token)
 		}
