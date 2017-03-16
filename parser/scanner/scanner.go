@@ -89,6 +89,10 @@ func (s *Scanner) Scan() (token Token) {
 		t = TokenTypePERIOD
 		text = string(ch)
 
+	case ch == '\\':
+		t = TokenTypeBACKSLASH
+		text = string(ch)
+
 	case ch == ',':
 		t = TokenTypeCOMMA
 		text = string(ch)
@@ -183,6 +187,12 @@ func (s *Scanner) scanComment() (t TokenType, text string) {
 	buf.WriteRune(start)
 
 	afterStart := s.peek()
+	if afterStart != '*' && afterStart != '/' {
+		// Not a comment. Lets just return the slash
+		t = TokenTypeSLASH
+		text = string(buf.Bytes())
+		return
+	}
 
 loop:
 	for {
