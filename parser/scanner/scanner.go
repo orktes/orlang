@@ -233,12 +233,12 @@ loop:
 		switch {
 		case !rawString && ch == '\n':
 			s.unread()
-			// TODO s.error("Line breaks not allowed on inpreted strings")
+			s.error("Line breaks not allowed on intepreted string literals")
 			return TokenTypeUnknown, buf.String(), ""
 
 		case ch == eof:
 			s.unread()
-			// TODO s.error
+			s.error("EOF before string closed")
 			return TokenTypeUnknown, buf.String(), ""
 
 		case !rawString && ch == '\\':
@@ -321,7 +321,7 @@ func (s *Scanner) scanDigits(base, n int) ([]byte, rune) {
 	}
 
 	if n > 0 {
-		// TODO	s.error("illegal char escape")
+		s.error("illegal char escape")
 	}
 
 	return buf.Bytes(), rune(result)
@@ -375,12 +375,17 @@ loop:
 
 	text = buf.String()
 
+	var err error
 	if t == TokenTypeNumber {
-		// TODO process error
-		val, _ = strconv.ParseInt(text, 10, 64)
+		val, err = strconv.ParseInt(text, 10, 64)
+		if err != nil {
+			s.error(err.Error())
+		}
 	} else {
-		// TODO process error
-		val, _ = strconv.ParseFloat(text, 64)
+		val, err = strconv.ParseFloat(text, 64)
+		if err != nil {
+			s.error(err.Error())
+		}
 	}
 
 	return t, text, val
@@ -414,6 +419,10 @@ func (s *Scanner) read() rune {
 		s.pos.column++
 	}
 	return ch
+}
+
+func (s *Scanner) error(err string) {
+	// TODO process error
 }
 
 func (s *Scanner) peek() rune {
