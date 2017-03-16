@@ -163,6 +163,10 @@ func (s *Scanner) Scan() (token Token) {
 
 	case ch == eof:
 		t = TokenTypeEOF
+
+	default:
+		// Unknown token
+		text = string(ch)
 	}
 
 	token.Text = text
