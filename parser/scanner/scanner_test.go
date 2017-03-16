@@ -55,6 +55,45 @@ var tests = []struct {
 		},
 	},
 	{
+		src: `"foo\\bar"`,
+		results: []Token{
+			Token{Type: TokenTypeString, Text: `"foo\\bar"`, Value: `foo\bar`},
+			Token{Type: TokenTypeEOF, Line: 0, Column: 10, Text: ``},
+		},
+	},
+	{
+		src: "\"\\123\\x53\\u2318\"",
+		results: []Token{
+			Token{Type: TokenTypeString, Text: "\"\\123\\x53\\u2318\"", Value: "SS⌘"},
+			Token{Type: TokenTypeEOF, Line: 0, Column: 16, Text: ``},
+		},
+	},
+	/*
+		{
+			src: `"\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"`,
+			results: []Token{
+				Token{Type: TokenTypeString, Text: `"\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"`, Value: "日本語"},
+				Token{Type: TokenTypeEOF, Line: 0, Column: 38, Text: ``},
+			},
+		},
+	*/
+	{
+		src: "`\\n\\000`",
+		results: []Token{
+			Token{Type: TokenTypeString, Text: "`\\n\\000`", Value: "\\n\\000"},
+			Token{Type: TokenTypeEOF, Line: 0, Column: 8, Text: ``},
+		},
+	},
+	{
+		src: "\"\n\"",
+		results: []Token{
+			Token{Type: TokenTypeUnknown, Text: "\"", Value: ""},
+			Token{Type: TokenTypeWhitespace, Line: 0, Column: 1, Text: "\n", Value: nil},
+			Token{Type: TokenTypeUnknown, Line: 1, Column: 0, Text: "\"", Value: ""},
+			Token{Type: TokenTypeEOF, Line: 1, Column: 1, Text: ``},
+		},
+	},
+	{
 		src: "[]{},.:;+-=*&()<>!#",
 		results: []Token{
 			Token{Type: TokenTypeLBRACK, Column: 0, Text: `[`},

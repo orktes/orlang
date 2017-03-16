@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"io"
+	"math"
 	"strconv"
 )
 
@@ -75,9 +76,9 @@ func (s *Scanner) Scan() (token Token) {
 		s.unread()
 		t, text = s.scanComment()
 
-	case ch == '"' || ch == '\'':
+	case ch == '"' || ch == '\'' || ch == '`':
 		s.unread()
-		t, text, val = s.scanString()
+		t, text, val = s.scanString(ch == '`')
 
 	case ch == '.':
 		next := s.peek()
@@ -214,31 +215,80 @@ loop:
 	return TokenTypeComment, buf.String()
 }
 
-func (s *Scanner) scanString() (TokenType, string, string) {
+func (s *Scanner) scanString(rawString bool) (TokenType, string, string) {
 	var buf bytes.Buffer
 	var val bytes.Buffer
 
 	start := s.read()
 	buf.WriteRune(start)
 
+	checkRune := func(value rune) {
+		// TODO handle multiple runes
+		val.WriteRune(value)
+	}
+
 loop:
 	for {
 		ch := s.read()
-		switch ch {
-		case eof:
+		switch {
+		case !rawString && ch == '\n':
 			s.unread()
+			// TODO s.error("Line breaks not allowed on inpreted strings")
 			return TokenTypeUnknown, buf.String(), ""
-		case '\\':
+
+		case ch == eof:
+			s.unread()
+			// TODO s.error
+			return TokenTypeUnknown, buf.String(), ""
+
+		case !rawString && ch == '\\':
 			buf.WriteRune(ch)
 			next := s.read()
 			if next == eof {
 				s.unread()
 				continue loop
 			}
-			if next != start && next != '\\' {
+
+			switch next {
+			case start:
+				val.WriteRune(next)
+
+			case '\\':
+				val.WriteRune(next)
+
+			case '0', '1', '2', '3', '4', '5', '6', '7': // Scan octal
+				s.unread()
+				t, v := s.scanDigits(8, 3)
+				checkRune(v)
+				buf.Write(t)
+				continue loop
+
+			case 'x':
+				buf.WriteRune(next)
+				t, v := s.scanDigits(16, 2)
+				checkRune(v)
+				buf.Write(t)
+				continue loop
+
+			case 'u':
+				buf.WriteRune(next)
+				t, v := s.scanDigits(16, 4)
+				checkRune(v)
+				buf.Write(t)
+				continue loop
+
+			case 'U':
+				buf.WriteRune(next)
+				t, v := s.scanDigits(16, 8)
+				checkRune(v)
+				buf.Write(t)
+				continue loop
+
+			default:
 				val.WriteRune(ch)
+				val.WriteRune(next)
 			}
-			val.WriteRune(next)
+
 			buf.WriteRune(next)
 		default:
 			buf.WriteRune(ch)
@@ -251,6 +301,30 @@ loop:
 	}
 
 	return TokenTypeString, buf.String(), val.String()
+}
+
+func (s *Scanner) scanDigits(base, n int) ([]byte, rune) {
+	var buf bytes.Buffer
+	result := 0
+	var ch rune
+	for n > 0 {
+		ch = s.read()
+		digVal := digitVal(ch)
+
+		if digVal >= base {
+			s.unread()
+			break
+		}
+		buf.WriteRune(ch)
+		result += digVal * int(math.Pow(float64(base), float64(n-1)))
+		n--
+	}
+
+	if n > 0 {
+		// TODO	s.error("illegal char escape")
+	}
+
+	return buf.Bytes(), rune(result)
 }
 
 func (s *Scanner) scanIdent() (t TokenType, text string, val interface{}) {
@@ -363,4 +437,16 @@ func isNumber(ch rune) bool {
 
 func isWhitespace(ch rune) bool {
 	return ch == ' ' || ch == '\t' || ch == '\n'
+}
+
+func digitVal(ch rune) int {
+	switch {
+	case '0' <= ch && ch <= '9':
+		return int(ch - '0')
+	case 'a' <= ch && ch <= 'f':
+		return int(ch - 'a' + 10)
+	case 'A' <= ch && ch <= 'F':
+		return int(ch - 'A' + 10)
+	}
+	return 16
 }
