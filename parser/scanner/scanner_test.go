@@ -16,56 +16,56 @@ var tests = []struct {
 		src: "export fn\nfn1",
 		results: []Token{
 			Token{Type: TokenTypeIdent, Text: "export"},
-			Token{Type: TokenTypeWhitespace, Column: 6, Text: " "},
-			Token{Type: TokenTypeIdent, Column: 7, Text: "fn"},
-			Token{Type: TokenTypeWhitespace, Column: 9, Text: "\n"},
-			Token{Type: TokenTypeIdent, Line: 1, Text: "fn1"},
-			Token{Type: TokenTypeEOF, Line: 1, Column: 3, Text: ""},
+			Token{Type: TokenTypeWhitespace, StartColumn: 6, Text: " "},
+			Token{Type: TokenTypeIdent, StartColumn: 7, Text: "fn"},
+			Token{Type: TokenTypeWhitespace, StartColumn: 9, Text: "\n"},
+			Token{Type: TokenTypeIdent, StartLine: 1, Text: "fn1"},
+			Token{Type: TokenTypeEOF, StartLine: 1, StartColumn: 3, Text: ""},
 		},
 	},
 	{
 		src: "\"foobar\"\n\"foo",
 		results: []Token{
 			Token{Type: TokenTypeString, Text: `"foobar"`, Value: "foobar"},
-			Token{Type: TokenTypeWhitespace, Column: 8, Text: "\n"},
-			Token{Type: TokenTypeUnknown, Line: 1, Column: 0, Text: `"foo`, Value: ""},
-			Token{Type: TokenTypeEOF, Line: 1, Column: 4, Text: ``},
+			Token{Type: TokenTypeWhitespace, StartColumn: 8, Text: "\n"},
+			Token{Type: TokenTypeUnknown, StartLine: 1, StartColumn: 0, Text: `"foo`, Value: ""},
+			Token{Type: TokenTypeEOF, StartLine: 1, StartColumn: 4, Text: ``},
 		},
 	},
 	{
 		src: `"foo\"bar""foo\"bar"`,
 		results: []Token{
 			Token{Type: TokenTypeString, Text: `"foo\"bar"`, Value: `foo"bar`},
-			Token{Type: TokenTypeString, Column: 10, Text: `"foo\"bar"`, Value: `foo"bar`},
-			Token{Type: TokenTypeEOF, Line: 0, Column: 20, Text: ``},
+			Token{Type: TokenTypeString, StartColumn: 10, Text: `"foo\"bar"`, Value: `foo"bar`},
+			Token{Type: TokenTypeEOF, StartLine: 0, StartColumn: 20, Text: ``},
 		},
 	},
 	{
 		src: "\"foo\\",
 		results: []Token{
 			Token{Type: TokenTypeUnknown, Text: `"foo\`, Value: ""},
-			Token{Type: TokenTypeEOF, Line: 0, Column: 5, Text: ``},
+			Token{Type: TokenTypeEOF, StartLine: 0, StartColumn: 5, Text: ``},
 		},
 	},
 	{
 		src: `"foo\nbar"`,
 		results: []Token{
 			Token{Type: TokenTypeString, Text: `"foo\nbar"`, Value: "foo\\nbar"},
-			Token{Type: TokenTypeEOF, Line: 0, Column: 10, Text: ``},
+			Token{Type: TokenTypeEOF, StartLine: 0, StartColumn: 10, Text: ``},
 		},
 	},
 	{
 		src: `"foo\\bar"`,
 		results: []Token{
 			Token{Type: TokenTypeString, Text: `"foo\\bar"`, Value: `foo\bar`},
-			Token{Type: TokenTypeEOF, Line: 0, Column: 10, Text: ``},
+			Token{Type: TokenTypeEOF, StartLine: 0, StartColumn: 10, Text: ``},
 		},
 	},
 	{
 		src: "\"\\123\\x53\\u2318\"",
 		results: []Token{
 			Token{Type: TokenTypeString, Text: "\"\\123\\x53\\u2318\"", Value: "SS⌘"},
-			Token{Type: TokenTypeEOF, Line: 0, Column: 16, Text: ``},
+			Token{Type: TokenTypeEOF, StartLine: 0, StartColumn: 16, Text: ``},
 		},
 	},
 	/*
@@ -73,7 +73,7 @@ var tests = []struct {
 			src: `"\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"`,
 			results: []Token{
 				Token{Type: TokenTypeString, Text: `"\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"`, Value: "日本語"},
-				Token{Type: TokenTypeEOF, Line: 0, Column: 38, Text: ``},
+				Token{Type: TokenTypeEOF, StartLine: 0, StartColumn: 38, Text: ``},
 			},
 		},
 	*/
@@ -81,79 +81,79 @@ var tests = []struct {
 		src: "`\\n\\000`",
 		results: []Token{
 			Token{Type: TokenTypeString, Text: "`\\n\\000`", Value: "\\n\\000"},
-			Token{Type: TokenTypeEOF, Line: 0, Column: 8, Text: ``},
+			Token{Type: TokenTypeEOF, StartLine: 0, StartColumn: 8, Text: ``},
 		},
 	},
 	{
 		src: "\"\n\"",
 		results: []Token{
 			Token{Type: TokenTypeUnknown, Text: "\"", Value: ""},
-			Token{Type: TokenTypeWhitespace, Line: 0, Column: 1, Text: "\n", Value: nil},
-			Token{Type: TokenTypeUnknown, Line: 1, Column: 0, Text: "\"", Value: ""},
-			Token{Type: TokenTypeEOF, Line: 1, Column: 1, Text: ``},
+			Token{Type: TokenTypeWhitespace, StartLine: 0, StartColumn: 1, Text: "\n", Value: nil},
+			Token{Type: TokenTypeUnknown, StartLine: 1, StartColumn: 0, Text: "\"", Value: ""},
+			Token{Type: TokenTypeEOF, StartLine: 1, StartColumn: 1, Text: ``},
 		},
 	},
 	{
 		src: "[]{},.:;+-=*&()<>!#",
 		results: []Token{
-			Token{Type: TokenTypeLBRACK, Column: 0, Text: `[`},
-			Token{Type: TokenTypeRBRACK, Column: 1, Text: `]`},
-			Token{Type: TokenTypeLBRACE, Column: 2, Text: `{`},
-			Token{Type: TokenTypeRBRACE, Column: 3, Text: `}`},
-			Token{Type: TokenTypeCOMMA, Column: 4, Text: `,`},
-			Token{Type: TokenTypePERIOD, Column: 5, Text: `.`},
-			Token{Type: TokenTypeCOLON, Column: 6, Text: `:`},
-			Token{Type: TokenTypeSEMICOLON, Column: 7, Text: `;`},
-			Token{Type: TokenTypeADD, Column: 8, Text: `+`},
-			Token{Type: TokenTypeSUB, Column: 9, Text: `-`},
-			Token{Type: TokenTypeASSIGN, Column: 10, Text: `=`},
-			Token{Type: TokenTypeASTERIX, Column: 11, Text: `*`},
-			Token{Type: TokenTypeAMPERSAND, Column: 12, Text: `&`},
-			Token{Type: TokenTypeLPAREN, Column: 13, Text: `(`},
-			Token{Type: TokenTypeRPAREN, Column: 14, Text: `)`},
-			Token{Type: TokenTypeLCHEV, Column: 15, Text: `<`},
-			Token{Type: TokenTypeRCHEV, Column: 16, Text: `>`},
-			Token{Type: TokenTypeEXCL, Column: 17, Text: `!`},
-			Token{Type: TokenTypeHASHBANG, Column: 18, Text: `#`},
-			Token{Type: TokenTypeEOF, Column: 19, Text: ``},
+			Token{Type: TokenTypeLBRACK, StartColumn: 0, Text: `[`},
+			Token{Type: TokenTypeRBRACK, StartColumn: 1, Text: `]`},
+			Token{Type: TokenTypeLBRACE, StartColumn: 2, Text: `{`},
+			Token{Type: TokenTypeRBRACE, StartColumn: 3, Text: `}`},
+			Token{Type: TokenTypeCOMMA, StartColumn: 4, Text: `,`},
+			Token{Type: TokenTypePERIOD, StartColumn: 5, Text: `.`},
+			Token{Type: TokenTypeCOLON, StartColumn: 6, Text: `:`},
+			Token{Type: TokenTypeSEMICOLON, StartColumn: 7, Text: `;`},
+			Token{Type: TokenTypeADD, StartColumn: 8, Text: `+`},
+			Token{Type: TokenTypeSUB, StartColumn: 9, Text: `-`},
+			Token{Type: TokenTypeASSIGN, StartColumn: 10, Text: `=`},
+			Token{Type: TokenTypeASTERIX, StartColumn: 11, Text: `*`},
+			Token{Type: TokenTypeAMPERSAND, StartColumn: 12, Text: `&`},
+			Token{Type: TokenTypeLPAREN, StartColumn: 13, Text: `(`},
+			Token{Type: TokenTypeRPAREN, StartColumn: 14, Text: `)`},
+			Token{Type: TokenTypeLCHEV, StartColumn: 15, Text: `<`},
+			Token{Type: TokenTypeRCHEV, StartColumn: 16, Text: `>`},
+			Token{Type: TokenTypeEXCL, StartColumn: 17, Text: `!`},
+			Token{Type: TokenTypeHASHBANG, StartColumn: 18, Text: `#`},
+			Token{Type: TokenTypeEOF, StartColumn: 19, Text: ``},
 		},
 	},
 	{
 		src: "false true",
 		results: []Token{
-			Token{Type: TokenTypeBoolean, Column: 0, Text: `false`, Value: false},
-			Token{Type: TokenTypeWhitespace, Column: 5, Text: ` `},
-			Token{Type: TokenTypeBoolean, Column: 6, Text: `true`, Value: true},
-			Token{Type: TokenTypeEOF, Column: 10, Text: ``},
+			Token{Type: TokenTypeBoolean, StartColumn: 0, Text: `false`, Value: false},
+			Token{Type: TokenTypeWhitespace, StartColumn: 5, Text: ` `},
+			Token{Type: TokenTypeBoolean, StartColumn: 6, Text: `true`, Value: true},
+			Token{Type: TokenTypeEOF, StartColumn: 10, Text: ``},
 		},
 	},
 	{
 		src: "12348 1234.5 1234.5.5", // Sounds like a hack but I'll leave it to the parser to decide what to do
 		results: []Token{
-			Token{Type: TokenTypeNumber, Column: 0, Text: `12348`, Value: int64(12348)},
-			Token{Type: TokenTypeWhitespace, Column: 5, Text: ` `},
-			Token{Type: TokenTypeFloat, Column: 6, Text: `1234.5`, Value: 1234.5},
-			Token{Type: TokenTypeWhitespace, Column: 12, Text: ` `},
-			Token{Type: TokenTypeFloat, Column: 13, Text: `1234.5`, Value: 1234.5},
-			Token{Type: TokenTypeFloat, Column: 19, Text: `.5`, Value: 0.5},
-			Token{Type: TokenTypeEOF, Column: 21, Text: ``},
+			Token{Type: TokenTypeNumber, StartColumn: 0, Text: `12348`, Value: int64(12348)},
+			Token{Type: TokenTypeWhitespace, StartColumn: 5, Text: ` `},
+			Token{Type: TokenTypeFloat, StartColumn: 6, Text: `1234.5`, Value: 1234.5},
+			Token{Type: TokenTypeWhitespace, StartColumn: 12, Text: ` `},
+			Token{Type: TokenTypeFloat, StartColumn: 13, Text: `1234.5`, Value: 1234.5},
+			Token{Type: TokenTypeFloat, StartColumn: 19, Text: `.5`, Value: 0.5},
+			Token{Type: TokenTypeEOF, StartColumn: 21, Text: ``},
 		},
 	},
 	{
 		src: "// This is a comment\n/*\nfoo\n*/// eof comment",
 		results: []Token{
-			Token{Type: TokenTypeComment, Column: 0, Text: `// This is a comment`},
-			Token{Type: TokenTypeWhitespace, Column: 20, Text: "\n"},
-			Token{Type: TokenTypeComment, Column: 0, Line: 1, Text: "/*\nfoo\n*/"},
-			Token{Type: TokenTypeComment, Column: 2, Line: 3, Text: `// eof comment`},
-			Token{Type: TokenTypeEOF, Column: 16, Line: 3},
+			Token{Type: TokenTypeComment, StartColumn: 0, Text: `// This is a comment`},
+			Token{Type: TokenTypeWhitespace, StartColumn: 20, Text: "\n"},
+			Token{Type: TokenTypeComment, StartColumn: 0, StartLine: 1, Text: "/*\nfoo\n*/"},
+			Token{Type: TokenTypeComment, StartColumn: 2, StartLine: 3, Text: `// eof comment`},
+			Token{Type: TokenTypeEOF, StartColumn: 16, StartLine: 3},
 		},
 	},
 	{
 		src: "/* eof ending block comments wont work",
 		results: []Token{
-			Token{Type: TokenTypeUnknown, Column: 0, Text: `/* eof ending block comments wont work`},
-			Token{Type: TokenTypeEOF, Column: 38, Line: 0},
+			Token{Type: TokenTypeUnknown, StartColumn: 0, Text: `/* eof ending block comments wont work`},
+			Token{Type: TokenTypeEOF, StartColumn: 38, StartLine: 0},
 		},
 	},
 }
@@ -178,6 +178,16 @@ func TestScannerTable(t *testing.T) {
 			} else {
 				t.Error("Too many token returned")
 			}
+
+			if len(test.results) > i+1 {
+				nextToken := test.results[i+1]
+				expectedToken.EndColumn = nextToken.StartColumn
+				expectedToken.EndLine = nextToken.StartLine
+			} else {
+				expectedToken.EndColumn = expectedToken.StartColumn
+				expectedToken.EndLine = expectedToken.StartLine
+			}
+
 			if !reflect.DeepEqual(expectedToken, token) {
 				once.Do(func() {
 					t.Error("source", test.src)
@@ -193,31 +203,8 @@ func BenchmarkScannerTable(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		for _, test := range tests {
 			s := NewScanner(strings.NewReader(test.src))
-			tokens := []Token{}
-			for token := range s.ScanChannel() {
-				tokens = append(tokens, token)
-				if token.Type == TokenTypeEOF {
-					break
-				}
+			for range s.ScanChannel() {
 			}
-
-			once := sync.Once{}
-
-			for i, token := range tokens {
-				var expectedToken Token
-				if len(test.results) > i {
-					expectedToken = test.results[i]
-				} else {
-					b.Error("Too many token returned")
-				}
-				if !reflect.DeepEqual(expectedToken, token) {
-					once.Do(func() {
-						b.Error("source", test.src)
-					})
-					b.Errorf("Token (%d): %#v didn't match expected %#v", i, token, expectedToken)
-				}
-			}
-
 		}
 	}
 }

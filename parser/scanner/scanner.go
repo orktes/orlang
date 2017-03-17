@@ -24,6 +24,7 @@ type Scanner struct {
 		line   int
 		column int
 	}
+	Error func(msg string)
 }
 
 // NewScanner returns a new scanner for io.Reader
@@ -51,8 +52,8 @@ func (s *Scanner) ScanChannel() (token <-chan Token) {
 
 // Scan returns next token
 func (s *Scanner) Scan() (token Token) {
-	token.Column = s.pos.column
-	token.Line = s.pos.line
+	token.StartColumn = s.pos.column
+	token.StartLine = s.pos.line
 
 	ch := s.read()
 
@@ -176,6 +177,8 @@ func (s *Scanner) Scan() (token Token) {
 	token.Text = text
 	token.Type = t
 	token.Value = val
+	token.EndColumn = s.pos.column
+	token.EndLine = s.pos.line
 
 	return
 }
@@ -436,7 +439,9 @@ func (s *Scanner) read() rune {
 }
 
 func (s *Scanner) error(err string) {
-	// TODO process error
+	if s.Error != nil {
+		s.Error(err)
+	}
 }
 
 func (s *Scanner) peek() rune {

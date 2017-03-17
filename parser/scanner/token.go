@@ -114,17 +114,19 @@ func (typ TokenType) String() string {
 
 // Token holds type, position and literal info of a token
 type Token struct {
-	Text   string
-	Value  interface{}
-	Type   TokenType
-	Line   int
-	Column int
+	Text        string
+	Value       interface{}
+	Type        TokenType
+	StartLine   int
+	StartColumn int
+	EndLine     int
+	EndColumn   int
 }
 
 func (t Token) String() string {
 	if t.Value == nil || t.Type == TokenTypeUnknown {
-		return fmt.Sprintf("%d:%d %s(%s)", t.Line, t.Column, t.Type.String(), t.Text)
+		return fmt.Sprintf("%d:%d %s(%s)", t.StartLine, t.StartColumn, t.Type.String(), t.Text)
 	}
 
-	return fmt.Sprintf("%d:%d %s(%v)", t.Line, t.Column, t.Type.String(), t.Value)
+	return fmt.Sprintf("%d:%d %s(%v)", t.StartLine, t.StartColumn, t.Type.String(), t.Value)
 }
