@@ -165,6 +165,34 @@ func TestFuncParseFailure2(t *testing.T) {
 	}
 }
 
+func TestFuncParseFailure3(t *testing.T) {
+	_, err := Parse(strings.NewReader(`
+    fn test()
+  `))
+
+	if err == nil {
+		t.Error("Should have returned an error")
+	}
+
+	if err.Error() != "2:2: Expected [LBRACE] got EOF" {
+		t.Error(err)
+	}
+}
+
+func TestFuncParseFailure4(t *testing.T) {
+	_, err := Parse(strings.NewReader(`
+    fn test{}
+  `))
+
+	if err == nil {
+		t.Error("Should have returned an error")
+	}
+
+	if err.Error() != "1:12: Expected [LPAREN] got LBRACE" {
+		t.Error(err)
+	}
+}
+
 func TestParseFailureUnexpected(t *testing.T) {
 	_, err := Parse(strings.NewReader(`
     unexpected

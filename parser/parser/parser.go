@@ -65,8 +65,7 @@ loop:
 		}
 
 		if p.parserError != "" {
-			p.unread()
-			token := p.read()
+			token := p.lastToken()
 			err = PosError{Position: ast.StartPositionFromToken(token), Message: p.parserError}
 			break
 		}
@@ -200,6 +199,7 @@ func (p *Parser) parseArgument() (arg ast.Argument, ok bool) {
 
 func (p *Parser) parseBlock() (node *ast.Block, ok bool) {
 	if _, lok := p.expectToken(scanner.TokenTypeLBRACE); !lok {
+		p.unread()
 		return
 	}
 
@@ -281,6 +281,14 @@ func (p *Parser) read() (token scanner.Token) {
 func (p *Parser) unread() {
 	p.tokenBuffer = append(p.tokenBuffer, p.lastTokens...)
 	p.lastTokens = []scanner.Token{}
+}
+
+func (p *Parser) lastToken() (token scanner.Token) {
+	if len(p.lastTokens) > 0 {
+		return p.lastTokens[len(p.lastTokens)-1]
+	}
+
+	return p.peek()
 }
 
 func (p *Parser) skip() {
