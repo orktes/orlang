@@ -124,7 +124,7 @@ func TestFuncParse(t *testing.T) {
 		t.Error("Wrong argument name")
 	}
 
-	if val.Arguments[1].DefaultValue.Value != 0.2 {
+	if val.Arguments[1].DefaultValue.(*ast.ValueExpression).Value != 0.2 {
 		t.Error("Wrong argument default value")
 	}
 

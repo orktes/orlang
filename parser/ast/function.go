@@ -5,7 +5,7 @@ import "github.com/orktes/orlang/parser/scanner"
 type Argument struct {
 	Name         scanner.Token
 	Type         scanner.Token
-	DefaultValue *scanner.Token
+	DefaultValue Expression
 }
 
 func (a *Argument) StartPos() Position {
@@ -14,7 +14,7 @@ func (a *Argument) StartPos() Position {
 
 func (a *Argument) EndPos() Position {
 	if a.DefaultValue != nil {
-		return StartPositionFromToken(*a.DefaultValue)
+		return a.DefaultValue.EndPos()
 	}
 	return StartPositionFromToken(a.Type)
 }

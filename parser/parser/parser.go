@@ -187,12 +187,13 @@ func (p *Parser) parseArgument() (arg ast.Argument, ok bool) {
 		return
 	}
 
-	if token, ok = p.expectToken(valueTypes...); !ok {
-		p.error(unexpectedToken(token, valueTypes...))
+	expr, ok := p.parseExpression()
+	if !ok {
+		p.error(unexpected(p.read().String(), "expression"))
 		return
 	}
 
-	arg.DefaultValue = &token
+	arg.DefaultValue = expr
 
 	return
 }
@@ -212,6 +213,21 @@ func (p *Parser) parseBlock() (node *ast.Block, ok bool) {
 	ok = true
 
 	return
+}
+
+func (p *Parser) parseValueExpression() (expression ast.Expression, ok bool) {
+	var token scanner.Token
+	if token, ok = p.expectToken(valueTypes...); !ok {
+		p.unread()
+		return
+	}
+
+	return &ast.ValueExpression{Token: token}, true
+}
+
+func (p *Parser) parseExpression() (expression ast.Expression, ok bool) {
+	// TODO support other expressions
+	return p.parseValueExpression()
 }
 
 func (p *Parser) parseVarDecl() (node ast.Node, ok bool) {
@@ -288,7 +304,8 @@ func (p *Parser) lastToken() (token scanner.Token) {
 		return p.lastTokens[len(p.lastTokens)-1]
 	}
 
-	return p.peek()
+	// This should not happen
+	panic("No token in buffer")
 }
 
 func (p *Parser) skip() {
