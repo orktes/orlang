@@ -124,7 +124,7 @@ type Token struct {
 }
 
 func (t Token) String() string {
-	if t.Value == nil || t.Type == TokenTypeUnknown {
+	if t.Value == nil || t.Type == TokenTypeUnknown || t.Type == TokenTypeIdent {
 		return fmt.Sprintf("%d:%d %s(%s)", t.StartLine, t.StartColumn, t.Type.String(), t.Text)
 	}
 

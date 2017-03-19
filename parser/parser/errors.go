@@ -13,7 +13,7 @@ type PosError struct {
 }
 
 func (p PosError) Error() string {
-	return fmt.Sprintf("%d:%d: %s", p.Position.Line, p.Position.Column, p.Message)
+	return fmt.Sprintf("%d:%d: %s", p.Position.Line+1, p.Position.Column+1, p.Message)
 }
 
 func unexpected(got string, expected string) string {
@@ -23,6 +23,9 @@ func unexpected(got string, expected string) string {
 func unexpectedToken(got scanner.Token, expected ...scanner.TokenType) string {
 	if len(expected) == 0 {
 		return fmt.Sprintf("Unexpected token %s", got.Type.String())
+	}
+	if got.Type == scanner.TokenTypeIdent {
+		return fmt.Sprintf("Expected %s got %s", expected, got.Text)
 	}
 	return fmt.Sprintf("Expected %s got %s", expected, got.Type.String())
 }

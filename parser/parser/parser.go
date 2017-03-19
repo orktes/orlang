@@ -1,7 +1,6 @@
 package parser
 
 import (
-	"fmt"
 	"io"
 
 	"github.com/orktes/orlang/parser/ast"
@@ -49,25 +48,27 @@ loop:
 		}
 		switch {
 		case check(p.parseFuncDecl()):
+			if node.(*ast.FunctionDeclaration).Name.Text == "" {
+				p.error("Root level functions can't be anonymous")
+			}
 		case check(p.parseVarDecl()):
-		case check(p.parseConstDecl()):
 		case check(p.parseImportDecl()):
 		case p.eof():
 			break loop
 		default:
 			token := p.read()
 			err = PosError{Position: ast.StartPositionFromToken(token), Message: unexpectedToken(token)}
-			break
+			break loop
 		}
 
 		if node != nil {
 			file.AppendNode(node)
 		}
 
-		if p.parserError != "" {
+		if p.parserError != "" && err == nil {
 			token := p.lastToken()
 			err = PosError{Position: ast.StartPositionFromToken(token), Message: p.parserError}
-			break
+			break loop
 		}
 	}
 
@@ -88,13 +89,15 @@ func (p *Parser) parseFuncDecl() (node *ast.FunctionDeclaration, ok bool) {
 		node = &ast.FunctionDeclaration{}
 		node.Start = ast.StartPositionFromToken(token)
 
-		funcNameToken := p.read()
-		if funcNameToken.Type != scanner.TokenTypeIdent {
-			p.error(unexpectedToken(funcNameToken, scanner.TokenTypeIdent))
+		funcNameTokenOrLeftParen := p.read()
+		if funcNameTokenOrLeftParen.Type == scanner.TokenTypeIdent {
+			node.Name = funcNameTokenOrLeftParen
+		} else if funcNameTokenOrLeftParen.Type == scanner.TokenTypeLPAREN {
+			p.unread()
+		} else {
+			p.error(unexpectedToken(funcNameTokenOrLeftParen, scanner.TokenTypeIdent, scanner.TokenTypeLPAREN))
 			return
 		}
-
-		node.Name = funcNameToken
 
 		arguments, argumentsOk := p.parseArguments()
 		if !argumentsOk {
@@ -106,7 +109,7 @@ func (p *Parser) parseFuncDecl() (node *ast.FunctionDeclaration, ok bool) {
 
 		blk, blockOk := p.parseBlock()
 		if !blockOk {
-			p.error(unexpectedToken(p.read(), scanner.TokenTypeLBRACE))
+			p.error(unexpected(p.read().Type.String(), "code block"))
 			return
 		}
 
@@ -168,28 +171,30 @@ func (p *Parser) parseArgument() (arg ast.Argument, ok bool) {
 
 	arg.Name = token
 
-	token, ok = p.expectToken(scanner.TokenTypeCOLON)
+	token, ok = p.expectToken(scanner.TokenTypeCOLON, scanner.TokenTypeASSIGN)
 	if !ok {
-		p.error(unexpectedToken(token, scanner.TokenTypeCOLON))
+		p.error(unexpectedToken(token, scanner.TokenTypeCOLON, scanner.TokenTypeASSIGN))
 		return
 	}
 
-	token, ok = p.expectToken(scanner.TokenTypeIdent)
-	if !ok {
-		p.error(unexpectedToken(token, scanner.TokenTypeIdent))
-		return
-	}
+	if token.Type == scanner.TokenTypeCOLON {
+		token, ok = p.expectToken(scanner.TokenTypeIdent)
+		if !ok {
+			p.error(unexpectedToken(token, scanner.TokenTypeIdent))
+			return
+		}
 
-	arg.Type = token
+		arg.Type = token
 
-	if _, defaultAssOk := p.expectToken(scanner.TokenTypeASSIGN); !defaultAssOk {
-		p.unread()
-		return
+		if _, defaultAssOk := p.expectToken(scanner.TokenTypeASSIGN); !defaultAssOk {
+			p.unread()
+			return
+		}
 	}
 
 	expr, ok := p.parseExpression()
 	if !ok {
-		p.error(unexpected(p.read().String(), "expression"))
+		p.error(unexpected(p.read().Type.String(), "expression"))
 		return
 	}
 
@@ -206,12 +211,121 @@ func (p *Parser) parseBlock() (node *ast.Block, ok bool) {
 
 	node = &ast.Block{}
 
-	if _, rok := p.expectToken(scanner.TokenTypeRBRACE); !rok {
-		return
+loop:
+	for {
+		var blockNode ast.Node
+		var check = func(n ast.Node, ok bool) bool {
+			if ok {
+				blockNode = n
+			}
+			return ok
+		}
+		switch {
+		case check(p.parseStatement(true)):
+		default:
+			if _, rok := p.expectToken(scanner.TokenTypeRBRACE); !rok {
+				p.unread()
+				return
+			}
+
+			break loop
+		}
+
+		if blockNode != nil {
+			node.AppendNode(blockNode)
+		}
 	}
 
 	ok = true
 
+	return
+}
+
+func (p *Parser) parseStatement(block bool) (node ast.Node, ok bool) {
+	ok = true
+	var check = func(n ast.Node, ok bool) bool {
+		if ok {
+			node = n
+		}
+		return ok
+	}
+
+	switch {
+	case block && check(p.parseForLoop()):
+	case block && check(p.parseIfStatement()):
+	case check(p.parseVarDecl()):
+		if block {
+			if token, tok := p.expectToken(scanner.TokenTypeSEMICOLON); !tok {
+				p.error(unexpectedToken(token, scanner.TokenTypeSEMICOLON))
+				return
+			}
+		}
+	case check(p.parseAssigment()):
+	case check(p.parseExpression()):
+	default:
+		ok = false
+	}
+
+	return
+}
+
+func (p *Parser) parseForLoop() (node ast.Node, nodeOk bool) {
+	token := p.read()
+	if token.Type == scanner.TokenTypeIdent && token.Text == "for" {
+		nodeOk = true
+		_, statementok := p.parseStatement(false) // Pre stuff
+		token, ok := p.expectToken(scanner.TokenTypeSEMICOLON, scanner.TokenTypeLBRACE)
+		if !ok {
+			if statementok {
+				p.error(unexpected(token.Type.String(), "; or code block"))
+			} else {
+				p.error(unexpected(token.Type.String(), "statement, ; or code block"))
+			}
+
+			return
+		}
+
+		if token.Type == scanner.TokenTypeLBRACE {
+			p.unread()
+			// TODO this means that the first one is also the condition
+			goto parseBlock
+		}
+
+		_, statementok = p.parseStatement(false) // Condition
+		if !statementok {
+			p.error(unexpected(p.read().Type.String(), "statement"))
+			return
+		}
+		token, ok = p.expectToken(scanner.TokenTypeSEMICOLON)
+		if !ok {
+			p.error(unexpected(token.Type.String(), ";"))
+			return
+		}
+
+		p.parseStatement(false) // After
+
+	parseBlock:
+		_, ok = p.parseBlock() // Block
+		if !ok {
+			p.error(unexpected(p.read().Type.String(), "code block"))
+			return
+		}
+
+	} else {
+		p.unread()
+	}
+	return
+}
+
+func (p *Parser) parseIfStatement() (node ast.Node, ok bool) {
+	return
+}
+
+func (p *Parser) parseAssigment() (node ast.Node, ok bool) {
+	return
+}
+
+func (p *Parser) parseCallExpression() (node ast.Node, ok bool) {
 	return
 }
 
@@ -226,15 +340,142 @@ func (p *Parser) parseValueExpression() (expression ast.Expression, ok bool) {
 }
 
 func (p *Parser) parseExpression() (expression ast.Expression, ok bool) {
-	// TODO support other expressions
-	return p.parseValueExpression()
-}
+	check := func(expr ast.Expression, cok bool) bool {
+		if cok {
+			ok = cok
+			expression = expr
+		}
 
-func (p *Parser) parseVarDecl() (node ast.Node, ok bool) {
+		return cok
+	}
+
+	switch {
+	case check(p.parseCallExpression()):
+	case check(p.parseFuncDecl()):
+	case check(p.parseValueExpression()):
+	}
+
 	return
 }
 
-func (p *Parser) parseConstDecl() (node ast.Node, ok bool) {
+func (p *Parser) parseVarDecl() (node ast.Node, ok bool) {
+	token := p.read()
+	if token.Type == scanner.TokenTypeIdent && (token.Text == "var" || token.Text == "const") {
+		ok = true
+
+		isConstant := token.Text == "const"
+		startPos := ast.StartPositionFromToken(token)
+
+		token = p.peek()
+		if token.Type == scanner.TokenTypeLPAREN {
+			// Multiple argument definitions
+			declarations, declOk := p.parseVariableDeclarations(isConstant)
+			if !declOk {
+				return
+			}
+
+			node = &ast.MultiVariableDeclaration{
+				Start:        startPos,
+				End:          ast.EndPositionFromToken(p.lastToken()),
+				Declarations: declarations,
+			}
+		} else {
+			// Single argument def
+			declaration, declOk := p.parseVariableDeclaration(isConstant)
+			if !declOk {
+				p.error(unexpected(p.read().Type.String(), "variable declaration"))
+				return
+			}
+
+			node = &declaration
+		}
+	} else {
+		p.unread()
+	}
+	return
+}
+
+func (p *Parser) parseVariableDeclarations(isConstant bool) (varDecls []ast.VariableDeclaration, ok bool) {
+	if t, lparenOk := p.expectToken(scanner.TokenTypeLPAREN); !lparenOk {
+		p.error(unexpectedToken(t, scanner.TokenTypeLPAREN))
+		return
+	}
+
+	for {
+		var foundVarDecl = false
+		var varDecl ast.VariableDeclaration
+		varDecl, ok = p.parseVariableDeclaration(isConstant)
+		if ok {
+			foundVarDecl = true
+			varDecls = append(varDecls, varDecl)
+		}
+
+		var token scanner.Token
+
+		if foundVarDecl {
+			token, ok = p.expectToken(scanner.TokenTypeRPAREN, scanner.TokenTypeCOMMA)
+		} else {
+			token, ok = p.expectToken(scanner.TokenTypeRPAREN)
+		}
+
+		if !ok {
+			if foundVarDecl {
+				p.error(unexpectedToken(token, scanner.TokenTypeRPAREN, scanner.TokenTypeCOMMA))
+			} else {
+				p.error(unexpectedToken(token, scanner.TokenTypeIdent, scanner.TokenTypeRPAREN))
+			}
+			return
+		}
+
+		if token.Type == scanner.TokenTypeRPAREN {
+			break
+		}
+	}
+
+	return
+}
+
+func (p *Parser) parseVariableDeclaration(isConstant bool) (varDecl ast.VariableDeclaration, ok bool) {
+	var token scanner.Token
+	// name : Type = DefaultValue
+	token, ok = p.expectToken(scanner.TokenTypeIdent)
+	if !ok {
+		p.unread()
+		return
+	}
+
+	varDecl.Constant = isConstant
+	varDecl.Name = token
+
+	token, ok = p.expectToken(scanner.TokenTypeCOLON, scanner.TokenTypeASSIGN)
+	if !ok {
+		p.error(unexpectedToken(token, scanner.TokenTypeCOLON, scanner.TokenTypeASSIGN))
+		return
+	}
+
+	if token.Type == scanner.TokenTypeCOLON {
+		token, ok = p.expectToken(scanner.TokenTypeIdent)
+		if !ok {
+			p.error(unexpectedToken(token, scanner.TokenTypeIdent))
+			return
+		}
+
+		varDecl.Type = token
+
+		if _, defaultAssOk := p.expectToken(scanner.TokenTypeASSIGN); !defaultAssOk {
+			p.unread()
+			return
+		}
+	}
+
+	expr, ok := p.parseExpression()
+	if !ok {
+		p.error(unexpected(p.read().Type.String(), "expression"))
+		return
+	}
+
+	varDecl.DefaultValue = expr
+
 	return
 }
 
@@ -242,25 +483,15 @@ func (p *Parser) parseImportDecl() (node ast.Node, ok bool) {
 	return
 }
 
-func (p *Parser) isWhitespace() bool {
-	token := p.read()
-	if token.Type != scanner.TokenTypeWhitespace {
-		p.unread()
-		return false
-	}
-
-	return true
-}
-
 func (p *Parser) expectPattern(tokenTypes ...scanner.TokenType) (tokens []scanner.Token, ok bool) {
+	ok = true
 	for _, tokenType := range tokenTypes {
 		token := p.read()
+		tokens = append(tokens, token)
 		if token.Type != tokenType {
 			ok = false
 			break
 		}
-
-		tokens = append(tokens, token)
 	}
 
 	return
@@ -295,7 +526,11 @@ func (p *Parser) read() (token scanner.Token) {
 }
 
 func (p *Parser) unread() {
-	p.tokenBuffer = append(p.tokenBuffer, p.lastTokens...)
+	p.returnToBuffer(p.lastTokens)
+}
+
+func (p *Parser) returnToBuffer(tokens []scanner.Token) {
+	p.tokenBuffer = append(p.tokenBuffer, tokens...)
 	p.lastTokens = []scanner.Token{}
 }
 
@@ -339,8 +574,4 @@ func (p *Parser) error(err string) {
 		p.parserError = err
 	}
 
-}
-
-func (p *Parser) errorf(err string, args ...interface{}) {
-	p.error(fmt.Sprintf(err, args...))
 }

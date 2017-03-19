@@ -89,6 +89,98 @@ func TestParserSkip(t *testing.T) {
 	}
 }
 
+func TestLastTokenWithEmptyBuffer(t *testing.T) {
+	p := NewParser(testScanner("foobar;barfoo;"))
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Should have paniced")
+		}
+	}()
+
+	p.lastToken()
+}
+
+func TestParseVariableDeclarationsFailure(t *testing.T) {
+	p := NewParser(testScanner("foo:bar)"))
+	_, ok := p.parseVariableDeclarations(true)
+	if ok {
+		t.Error("Should not be able to parse")
+	}
+}
+
+func TestExpectPattern(t *testing.T) {
+	p := NewParser(testScanner("foobar;barfoo;"))
+	tokens, ok := p.expectPattern(
+		scanner.TokenTypeIdent,
+		scanner.TokenTypeSEMICOLON,
+		scanner.TokenTypeIdent,
+		scanner.TokenTypeSEMICOLON)
+
+	if !ok {
+		t.Error("Didnt get expected pattern")
+	}
+
+	if tokens[0].Type != scanner.TokenTypeIdent {
+		t.Error("Didnt get expected pattern")
+	}
+
+	if tokens[1].Type != scanner.TokenTypeSEMICOLON {
+		t.Error("Didnt get expected pattern")
+	}
+
+	if tokens[2].Type != scanner.TokenTypeIdent {
+		t.Error("Didnt get expected pattern")
+	}
+
+	if tokens[3].Type != scanner.TokenTypeSEMICOLON {
+		t.Error("Didnt get expected pattern")
+	}
+
+	_, ok = p.expectPattern(scanner.TokenTypeIdent)
+	if ok {
+		t.Error("Nothing should be returned")
+	}
+
+}
+
+func TestReturnToBuffer(t *testing.T) {
+	p := NewParser(testScanner("foobar;barfoo;"))
+	tokens, _ := p.expectPattern(
+		scanner.TokenTypeIdent,
+		scanner.TokenTypeSEMICOLON,
+		scanner.TokenTypeIdent,
+		scanner.TokenTypeSEMICOLON)
+
+	p.returnToBuffer(tokens)
+
+	tokens, ok := p.expectPattern(
+		scanner.TokenTypeIdent,
+		scanner.TokenTypeSEMICOLON,
+		scanner.TokenTypeIdent,
+		scanner.TokenTypeSEMICOLON)
+
+	if !ok {
+		t.Error("Didnt get expected pattern")
+	}
+
+	if tokens[0].Type != scanner.TokenTypeIdent {
+		t.Error("Didnt get expected pattern")
+	}
+
+	if tokens[1].Type != scanner.TokenTypeSEMICOLON {
+		t.Error("Didnt get expected pattern")
+	}
+
+	if tokens[2].Type != scanner.TokenTypeIdent {
+		t.Error("Didnt get expected pattern")
+	}
+
+	if tokens[3].Type != scanner.TokenTypeSEMICOLON {
+		t.Error("Didnt get expected pattern")
+	}
+
+}
+
 func TestFuncParse(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
     fn test(bar : int, foo : float = 0.2) {}
@@ -137,72 +229,213 @@ func TestFuncParse(t *testing.T) {
 	}
 }
 
-func TestFuncParseFailure1(t *testing.T) {
-	_, err := Parse(strings.NewReader(`
-    fn test(bar , int, foo : float = 0.2) {}
-  `))
+func TestParseFunctionAsDefaultValue(t *testing.T) {
+	file, err := Parse(strings.NewReader(`
+		fn foobar(foo : bar = fn () {
+		}) {
+		}
+	`))
 
-	if err == nil {
-		t.Error("Should have returned an error")
+	if err != nil {
+		t.Error(err)
 	}
 
-	if err.Error() != "1:21: Expected [COLON] got COMMA" {
+	val, ok := file.Body[0].(*ast.FunctionDeclaration)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	_, ok = val.Arguments[0].DefaultValue.(*ast.FunctionDeclaration)
+	if !ok {
+		t.Error("Wrong type")
+	}
+}
+
+func TestParseFunctionInsideFunction(t *testing.T) {
+	file, err := Parse(strings.NewReader(`
+		fn foobar() {
+			fn barfoo() {
+			}
+		}
+	`))
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	val, ok := file.Body[0].(*ast.FunctionDeclaration)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	nestedFunction, ok := val.Block.Body[0].(*ast.FunctionDeclaration)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	if nestedFunction.Name.Text != "barfoo" {
+		t.Error("Nested function name is wrong")
+	}
+}
+
+func TestParseForLoop(t *testing.T) {
+	_, err := Parse(strings.NewReader(`
+		fn foobar() {
+			for var i = 0; true; {
+			}
+
+			for foo; bar; baz {
+			}
+
+			for foo; bar; {
+			}
+
+			for ; bar ; {
+			}
+
+			for true {
+
+			}
+
+			for {
+
+			}
+		}
+	`))
+
+	if err != nil {
 		t.Error(err)
 	}
 }
 
-func TestFuncParseFailure2(t *testing.T) {
+func TestParseVariableDeclarationInsideFunction(t *testing.T) {
 	_, err := Parse(strings.NewReader(`
-    fn test(,) {}
-  `))
+		fn foobar() {
+			var foo = bar;
+			var barfoo : int = 123;
+		}
+	`))
 
-	if err == nil {
-		t.Error("Should have returned an error")
-	}
-
-	if err.Error() != "1:13: Expected [IDENT RPAREN] got COMMA" {
+	if err != nil {
 		t.Error(err)
 	}
 }
 
-func TestFuncParseFailure3(t *testing.T) {
-	_, err := Parse(strings.NewReader(`
-    fn test()
-  `))
+func TestParseVariableDeclaration(t *testing.T) {
+	file, err := Parse(strings.NewReader(`
+		var foo : Bar
+		const bar = 123
+	`))
 
-	if err == nil {
-		t.Error("Should have returned an error")
+	if err != nil {
+		t.Error(err)
 	}
 
-	if err.Error() != "2:2: Expected [LBRACE] got EOF" {
+	val, ok := file.Body[0].(*ast.VariableDeclaration)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	if val.Name.Text != "foo" || val.Type.Text != "Bar" {
+		t.Error("Type could not be parsed")
+	}
+
+	val, ok = file.Body[1].(*ast.VariableDeclaration)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	if val.Name.Text != "bar" || !val.Constant {
+		t.Error("Type could not be parsed")
+	}
+
+}
+
+func TestParseMultipleVariableDeclarations(t *testing.T) {
+	file, err := Parse(strings.NewReader(`
+		var (
+			foo : Bar,
+			bar : int,
+			biz : float = 123,
+			boz = 123
+		)
+	`))
+	if err != nil {
 		t.Error(err)
+	}
+
+	val, ok := file.Body[0].(*ast.MultiVariableDeclaration)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	if val.Declarations[0].Name.Text != "foo" || val.Declarations[0].Type.Text != "Bar" {
+		t.Error("Type could not be parsed")
+	}
+
+	if val.Declarations[1].Name.Text != "bar" || val.Declarations[1].Type.Text != "int" {
+		t.Error("Type could not be parsed")
+	}
+
+	if val.Declarations[2].Name.Text != "biz" || val.Declarations[2].Type.Text != "float" {
+		t.Error("Type could not be parsed")
+	}
+
+	if val.Declarations[2].DefaultValue.(*ast.ValueExpression).Value != int64(123) {
+		t.Error("Wrong default value")
+	}
+
+	if val.Declarations[3].Name.Text != "boz" {
+		t.Error("Type could not be parsed")
+	}
+
+	if val.Declarations[3].DefaultValue.(*ast.ValueExpression).Value != int64(123) {
+		t.Error("Wrong default value")
 	}
 }
 
-func TestFuncParseFailure4(t *testing.T) {
-	_, err := Parse(strings.NewReader(`
-    fn test{}
-  `))
-
-	if err == nil {
-		t.Error("Should have returned an error")
+func TestParseFailures(t *testing.T) {
+	tests := []struct {
+		src string
+		err string
+	}{
+		// Undefined token
+		{"unexpected", "1:1: Unexpected token IDENT"},
+		{"bar () {}", "1:1: Unexpected token IDENT"},
+		// Invalid functions
+		{"fn test{}", "1:9: Expected [LPAREN] got LBRACE"},
+		{"fn test()", "1:10: Expected code block got EOF"},
+		{"fn test(,) {}", "1:10: Expected [IDENT RPAREN] got COMMA"},
+		{"fn test(bar , int, foo : float = 0.2) {}", "1:18: Expected [COLON ASSIGN] got COMMA"},
+		{"fn test(foo : float foo) {}", "1:24: Expected [RPAREN COMMA] got foo"},
+		{"fn test(foo : ) {}", "1:18: Expected [IDENT] got RPAREN"},
+		{"fn test(foo : bar = ) {}", "1:24: Expected expression got RPAREN"},
+		{"fn test(foo : int) {]", "1:21: Expected code block got RBRACK"},
+		{"fn", "1:3: Expected [IDENT LPAREN] got EOF"},
+		{"fn (foo : int) {}", "1:17: Root level functions can't be anonymous"},
+		// Variable declarations
+		{"var [", "1:5: Expected variable declaration got LBRACK"},
+		{"var (bar , int, foo : float = 0.2)", "1:12: Expected [COLON ASSIGN] got COMMA"},
+		{"var (foo : float foo)", "1:18: Expected [RPAREN COMMA] got foo"},
+		{"var (foo : )", "1:13: Expected [IDENT] got RPAREN"},
+		{"var (foo : bar = )", "1:19: Expected expression got RPAREN"},
+		{"fn foobar() { var foobar : int }", "1:33: Expected [SEMICOLON] got RBRACE"},
+		// For loops
+		{"fn foobar() { for var i = 0; i; [] }", "1:34: Expected code block got LBRACK"},
+		{"fn foobar() { for var i = 0; {}}", "1:31: Expected statement got LBRACE"},
+		{"fn foobar() { for var i = 0; true {}}", "1:36: Expected ; got LBRACE"},
+		{"fn foobar() { for }", "1:20: Expected statement, ; or code block got RBRACE"},
 	}
 
-	if err.Error() != "1:12: Expected [LPAREN] got LBRACE" {
-		t.Error(err)
-	}
-}
+	for _, test := range tests {
+		_, err := Parse(strings.NewReader(test.src))
 
-func TestParseFailureUnexpected(t *testing.T) {
-	_, err := Parse(strings.NewReader(`
-    unexpected
-  `))
+		if err == nil {
+			t.Errorf("Expected %s to return error %s, but got nothing", test.src, test.err)
+		}
 
-	if err == nil {
-		t.Error("Should have returned an error")
-	}
-
-	if err.Error() != "1:4: Unexpected token IDENT" {
-		t.Error(err)
+		if err.Error() != test.err {
+			t.Errorf("Expected %s to return error %s, but got %s", test.src, test.err, err.Error())
+		}
 	}
 }
