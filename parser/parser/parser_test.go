@@ -177,6 +177,50 @@ func TestReturnToBuffer(t *testing.T) {
 
 }
 
+func TestSnapshots(t *testing.T) {
+	p := NewParser(testScanner("foobar;barfoo;"))
+	p.snapshot()
+	p.read()
+	p.snapshot()
+	p.read()
+	p.snapshot()
+	p.read()
+	p.snapshot()
+	p.read()
+
+	p.restore()
+	p.restore()
+	p.restore()
+	p.restore()
+
+	tokens, ok := p.expectPattern(
+		scanner.TokenTypeIdent,
+		scanner.TokenTypeSEMICOLON,
+		scanner.TokenTypeIdent,
+		scanner.TokenTypeSEMICOLON)
+
+	if !ok {
+		t.Error("Didnt get expected pattern")
+	}
+
+	if tokens[0].Text != "foobar" {
+		t.Error("Didnt get expected pattern")
+	}
+
+	if tokens[1].Type != scanner.TokenTypeSEMICOLON {
+		t.Error("Didnt get expected pattern")
+	}
+
+	if tokens[2].Type != scanner.TokenTypeIdent {
+		t.Error("Didnt get expected pattern")
+	}
+
+	if tokens[3].Type != scanner.TokenTypeSEMICOLON {
+		t.Error("Didnt get expected pattern")
+	}
+
+}
+
 func TestFuncParse(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
     fn test(bar : int, foo : float = 0.2) {}
@@ -366,6 +410,18 @@ func TestParseVariableDeclarationInsideFunction(t *testing.T) {
 	}
 }
 
+func TestParseFunctionCall(t *testing.T) {
+	_, err := Parse(strings.NewReader(`
+		fn foobar(x : int = 0, y: int = 0) {
+			foobar()
+		}
+	`))
+
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 func TestParseVariableDeclaration(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
 		var foo : Bar
@@ -477,6 +533,7 @@ func TestParseFailures(t *testing.T) {
 		{"fn foobar() {  if }", "1:20: Expected expression got RBRACE"},
 		{"fn foobar() {  if true foo }", "1:28: Expected code block got IDENT"},
 		{"fn foobar() {  if true {} else f", "1:33: Expected if statement or code block got IDENT"},
+		{"fn foobar() {  foobar(.) }", "1:24: Expected [RPAREN] got PERIOD"},
 	}
 
 	for _, test := range tests {

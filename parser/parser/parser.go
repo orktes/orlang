@@ -23,6 +23,7 @@ type Parser struct {
 	scanChan    <-chan scanner.Token
 	parserError string
 	Error       func(Pos, msg string)
+	snapshots   [][]scanner.Token
 }
 
 func NewParser(s *scanner.Scanner) *Parser {
@@ -405,7 +406,19 @@ func (p *Parser) parseAssigment() (node ast.Node, ok bool) {
 	return
 }
 
-func (p *Parser) parseCallExpression() (node ast.Node, ok bool) {
+func (p *Parser) parseCallExpression(target ast.Node) (node ast.Node, ok bool) {
+	_, ok = p.expectToken(scanner.TokenTypeLPAREN)
+	if !ok {
+		p.unread()
+		return
+	}
+
+	token, ok := p.expectToken(scanner.TokenTypeRPAREN)
+	if !ok {
+		p.error(unexpectedToken(token, scanner.TokenTypeRPAREN))
+		return
+	}
+
 	return
 }
 
@@ -430,9 +443,15 @@ func (p *Parser) parseExpression() (expression ast.Expression, ok bool) {
 	}
 
 	switch {
-	case check(p.parseCallExpression()):
 	case check(p.parseFuncDecl()):
 	case check(p.parseValueExpression()):
+	}
+
+	if ok && expression != nil {
+		funCall, isFunCall := p.parseCallExpression(expression)
+		if isFunCall {
+			expression = funCall
+		}
 	}
 
 	return
@@ -602,11 +621,18 @@ func (p *Parser) read() (token scanner.Token) {
 	}
 
 	p.lastTokens = []scanner.Token{token}
+	if len(p.snapshots) > 0 {
+		p.snapshots[len(p.snapshots)-1] = append(p.snapshots[len(p.snapshots)-1], token)
+	}
 
 	return
 }
 
 func (p *Parser) unread() {
+	if len(p.snapshots) > 0 {
+		snapshot := p.snapshots[len(p.snapshots)-1]
+		p.snapshots[len(p.snapshots)-1] = snapshot[:len(snapshot)-1]
+	}
 	p.returnToBuffer(p.lastTokens)
 }
 
@@ -651,6 +677,23 @@ func (p *Parser) peekMultiple(amount int) (tokens []scanner.Token) {
 	p.tokenBuffer = append(p.tokenBuffer, tokens...)
 	p.lastTokens = []scanner.Token{}
 	return
+}
+
+func (p *Parser) snapshot() {
+	p.snapshots = append(p.snapshots, []scanner.Token{})
+}
+
+func (p *Parser) restore() {
+	if len(p.snapshots) > 0 {
+		p.returnToBuffer(p.snapshots[len(p.snapshots)-1])
+		p.commit()
+	}
+}
+
+func (p *Parser) commit() {
+	if len(p.snapshots) > 0 {
+		p.snapshots = p.snapshots[:len(p.snapshots)-1]
+	}
 }
 
 func (p *Parser) error(err string) {
