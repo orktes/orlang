@@ -277,11 +277,18 @@ func (p *Parser) parseStatement(block bool) (node ast.Node, ok bool) {
 	return
 }
 
-func (p *Parser) parseForLoop() (node ast.Node, nodeOk bool) {
+func (p *Parser) parseForLoop() (node *ast.ForLoop, nodeOk bool) {
 	token := p.read()
 	if token.Type == scanner.TokenTypeIdent && token.Text == "for" {
 		nodeOk = true
-		_, statementok := p.parseStatement(false) // Pre stuff
+		node = &ast.ForLoop{
+			Start: ast.StartPositionFromToken(token),
+		}
+		var condition ast.Node
+		var init ast.Node
+		var after ast.Node
+
+		init, statementok := p.parseStatement(false) // Pre stuff
 		token, ok := p.expectToken(scanner.TokenTypeSEMICOLON, scanner.TokenTypeLBRACE)
 		if !ok {
 			if statementok {
@@ -295,12 +302,12 @@ func (p *Parser) parseForLoop() (node ast.Node, nodeOk bool) {
 
 		if token.Type == scanner.TokenTypeLBRACE {
 			p.unread()
-			// TODO this means that the first one is also the condition
 			// TODO create isExpression to check if a node is an expression
+			condition = init
 			goto parseBlock
 		}
 
-		_, statementok = p.parseExpression() // Condition
+		condition, statementok = p.parseExpression() // Condition
 		if !statementok {
 			p.error(unexpected(p.read().Type.String(), "expression"))
 			return
@@ -311,14 +318,19 @@ func (p *Parser) parseForLoop() (node ast.Node, nodeOk bool) {
 			return
 		}
 
-		p.parseStatement(false) // After
+		after, _ = p.parseStatement(false) // After
 
 	parseBlock:
-		_, ok = p.parseBlock() // Block
-		if !ok {
+		block, blockOk := p.parseBlock() // Block
+		if !blockOk {
 			p.error(unexpected(p.read().Type.String(), "code block"))
 			return
 		}
+
+		node.Condition = condition
+		node.Init = init
+		node.After = after
+		node.Block = block
 
 	} else {
 		p.unread()
@@ -326,7 +338,31 @@ func (p *Parser) parseForLoop() (node ast.Node, nodeOk bool) {
 	return
 }
 
-func (p *Parser) parseIfStatement() (node ast.Node, ok bool) {
+func (p *Parser) parseIfStatement() (node *ast.If, nodeOk bool) {
+	token := p.read()
+	if token.Type == scanner.TokenTypeIdent && token.Text == "if" {
+		nodeOk = true
+		node = &ast.If{
+			Start: ast.StartPositionFromToken(token),
+		}
+
+		condition, statementok := p.parseExpression() // Condition
+		if !statementok {
+			p.error(unexpected(p.read().Type.String(), "expression"))
+			return
+		}
+
+		block, blockOk := p.parseBlock() // Block
+		if !blockOk {
+			p.error(unexpected(p.read().Type.String(), "code block"))
+			return
+		}
+
+		node.Condition = condition
+		node.Block = block
+	} else {
+		p.unread()
+	}
 	return
 }
 

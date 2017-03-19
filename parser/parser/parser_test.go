@@ -317,6 +317,18 @@ func TestParseAssignment(t *testing.T) {
 	}
 }
 
+func TestParseIfCondition(t *testing.T) {
+	_, err := Parse(strings.NewReader(`
+		fn foobar() {
+			if true {}
+		}
+	`))
+
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 func TestParseVariableDeclarationInsideFunction(t *testing.T) {
 	_, err := Parse(strings.NewReader(`
 		fn foobar() {
