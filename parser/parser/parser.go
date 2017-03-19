@@ -91,6 +91,7 @@ func (p *Parser) parseFuncDecl() (node *ast.FunctionDeclaration, ok bool) {
 
 		funcNameTokenOrLeftParen := p.read()
 		if funcNameTokenOrLeftParen.Type == scanner.TokenTypeIdent {
+			// TODO check that identifier is not a reserved keyword
 			node.Name = funcNameTokenOrLeftParen
 		} else if funcNameTokenOrLeftParen.Type == scanner.TokenTypeLPAREN {
 			p.unread()
@@ -169,6 +170,7 @@ func (p *Parser) parseArgument() (arg ast.Argument, ok bool) {
 		return
 	}
 
+	// TODO check that identifier is not a reserved keyword
 	arg.Name = token
 
 	token, ok = p.expectToken(scanner.TokenTypeCOLON, scanner.TokenTypeASSIGN)
@@ -261,6 +263,12 @@ func (p *Parser) parseStatement(block bool) (node ast.Node, ok bool) {
 			}
 		}
 	case check(p.parseAssigment()):
+		if block {
+			if token, tok := p.expectToken(scanner.TokenTypeSEMICOLON); !tok {
+				p.error(unexpectedToken(token, scanner.TokenTypeSEMICOLON))
+				return
+			}
+		}
 	case check(p.parseExpression()):
 	default:
 		ok = false
@@ -288,12 +296,13 @@ func (p *Parser) parseForLoop() (node ast.Node, nodeOk bool) {
 		if token.Type == scanner.TokenTypeLBRACE {
 			p.unread()
 			// TODO this means that the first one is also the condition
+			// TODO create isExpression to check if a node is an expression
 			goto parseBlock
 		}
 
-		_, statementok = p.parseStatement(false) // Condition
+		_, statementok = p.parseExpression() // Condition
 		if !statementok {
-			p.error(unexpected(p.read().Type.String(), "statement"))
+			p.error(unexpected(p.read().Type.String(), "expression"))
 			return
 		}
 		token, ok = p.expectToken(scanner.TokenTypeSEMICOLON)
@@ -322,6 +331,21 @@ func (p *Parser) parseIfStatement() (node ast.Node, ok bool) {
 }
 
 func (p *Parser) parseAssigment() (node ast.Node, ok bool) {
+	tokens, ok := p.expectPattern(scanner.TokenTypeIdent, scanner.TokenTypeASSIGN)
+	if !ok {
+		p.returnToBuffer(tokens)
+		return
+	}
+
+	// TODO check that identifier is not a reserved keyword
+
+	expression, ok := p.parseExpression()
+	if !ok {
+		p.error(unexpected(p.read().Type.String(), "expression"))
+		return
+	}
+
+	node = &ast.Assigment{Identifier: tokens[0], Expression: expression}
 	return
 }
 
@@ -446,6 +470,7 @@ func (p *Parser) parseVariableDeclaration(isConstant bool) (varDecl ast.Variable
 
 	varDecl.Constant = isConstant
 	varDecl.Name = token
+	// TODO check that identifier is not a reserved keyword
 
 	token, ok = p.expectToken(scanner.TokenTypeCOLON, scanner.TokenTypeASSIGN)
 	if !ok {
@@ -530,7 +555,10 @@ func (p *Parser) unread() {
 }
 
 func (p *Parser) returnToBuffer(tokens []scanner.Token) {
-	p.tokenBuffer = append(p.tokenBuffer, tokens...)
+	buffer := make([]scanner.Token, 0, len(tokens)+len(p.tokenBuffer))
+	buffer = append(buffer, tokens...)
+	buffer = append(buffer, p.tokenBuffer...)
+	p.tokenBuffer = buffer
 	p.lastTokens = []scanner.Token{}
 }
 
@@ -550,8 +578,8 @@ func (p *Parser) skip() {
 func (p *Parser) skipMultiple(amount int) {
 	for i := 0; i < amount; i++ {
 		p.read()
-		p.lastTokens = []scanner.Token{}
 	}
+	p.lastTokens = []scanner.Token{}
 }
 
 func (p *Parser) peek() scanner.Token {

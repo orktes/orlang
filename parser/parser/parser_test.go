@@ -145,8 +145,9 @@ func TestExpectPattern(t *testing.T) {
 
 func TestReturnToBuffer(t *testing.T) {
 	p := NewParser(testScanner("foobar;barfoo;"))
+	p.read()
+
 	tokens, _ := p.expectPattern(
-		scanner.TokenTypeIdent,
 		scanner.TokenTypeSEMICOLON,
 		scanner.TokenTypeIdent,
 		scanner.TokenTypeSEMICOLON)
@@ -154,7 +155,6 @@ func TestReturnToBuffer(t *testing.T) {
 	p.returnToBuffer(tokens)
 
 	tokens, ok := p.expectPattern(
-		scanner.TokenTypeIdent,
 		scanner.TokenTypeSEMICOLON,
 		scanner.TokenTypeIdent,
 		scanner.TokenTypeSEMICOLON)
@@ -163,19 +163,15 @@ func TestReturnToBuffer(t *testing.T) {
 		t.Error("Didnt get expected pattern")
 	}
 
-	if tokens[0].Type != scanner.TokenTypeIdent {
+	if tokens[0].Type != scanner.TokenTypeSEMICOLON {
 		t.Error("Didnt get expected pattern")
 	}
 
-	if tokens[1].Type != scanner.TokenTypeSEMICOLON {
+	if tokens[1].Type != scanner.TokenTypeIdent {
 		t.Error("Didnt get expected pattern")
 	}
 
-	if tokens[2].Type != scanner.TokenTypeIdent {
-		t.Error("Didnt get expected pattern")
-	}
-
-	if tokens[3].Type != scanner.TokenTypeSEMICOLON {
+	if tokens[2].Type != scanner.TokenTypeSEMICOLON {
 		t.Error("Didnt get expected pattern")
 	}
 
@@ -308,6 +304,19 @@ func TestParseForLoop(t *testing.T) {
 	}
 }
 
+func TestParseAssignment(t *testing.T) {
+	_, err := Parse(strings.NewReader(`
+		fn foobar() {
+			var foo = 123;
+			foo = 124;
+		}
+	`))
+
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 func TestParseVariableDeclarationInsideFunction(t *testing.T) {
 	_, err := Parse(strings.NewReader(`
 		fn foobar() {
@@ -422,9 +431,12 @@ func TestParseFailures(t *testing.T) {
 		{"fn foobar() { var foobar : int }", "1:33: Expected [SEMICOLON] got RBRACE"},
 		// For loops
 		{"fn foobar() { for var i = 0; i; [] }", "1:34: Expected code block got LBRACK"},
-		{"fn foobar() { for var i = 0; {}}", "1:31: Expected statement got LBRACE"},
+		{"fn foobar() { for var i = 0; {}}", "1:31: Expected expression got LBRACE"},
 		{"fn foobar() { for var i = 0; true {}}", "1:36: Expected ; got LBRACE"},
 		{"fn foobar() { for }", "1:20: Expected statement, ; or code block got RBRACE"},
+		{"fn foobar() { for true true {} }", "1:29: Expected ; or code block got BOOL"},
+		{"fn foobar() { foo = 123 }", "1:26: Expected [SEMICOLON] got RBRACE"},
+		{"fn foobar() { foo = , }", "1:23: Expected expression got COMMA"},
 	}
 
 	for _, test := range tests {
