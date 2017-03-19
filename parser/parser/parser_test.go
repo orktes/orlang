@@ -329,6 +329,30 @@ func TestParseIfCondition(t *testing.T) {
 	}
 }
 
+func TestParseIfElseCondition(t *testing.T) {
+	_, err := Parse(strings.NewReader(`
+		fn foobar() {
+			if true {} else {}
+		}
+	`))
+
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestParseIfElseIfCondition(t *testing.T) {
+	_, err := Parse(strings.NewReader(`
+		fn foobar() {
+			if true {} else if false {}
+		}
+	`))
+
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 func TestParseVariableDeclarationInsideFunction(t *testing.T) {
 	_, err := Parse(strings.NewReader(`
 		fn foobar() {
@@ -449,6 +473,10 @@ func TestParseFailures(t *testing.T) {
 		{"fn foobar() { for true true {} }", "1:29: Expected ; or code block got BOOL"},
 		{"fn foobar() { foo = 123 }", "1:26: Expected [SEMICOLON] got RBRACE"},
 		{"fn foobar() { foo = , }", "1:23: Expected expression got COMMA"},
+		// If statemts
+		{"fn foobar() {  if }", "1:20: Expected expression got RBRACE"},
+		{"fn foobar() {  if true foo }", "1:28: Expected code block got IDENT"},
+		{"fn foobar() {  if true {} else f", "1:33: Expected if statement or code block got IDENT"},
 	}
 
 	for _, test := range tests {

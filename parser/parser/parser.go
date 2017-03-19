@@ -360,6 +360,26 @@ func (p *Parser) parseIfStatement() (node *ast.If, nodeOk bool) {
 
 		node.Condition = condition
 		node.Block = block
+
+		token = p.read()
+		if token.Type == scanner.TokenTypeIdent && token.Text == "else" {
+			var elblock *ast.Block
+
+			elif, elseOk := p.parseIfStatement()
+			if elseOk {
+				elblock = &ast.Block{
+					Start: ast.StartPositionFromToken(token),
+					End:   elif.EndPos(),
+					Body:  []ast.Node{elif},
+				}
+			} else if elblock, elseOk = p.parseBlock(); !elseOk {
+				p.error(unexpected(p.read().Type.String(), "if statement or code block"))
+			}
+
+			node.Else = elblock
+		} else {
+			p.unread()
+		}
 	} else {
 		p.unread()
 	}
