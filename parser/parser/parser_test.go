@@ -181,6 +181,8 @@ func TestSnapshots(t *testing.T) {
 	p := NewParser(testScanner("foobar;barfoo;"))
 	p.snapshot()
 	p.read()
+	p.unread()
+	p.read()
 	p.snapshot()
 	p.read()
 	p.snapshot()
