@@ -225,8 +225,8 @@ func TestSnapshots(t *testing.T) {
 
 func TestFuncParse(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
-    fn test(bar : int, foo : float = 0.2) {}
-    fn withoutArguments() {}
+		fn test(bar : int, foo : float = 0.2) {}
+		fn withoutArguments() {}
   `))
 
 	if err != nil {
@@ -413,14 +413,70 @@ func TestParseVariableDeclarationInsideFunction(t *testing.T) {
 }
 
 func TestParseFunctionCall(t *testing.T) {
-	_, err := Parse(strings.NewReader(`
+	file, err := Parse(strings.NewReader(`
 		fn foobar(x : int = 0, y: int = 0) {
 			foobar()
+			foobar()()
+			foobar()()()
+			someObj.foo()
 		}
 	`))
 
 	if err != nil {
 		t.Error(err)
+	}
+
+	val, ok := file.Body[0].(*ast.FunctionDeclaration)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	functionCall, ok := val.Block.Body[0].(*ast.FunctionCall)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	callee, ok := functionCall.Callee.(*ast.ValueExpression)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	if callee.Text != "foobar" {
+		t.Error("Wrong callee")
+	}
+
+	functionCall, ok = val.Block.Body[1].(*ast.FunctionCall)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	callee = functionCall.Callee.(*ast.FunctionCall).Callee.(*ast.ValueExpression)
+	if callee.Text != "foobar" {
+		t.Error("Wrong callee")
+	}
+
+	functionCall, ok = val.Block.Body[2].(*ast.FunctionCall)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	callee = functionCall.Callee.(*ast.FunctionCall).Callee.(*ast.FunctionCall).Callee.(*ast.ValueExpression)
+	if callee.Text != "foobar" {
+		t.Error("Wrong callee")
+	}
+
+	functionCall, ok = val.Block.Body[3].(*ast.FunctionCall)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	memberExpression := functionCall.Callee.(*ast.MemberExpression)
+	if memberExpression.Property.Text != "foo" {
+		t.Error("Wrong callee")
+	}
+
+	if memberExpression.Target.(*ast.ValueExpression).Text != "someObj" {
+		t.Error("Member expression was parsed incorrectly")
 	}
 }
 
@@ -535,7 +591,10 @@ func TestParseFailures(t *testing.T) {
 		{"fn foobar() {  if }", "1:20: Expected expression got RBRACE"},
 		{"fn foobar() {  if true foo }", "1:28: Expected code block got IDENT"},
 		{"fn foobar() {  if true {} else f", "1:33: Expected if statement or code block got IDENT"},
+		// Function calls
 		{"fn foobar() {  foobar(.) }", "1:24: Expected [RPAREN] got PERIOD"},
+		// Member expressions
+		{"fn foobar() {  foobar.false }", "1:29: Expected property name got BOOL"},
 	}
 
 	for _, test := range tests {

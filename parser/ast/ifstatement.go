@@ -1,17 +1,17 @@
 package ast
 
-type If struct {
+type IfStatement struct {
 	Start     Position
 	Block     *Block
 	Condition Expression
 	Else      *Block
 }
 
-func (i *If) StartPos() Position {
+func (i *IfStatement) StartPos() Position {
 	return i.Start
 }
 
-func (i *If) EndPos() Position {
+func (i *IfStatement) EndPos() Position {
 	if i.Else != nil {
 		return i.Else.End
 	}

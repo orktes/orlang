@@ -226,7 +226,6 @@ loop:
 		switch {
 		case check(p.parseStatement(true)):
 		default:
-			if _, rok := p.expectToken(scanner.TokenTypeRBRACE); !rok {
 				p.unread()
 				return
 			}

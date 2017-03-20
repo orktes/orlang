@@ -102,6 +102,10 @@ func (s *Scanner) Scan() (token Token) {
 		t = TokenTypeCOLON
 		text = string(ch)
 
+	case ch == '\n':
+		t = TokenTypeWhitespace
+		text = string(ch)
+
 	case ch == ';':
 		t = TokenTypeSEMICOLON
 		text = string(ch)
@@ -464,7 +468,7 @@ func isNumber(ch rune) bool {
 }
 
 func isWhitespace(ch rune) bool {
-	return ch == ' ' || ch == '\t' || ch == '\n'
+	return ch == ' ' || ch == '\t'
 }
 
 func digitVal(ch rune) int {
