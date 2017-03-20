@@ -435,15 +435,49 @@ func (p *Parser) parseCallExpression(target ast.Node) (node *ast.FunctionCall, o
 		return
 	}
 
-	token, ok := p.expectToken(scanner.TokenTypeRPAREN)
-	if !ok {
+	args := make([]ast.CallArgument, 0)
+	for {
+		arg, ok := p.parseCallArgument()
+		if !ok {
+			break
+		}
+
+		args = append(args, arg)
+		_, commaOk := p.expectToken(scanner.TokenTypeCOMMA)
+		if !commaOk {
+			p.unread()
+			break
+		}
+	}
+
+	token, rParenOk := p.expectToken(scanner.TokenTypeRPAREN)
+	if !rParenOk {
 		p.error(unexpectedToken(token, scanner.TokenTypeRPAREN))
 		return
 	}
 
 	node = &ast.FunctionCall{
-		Callee: target,
-		End:    ast.EndPositionFromToken(token),
+		Callee:    target,
+		Arguments: args,
+		End:       ast.EndPositionFromToken(token),
+	}
+
+	return
+}
+
+func (p *Parser) parseCallArgument() (arg ast.CallArgument, ok bool) {
+	p.snapshot()
+	tokens, namedArgument := p.expectPattern(scanner.TokenTypeIdent, scanner.TokenTypeCOLON)
+	if namedArgument {
+		p.commit()
+		arg.Name = &tokens[0]
+	} else {
+		p.restore()
+	}
+
+	expr, ok := p.parseExpression()
+	if ok {
+		arg.Expression = expr
 	}
 
 	return
@@ -543,13 +577,14 @@ func (p *Parser) parseVariableDeclarations(isConstant bool) (varDecls []ast.Vari
 
 		var token scanner.Token
 
+		var foundVarDeclEnd bool
 		if foundVarDecl {
-			token, ok = p.expectToken(scanner.TokenTypeRPAREN, scanner.TokenTypeCOMMA)
+			token, foundVarDeclEnd = p.expectToken(scanner.TokenTypeRPAREN, scanner.TokenTypeCOMMA)
 		} else {
-			token, ok = p.expectToken(scanner.TokenTypeRPAREN)
+			token, foundVarDeclEnd = p.expectToken(scanner.TokenTypeRPAREN)
 		}
 
-		if !ok {
+		if !foundVarDeclEnd {
 			if foundVarDecl {
 				p.error(unexpectedToken(token, scanner.TokenTypeRPAREN, scanner.TokenTypeCOMMA))
 			} else {
@@ -575,19 +610,21 @@ func (p *Parser) parseVariableDeclaration(isConstant bool) (varDecl ast.Variable
 		return
 	}
 
+	// TODO check that it isnt keyword
+
 	varDecl.Constant = isConstant
 	varDecl.Name = token
 	// TODO check that identifier is not a reserved keyword
 
-	token, ok = p.expectToken(scanner.TokenTypeCOLON, scanner.TokenTypeASSIGN)
-	if !ok {
+	token, assignOk := p.expectToken(scanner.TokenTypeCOLON, scanner.TokenTypeASSIGN)
+	if !assignOk {
 		p.error(unexpectedToken(token, scanner.TokenTypeCOLON, scanner.TokenTypeASSIGN))
 		return
 	}
 
 	if token.Type == scanner.TokenTypeCOLON {
-		token, ok = p.expectToken(scanner.TokenTypeIdent)
-		if !ok {
+		token, colonOk := p.expectToken(scanner.TokenTypeIdent)
+		if !colonOk {
 			p.error(unexpectedToken(token, scanner.TokenTypeIdent))
 			return
 		}
@@ -600,8 +637,8 @@ func (p *Parser) parseVariableDeclaration(isConstant bool) (varDecl ast.Variable
 		}
 	}
 
-	expr, ok := p.parseExpression()
-	if !ok {
+	expr, expressionOk := p.parseExpression()
+	if !expressionOk {
 		p.error(unexpected(p.read().Type.String(), "expression"))
 		return
 	}

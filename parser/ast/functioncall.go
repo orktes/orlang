@@ -1,8 +1,9 @@
 package ast
 
 type FunctionCall struct {
-	Callee Expression
-	End    Position
+	Callee    Expression
+	End       Position
+	Arguments []CallArgument
 }
 
 func (fc *FunctionCall) StartPos() Position {

@@ -419,6 +419,8 @@ func TestParseFunctionCall(t *testing.T) {
 			foobar()()
 			foobar()()()
 			someObj.foo()
+			foobar(10, 20)
+			foobar(x: 10, y: 20)
 		}
 	`))
 
@@ -478,6 +480,51 @@ func TestParseFunctionCall(t *testing.T) {
 	if memberExpression.Target.(*ast.ValueExpression).Text != "someObj" {
 		t.Error("Member expression was parsed incorrectly")
 	}
+
+	functionCall, ok = val.Block.Body[4].(*ast.FunctionCall)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	callee, ok = functionCall.Callee.(*ast.ValueExpression)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	if functionCall.Arguments[0].Expression.(*ast.ValueExpression).Value != int64(10) {
+		t.Error("Wrong arg value")
+	}
+
+	if functionCall.Arguments[1].Expression.(*ast.ValueExpression).Value != int64(20) {
+		t.Error("Wrong arg value")
+	}
+
+	functionCall, ok = val.Block.Body[5].(*ast.FunctionCall)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	callee, ok = functionCall.Callee.(*ast.ValueExpression)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	if functionCall.Arguments[0].Expression.(*ast.ValueExpression).Value != int64(10) {
+		t.Error("Wrong arg value")
+	}
+
+	if functionCall.Arguments[0].Name.Text != "x" {
+		t.Error("Wrong arg name")
+	}
+
+	if functionCall.Arguments[1].Expression.(*ast.ValueExpression).Value != int64(20) {
+		t.Error("Wrong arg value")
+	}
+
+	if functionCall.Arguments[1].Name.Text != "y" {
+		t.Error("Wrong arg name")
+	}
+
 }
 
 func TestParseVariableDeclaration(t *testing.T) {
@@ -572,12 +619,15 @@ func TestParseFailures(t *testing.T) {
 		{"fn test(foo : int) {]", "1:21: Expected code block got RBRACK"},
 		{"fn", "1:3: Expected [IDENT LPAREN] got EOF"},
 		{"fn (foo : int) {}", "1:17: Root level functions can't be anonymous"},
+		{"fn ( {}", "1:7: Expected [IDENT RPAREN] got LBRACE"},
 		// Variable declarations
 		{"var [", "1:5: Expected variable declaration got LBRACK"},
 		{"var (bar , int, foo : float = 0.2)", "1:12: Expected [COLON ASSIGN] got COMMA"},
 		{"var (foo : float foo)", "1:18: Expected [RPAREN COMMA] got foo"},
 		{"var (foo : )", "1:13: Expected [IDENT] got RPAREN"},
 		{"var (foo : bar = )", "1:19: Expected expression got RPAREN"},
+		{"var (foo ", "1:1: Expected [COLON ASSIGN] got EOF"},
+		{"var (", "1:6: Expected [IDENT RPAREN] got EOF"},
 		{"fn foobar() { var foobar : int }", "1:33: Expected [SEMICOLON] got RBRACE"},
 		// For loops
 		{"fn foobar() { for var i = 0; i; [] }", "1:34: Expected code block got LBRACK"},
@@ -595,6 +645,7 @@ func TestParseFailures(t *testing.T) {
 		{"fn foobar() {  foobar(.) }", "1:24: Expected [RPAREN] got PERIOD"},
 		// Member expressions
 		{"fn foobar() {  foobar.false }", "1:29: Expected property name got BOOL"},
+		{"fn foobar() {  fn foobar(i:int;) {} }", "1:34: Expected [RPAREN COMMA] got SEMICOLON"},
 	}
 
 	for _, test := range tests {
