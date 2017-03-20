@@ -226,10 +226,10 @@ loop:
 		switch {
 		case check(p.parseStatement(true)):
 		default:
+			if _, tok := p.expectToken(scanner.TokenTypeRBRACE); !tok {
 				p.unread()
 				return
 			}
-
 			break loop
 		}
 
@@ -338,11 +338,11 @@ func (p *Parser) parseForLoop() (node *ast.ForLoop, nodeOk bool) {
 	return
 }
 
-func (p *Parser) parseIfStatement() (node *ast.If, nodeOk bool) {
+func (p *Parser) parseIfStatement() (node *ast.IfStatement, nodeOk bool) {
 	token := p.read()
 	if token.Type == scanner.TokenTypeIdent && token.Text == "if" {
 		nodeOk = true
-		node = &ast.If{
+		node = &ast.IfStatement{
 			Start: ast.StartPositionFromToken(token),
 		}
 
@@ -405,7 +405,30 @@ func (p *Parser) parseAssigment() (node ast.Node, ok bool) {
 	return
 }
 
-func (p *Parser) parseCallExpression(target ast.Node) (node ast.Node, ok bool) {
+func (p *Parser) parseMemberExpression(target ast.Node) (node *ast.MemberExpression, ok bool) {
+	_, ok = p.expectToken(scanner.TokenTypePERIOD)
+	if !ok {
+		p.unread()
+		return
+	}
+
+	token, propertyOk := p.expectToken(scanner.TokenTypeIdent)
+	if !propertyOk {
+		p.error(unexpected(token.Type.String(), "property name"))
+		return
+	}
+
+	// TODO check that token is not reserved keyword
+
+	node = &ast.MemberExpression{
+		Target:   target,
+		Property: token,
+	}
+
+	return
+}
+
+func (p *Parser) parseCallExpression(target ast.Node) (node *ast.FunctionCall, ok bool) {
 	_, ok = p.expectToken(scanner.TokenTypeLPAREN)
 	if !ok {
 		p.unread()
@@ -416,6 +439,11 @@ func (p *Parser) parseCallExpression(target ast.Node) (node ast.Node, ok bool) {
 	if !ok {
 		p.error(unexpectedToken(token, scanner.TokenTypeRPAREN))
 		return
+	}
+
+	node = &ast.FunctionCall{
+		Callee: target,
+		End:    ast.EndPositionFromToken(token),
 	}
 
 	return
@@ -444,12 +472,17 @@ func (p *Parser) parseExpression() (expression ast.Expression, ok bool) {
 	switch {
 	case check(p.parseFuncDecl()):
 	case check(p.parseValueExpression()):
+	default:
+		return
 	}
 
-	if ok && expression != nil {
-		funCall, isFunCall := p.parseCallExpression(expression)
-		if isFunCall {
+	for {
+		if funCall, isFunCall := p.parseCallExpression(expression); isFunCall {
 			expression = funCall
+		} else if memberExpression, isMemberExpression := p.parseMemberExpression(expression); isMemberExpression {
+			expression = memberExpression
+		} else {
+			break
 		}
 	}
 
