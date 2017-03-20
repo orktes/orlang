@@ -27,7 +27,7 @@ type Parser struct {
 }
 
 func NewParser(s *scanner.Scanner) *Parser {
-	return &Parser{s: s, scanChan: s.ScanChannel()}
+	return &Parser{s: s}
 }
 
 func Parse(reader io.Reader) (file *ast.File, err error) {
@@ -681,7 +681,8 @@ func (p *Parser) read() (token scanner.Token) {
 		token = p.tokenBuffer[0]
 		p.tokenBuffer = p.tokenBuffer[1:]
 	} else {
-		for tok := range p.scanChan {
+		for {
+			tok := p.s.Scan()
 			// TODO convert NEWLINES to semicolons on some scenarios
 			if tok.Type != scanner.TokenTypeWhitespace {
 				token = tok

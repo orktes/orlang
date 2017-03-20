@@ -626,7 +626,7 @@ func TestParseFailures(t *testing.T) {
 		{"var (foo : float foo)", "1:18: Expected [RPAREN COMMA] got foo"},
 		{"var (foo : )", "1:13: Expected [IDENT] got RPAREN"},
 		{"var (foo : bar = )", "1:19: Expected expression got RPAREN"},
-		{"var (foo ", "1:1: Expected [COLON ASSIGN] got EOF"},
+		{"var (foo ", "1:10: Expected [COLON ASSIGN] got EOF"},
 		{"var (", "1:6: Expected [IDENT RPAREN] got EOF"},
 		{"fn foobar() { var foobar : int }", "1:33: Expected [SEMICOLON] got RBRACE"},
 		// For loops
@@ -657,6 +657,79 @@ func TestParseFailures(t *testing.T) {
 
 		if err.Error() != test.err {
 			t.Errorf("Expected %s to return error %s, but got %s", test.src, test.err, err.Error())
+		}
+	}
+}
+
+func BenchmarkParser(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, err := Parse(strings.NewReader(`
+			fn foobar(x : int = 0, y: int = 0) {
+				foobar()
+				foobar()()
+				foobar()()()
+				someObj.foo()
+				foobar(10, 20)
+				foobar(x: 10, y: 20)
+				fn barfoo() {
+					var i : int = 10;
+					i = 20;
+					for barfoo(i: i) {
+						fn barfoo() {
+							var i : int = 10;
+							i = 20;
+							for barfoo(i: i) {
+								fn barfoo() {
+									var i : int = 10;
+									i = 20;
+									for barfoo(i: i) {
+										fn barfoo() {
+											var i : int = 10;
+											i = 20;
+											for barfoo(i: i) {
+												fn barfoo() {
+													var i : int = 10;
+													i = 20;
+													for barfoo(i: i) {
+														fn barfoo() {
+															var i : int = 10;
+															i = 20;
+															for barfoo(i: i) {
+																fn barfoo() {
+																	var i : int = 10;
+																	i = 20;
+																	for barfoo(i: i) {
+																		fn barfoo() {
+																			var i : int = 10;
+																			i = 20;
+																			for barfoo(i: i) {
+																				fn barfoo() {
+																					var i : int = 10;
+																					i = 20;
+																					for barfoo(i: i) {
+
+																					}
+																				}
+																			}
+																		}
+																	}
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		`))
+		if err != nil {
+			b.Fatal(err)
 		}
 	}
 }
