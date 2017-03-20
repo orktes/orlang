@@ -49,9 +49,12 @@ func (hr *HistoryReader) FindLineForPosition(pos ast.Position) string {
 			correctLineEndIndex = i + 1
 			correctLine = true
 		}
-		if b == '\n' {
+		if b == '\n' || i == 0 {
 			if correctLine {
-				return string(bytes[i+1 : correctLineEndIndex])
+				if i != 0 {
+					i++
+				}
+				return string(bytes[i:correctLineEndIndex])
 			}
 			line--
 		}
