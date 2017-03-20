@@ -645,6 +645,7 @@ func (p *Parser) read() (token scanner.Token) {
 		p.tokenBuffer = p.tokenBuffer[1:]
 	} else {
 		for tok := range p.scanChan {
+			// TODO convert NEWLINES to semicolons on some scenarios
 			if tok.Type != scanner.TokenTypeWhitespace {
 				token = tok
 				break
