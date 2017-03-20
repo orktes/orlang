@@ -17,13 +17,14 @@ var valueTypes = []scanner.TokenType{
 }
 
 type Parser struct {
-	s           *scanner.Scanner
-	tokenBuffer []scanner.Token
-	lastTokens  []scanner.Token
-	scanChan    <-chan scanner.Token
-	parserError string
-	Error       func(Pos, msg string)
-	snapshots   [][]scanner.Token
+	s                *scanner.Scanner
+	tokenBuffer      []scanner.Token
+	lastTokens       []scanner.Token
+	parserError      string
+	Error            func(tokenIndx int, pos ast.Position, msg string)
+	ContinueOnErrors bool
+	snapshots        [][]scanner.Token
+	readTokens       int
 }
 
 func NewParser(s *scanner.Scanner) *Parser {
@@ -58,18 +59,21 @@ loop:
 			break loop
 		default:
 			token := p.read()
-			err = PosError{Position: ast.StartPositionFromToken(token), Message: unexpectedToken(token)}
-			break loop
+			p.error(unexpectedToken(token))
 		}
 
 		if node != nil {
 			file.AppendNode(node)
 		}
 
-		if p.parserError != "" && err == nil {
+		if p.parserError != "" {
 			token := p.lastToken()
-			err = PosError{Position: ast.StartPositionFromToken(token), Message: p.parserError}
-			break loop
+			posError := &PosError{Position: ast.StartPositionFromToken(token), Message: p.parserError}
+			p.parserError = ""
+			if !p.ContinueOnErrors {
+				err = posError
+				break loop
+			}
 		}
 	}
 
@@ -686,6 +690,7 @@ func (p *Parser) read() (token scanner.Token) {
 			// TODO convert NEWLINES to semicolons on some scenarios
 			if tok.Type != scanner.TokenTypeWhitespace {
 				token = tok
+				p.readTokens++
 				break
 			}
 		}
@@ -771,5 +776,7 @@ func (p *Parser) error(err string) {
 	if p.parserError == "" {
 		p.parserError = err
 	}
-
+	if p.Error != nil {
+		p.Error(p.readTokens-len(p.tokenBuffer), ast.StartPositionFromToken(p.lastToken()), err)
+	}
 }

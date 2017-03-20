@@ -1,0 +1,21 @@
+// This is to test orlang lint
+
+fn main() {
+  for {
+    fn foobar() {
+      for var i = 0; i; [
+        // This is used to test lint/parser error printer
+      ]
+    }
+  }
+}
+
+fn otherfn() {
+  for {
+    fn foobar() {
+      for var i = 0; i; {}
+    }
+  }
+}
+
+thisisanunexpectedtoken
