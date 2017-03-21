@@ -661,6 +661,17 @@ func TestParseFailures(t *testing.T) {
 	}
 }
 
+func BenchmarkParserSimple(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, err := Parse(strings.NewReader(`
+			fn foobar() {}
+		`))
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func BenchmarkParser(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, err := Parse(strings.NewReader(`

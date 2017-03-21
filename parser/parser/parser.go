@@ -515,6 +515,7 @@ func (p *Parser) parseExpression() (expression ast.Expression, ok bool) {
 	}
 
 	for {
+		// Parse function calls, member expressions and type casts
 		if funCall, isFunCall := p.parseCallExpression(expression); isFunCall {
 			expression = funCall
 		} else if memberExpression, isMemberExpression := p.parseMemberExpression(expression); isMemberExpression {
