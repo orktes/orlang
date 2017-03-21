@@ -19,7 +19,7 @@ type HistoryReader struct {
 
 func NewHistoryReader(in io.Reader) (r *HistoryReader) {
 	r = &HistoryReader{
-		buf: rbuf.NewFixedSizeRingBuf(1024 * 5), // TODO figure out proper size
+		buf: rbuf.NewFixedSizeRingBuf(1024), // TODO figure out proper size
 	}
 	r.Reader = io.TeeReader(in, r)
 	return
