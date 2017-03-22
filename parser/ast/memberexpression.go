@@ -14,3 +14,6 @@ func (me *MemberExpression) StartPos() Position {
 func (me *MemberExpression) EndPos() Position {
 	return EndPositionFromToken(me.Property)
 }
+
+func (_ *MemberExpression) exprNode() {
+}

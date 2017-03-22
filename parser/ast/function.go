@@ -20,3 +20,6 @@ func (fd *FunctionDeclaration) EndPos() Position {
 	}
 	return fd.Block.End
 }
+
+func (_ *FunctionDeclaration) exprNode() {
+}

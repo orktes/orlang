@@ -18,3 +18,5 @@ func (forloop *ForLoop) EndPos() Position {
 	}
 	return forloop.Block.End
 }
+
+func (_ *ForLoop) stmtNode() {}

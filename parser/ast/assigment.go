@@ -14,3 +14,6 @@ func (a *Assigment) StartPos() Position {
 func (a *Assigment) EndPos() Position {
 	return a.Expression.EndPos()
 }
+
+func (_ *Assigment) stmtNode() {}
+func (_ *Assigment) exprNode() {}

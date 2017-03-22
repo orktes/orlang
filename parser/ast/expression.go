@@ -4,6 +4,7 @@ import "github.com/orktes/orlang/parser/scanner"
 
 type Expression interface {
 	Node
+	exprNode()
 }
 
 // ValueExpression temp container for direct values
@@ -17,4 +18,7 @@ func (v *ValueExpression) StartPos() Position {
 
 func (v *ValueExpression) EndPos() Position {
 	return EndPositionFromToken(v.Token)
+}
+
+func (_ *ValueExpression) exprNode() {
 }

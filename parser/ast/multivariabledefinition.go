@@ -13,3 +13,5 @@ func (vd *MultiVariableDeclaration) StartPos() Position {
 func (vd *MultiVariableDeclaration) EndPos() Position {
 	return vd.End
 }
+
+func (_ *MultiVariableDeclaration) stmtNode() {}

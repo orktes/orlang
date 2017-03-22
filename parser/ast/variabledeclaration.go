@@ -19,3 +19,5 @@ func (vd *VariableDeclaration) EndPos() Position {
 	}
 	return StartPositionFromToken(vd.Type)
 }
+
+func (_ *VariableDeclaration) stmtNode() {}

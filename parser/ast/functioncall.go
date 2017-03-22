@@ -13,3 +13,6 @@ func (fc *FunctionCall) StartPos() Position {
 func (fc *FunctionCall) EndPos() Position {
 	return fc.End
 }
+
+func (_ FunctionCall) exprNode() {
+}

@@ -268,6 +268,13 @@ func (p *Parser) parseArgument() (arg *ast.Argument, ok bool) {
 	return
 }
 
+func (p *Parser) parseStatementOrExpression(block bool) (node ast.Node, ok bool) {
+	if node, ok = p.parseStatement(block); !ok {
+		node, ok = p.parseExpression()
+	}
+	return
+}
+
 func (p *Parser) parseBlock() (node *ast.Block, ok bool) {
 	if _, lok := p.expectToken(scanner.TokenTypeLBRACE); !lok {
 		p.unread()
@@ -286,7 +293,7 @@ loop:
 			return ok
 		}
 		switch {
-		case check(p.parseStatement(true)):
+		case check(p.parseStatementOrExpression(true)):
 		default:
 			if _, tok := p.expectToken(scanner.TokenTypeRBRACE); !tok {
 				p.unread()
@@ -305,9 +312,9 @@ loop:
 	return
 }
 
-func (p *Parser) parseStatement(block bool) (node ast.Node, ok bool) {
+func (p *Parser) parseStatement(block bool) (node ast.Statement, ok bool) {
 	ok = true
-	var check = func(n ast.Node, ok bool) bool {
+	var check = func(n ast.Statement, ok bool) bool {
 		if ok {
 			node = n
 		}
@@ -331,7 +338,6 @@ func (p *Parser) parseStatement(block bool) (node ast.Node, ok bool) {
 				return
 			}
 		}
-	case check(p.parseExpression()):
 	default:
 		ok = false
 	}
@@ -350,7 +356,7 @@ func (p *Parser) parseForLoop() (node *ast.ForLoop, nodeOk bool) {
 		var init ast.Node
 		var after ast.Node
 
-		init, statementok := p.parseStatement(false) // Pre stuff
+		init, statementok := p.parseStatementOrExpression(false) // Pre stuff
 		token, ok := p.expectToken(scanner.TokenTypeSEMICOLON, scanner.TokenTypeLBRACE)
 		if !ok {
 			if statementok {
@@ -380,7 +386,7 @@ func (p *Parser) parseForLoop() (node *ast.ForLoop, nodeOk bool) {
 			return
 		}
 
-		after, _ = p.parseStatement(false) // After
+		after, _ = p.parseStatementOrExpression(false) // After
 
 	parseBlock:
 		block, blockOk := p.parseBlock() // Block
@@ -389,7 +395,10 @@ func (p *Parser) parseForLoop() (node *ast.ForLoop, nodeOk bool) {
 			return
 		}
 
-		node.Condition = condition
+		if condition != nil {
+			node.Condition = condition.(ast.Expression)
+		}
+
 		node.Init = init
 		node.After = after
 		node.Block = block
@@ -452,7 +461,7 @@ func (p *Parser) parseIfStatement() (node *ast.IfStatement, nodeOk bool) {
 	return
 }
 
-func (p *Parser) parseAssigment() (node ast.Node, ok bool) {
+func (p *Parser) parseAssigment() (node ast.Statement, ok bool) {
 	tokens, ok := p.expectPattern(scanner.TokenTypeIdent, scanner.TokenTypeASSIGN)
 	if !ok {
 		p.returnToBuffer(tokens)
@@ -469,7 +478,7 @@ func (p *Parser) parseAssigment() (node ast.Node, ok bool) {
 	return
 }
 
-func (p *Parser) parseMemberExpression(target ast.Node) (node *ast.MemberExpression, ok bool) {
+func (p *Parser) parseMemberExpression(target ast.Expression) (node *ast.MemberExpression, ok bool) {
 	_, ok = p.expectToken(scanner.TokenTypePERIOD)
 	if !ok {
 		p.unread()
@@ -495,7 +504,7 @@ func (p *Parser) parseMemberExpression(target ast.Node) (node *ast.MemberExpress
 	return
 }
 
-func (p *Parser) parseCallExpression(target ast.Node) (node *ast.FunctionCall, ok bool) {
+func (p *Parser) parseCallExpression(target ast.Expression) (node *ast.FunctionCall, ok bool) {
 	_, ok = p.expectToken(scanner.TokenTypeLPAREN)
 	if !ok {
 		p.unread()
@@ -602,7 +611,7 @@ func (p *Parser) parseExpression() (expression ast.Expression, ok bool) {
 	return
 }
 
-func (p *Parser) parseVarDecl() (node ast.Node, ok bool) {
+func (p *Parser) parseVarDecl() (node ast.Statement, ok bool) {
 	token := p.read()
 	if token.Type == scanner.TokenTypeIdent && (token.Text == KeywordVar || token.Text == KeywordConst) {
 		ok = true

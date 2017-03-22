@@ -20,3 +20,5 @@ func (i *IfStatement) EndPos() Position {
 	}
 	return i.Block.End
 }
+
+func (_ *IfStatement) stmtNode() {}
