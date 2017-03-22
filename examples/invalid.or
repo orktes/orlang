@@ -1,7 +1,7 @@
 // This is to test orlang lint
 
 fn main() {
-  for {
+  for var i = 1; i<; 1 {
     fn foobar() {
       for var i = 0; i; [
         // This is used to test lint/parser error printer
@@ -13,7 +13,10 @@ fn main() {
 fn otherfn() {
   for {
     fn foobar() {
-      for var i = 0; i; {}
+      for var i = 0; i; {
+        var h = ++;
+        var b = i++ +;
+      }
     }
   }
 }

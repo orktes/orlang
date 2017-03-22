@@ -33,6 +33,7 @@ type Parser struct {
 	tokenBuffer      []scanner.Token
 	lastTokens       []scanner.Token
 	parserError      string
+	errorToken       scanner.Token
 	Error            func(tokenIndx int, pos ast.Position, msg string)
 	ContinueOnErrors bool
 	snapshots        [][]scanner.Token
@@ -87,7 +88,7 @@ loop:
 		}
 
 		if p.parserError != "" {
-			token := p.lastToken()
+			token := p.errorToken
 			posError := &PosError{Position: ast.StartPositionFromToken(token), Message: p.parserError}
 			p.parserError = ""
 			if !p.ContinueOnErrors {
@@ -310,6 +311,7 @@ loop:
 		}
 		switch {
 		case check(p.parseStatementOrExpression(true)):
+		case check(p.parseBlock()):
 		default:
 			if _, tok := p.expectToken(scanner.TokenTypeRBRACE); !tok {
 				p.unread()
@@ -991,6 +993,7 @@ func (p *Parser) commit() {
 func (p *Parser) error(err string) {
 	if p.parserError == "" {
 		p.parserError = err
+		p.errorToken = p.lastToken()
 	}
 	if p.Error != nil {
 		p.Error(p.readTokens-len(p.tokenBuffer), ast.StartPositionFromToken(p.lastToken()), err)
