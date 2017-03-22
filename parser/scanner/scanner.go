@@ -135,8 +135,14 @@ func (s *Scanner) Scan() (token Token) {
 		text = string(ch)
 
 	case ch == '<':
-		t = TokenTypeLCHEV
+		t = TokenTypeLess
 		text = string(ch)
+		if s.read() == '=' {
+			t = TokenTypeLessOrEqual
+			text = "<="
+		} else {
+			s.unread()
+		}
 
 	case ch == '{':
 		t = TokenTypeLBRACE
@@ -151,8 +157,14 @@ func (s *Scanner) Scan() (token Token) {
 		text = string(ch)
 
 	case ch == '>':
-		t = TokenTypeRCHEV
+		t = TokenTypeGreater
 		text = string(ch)
+		if s.read() == '=' {
+			t = TokenTypeGreaterOrEqual
+			text = ">="
+		} else {
+			s.unread()
+		}
 
 	case ch == '}':
 		t = TokenTypeRBRACE
@@ -165,10 +177,22 @@ func (s *Scanner) Scan() (token Token) {
 	case ch == '!':
 		t = TokenTypeEXCL
 		text = string(ch)
+		if s.read() == '=' {
+			t = TokenTypeNotEqual
+			text = "!="
+		} else {
+			s.unread()
+		}
 
 	case ch == '=':
 		t = TokenTypeASSIGN
 		text = string(ch)
+		if s.read() == '=' {
+			t = TokenTypeEqual
+			text = "=="
+		} else {
+			s.unread()
+		}
 
 	case ch == eof:
 		t = TokenTypeEOF

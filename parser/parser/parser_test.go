@@ -735,7 +735,7 @@ func TestParseFailures(t *testing.T) {
 		// If statemts
 		{"fn foobar() {  if }", "1:20: Expected expression got RBRACE"},
 		{"fn foobar() {  if 1 < {} }", "1:26: Expected expression got LBRACE"},
-		{"fn foobar() {  if 1 ! {} }", "1:26: Expected = after ! got LBRACE"},
+		{"fn foobar() {  if 1 ! {} }", "1:23: Expected code block got EXCLAMATION"},
 		{"fn foobar() {  if true foo }", "1:28: Expected code block got IDENT"},
 		{"fn foobar() {  if true {} else f", "1:33: Expected if statement or code block got IDENT"},
 		// Function calls

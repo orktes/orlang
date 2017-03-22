@@ -1,18 +1,9 @@
 package ast
 
-type ComparisonExpressionOperator int
-
-const (
-	ComparisonExpressionOperatorEqual = ComparisonExpressionOperator(iota)
-	ComparisonExpressionOperatorNotEqual
-	ComparisonExpressionOperatorGreater
-	ComparisonExpressionOperatorLess
-	ComparisonExpressionOperatorGreaterOrEqual
-	ComparisonExpressionOperatorLessOrEqual
-)
+import "github.com/orktes/orlang/parser/scanner"
 
 type ComparisonExpression struct {
-	Operator ComparisonExpressionOperator
+	Operator scanner.Token
 	Left     Expression
 	Right    Expression
 }

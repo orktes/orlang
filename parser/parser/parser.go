@@ -62,6 +62,7 @@ loop:
 			}
 		case check(p.parseVarDecl()):
 		case check(p.parseImportDecl()):
+		case check(p.parseExportDecl()):
 		case p.eof():
 			break loop
 		default:
@@ -459,14 +460,6 @@ func (p *Parser) parseAssigment(left ast.Expression) (node ast.Expression, ok bo
 		return
 	}
 
-	_, equals := p.expectToken(scanner.TokenTypeASSIGN)
-	if equals {
-		p.restore()
-		return nil, false
-	}
-
-	p.unread()
-
 	expression, exprOk := p.parseExpression()
 	if !exprOk {
 		p.error(unexpected(p.read().Type.String(), "expression"))
@@ -614,60 +607,30 @@ rightLoop:
 }
 
 func (p *Parser) parseComparisonExpression(left ast.Expression) (node ast.Expression, ok bool) {
-	p.snapshot()
 	token, ok := p.expectToken(
-		scanner.TokenTypeASSIGN,
-		scanner.TokenTypeEXCL,
-		scanner.TokenTypeLCHEV,
-		scanner.TokenTypeRCHEV,
+		scanner.TokenTypeEqual,
+		scanner.TokenTypeNotEqual,
+		scanner.TokenTypeLess,
+		scanner.TokenTypeGreater,
+		scanner.TokenTypeLessOrEqual,
+		scanner.TokenTypeGreaterOrEqual,
 	)
 
 	if !ok {
-		p.restore()
+		p.unread()
 		return
 	}
 
-	equals := p.read().Type == scanner.TokenTypeASSIGN
-	if !equals {
-		// TODO if ! or = is the first die here
-		if token.Type == scanner.TokenTypeASSIGN || token.Type == scanner.TokenTypeEXCL {
-			p.error(unexpected(p.lastToken().Type.String(), "= after "+token.Text))
-			return
-		}
-		p.unread()
-	}
-
-	right, ok := p.parseExpression()
-	if !ok {
+	right, expressionOk := p.parseExpression()
+	if !expressionOk {
 		p.error(unexpected(p.read().Type.String(), "expression"))
 		return
-	}
-
-	var operator ast.ComparisonExpressionOperator
-
-	switch token.Type {
-	case scanner.TokenTypeLCHEV:
-		if equals {
-			operator = ast.ComparisonExpressionOperatorLessOrEqual
-		} else {
-			operator = ast.ComparisonExpressionOperatorLess
-		}
-	case scanner.TokenTypeRCHEV:
-		if equals {
-			operator = ast.ComparisonExpressionOperatorGreaterOrEqual
-		} else {
-			operator = ast.ComparisonExpressionOperatorGreater
-		}
-	case scanner.TokenTypeEXCL:
-		operator = ast.ComparisonExpressionOperatorNotEqual
-	case scanner.TokenTypeASSIGN:
-		operator = ast.ComparisonExpressionOperatorEqual
 	}
 
 	node = &ast.ComparisonExpression{
 		Left:     left,
 		Right:    right,
-		Operator: operator,
+		Operator: token,
 	}
 
 	return
@@ -810,6 +773,10 @@ func (p *Parser) parseVariableDeclaration(isConstant bool) (varDecl *ast.Variabl
 }
 
 func (p *Parser) parseImportDecl() (node ast.Node, ok bool) {
+	return
+}
+
+func (p *Parser) parseExportDecl() (node ast.Node, ok bool) {
 	return
 }
 

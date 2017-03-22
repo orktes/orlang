@@ -24,16 +24,16 @@ const (
 	TokenTypeBoolean
 	// TokenTypeComment comment block
 	TokenTypeComment
-	// TokenTypeLCHEV left chevron <
-	TokenTypeLCHEV
+	// TokenTypeLess left chevron <
+	TokenTypeLess
 	// TokenTypeLPAREN left parenthesis (
 	TokenTypeLPAREN
 	// TokenTypeLBRACK left bracket [
 	TokenTypeLBRACK
 	// TokenTypeLBRACE left brace {
 	TokenTypeLBRACE
-	// TokenTypeRCHEV left chevron >
-	TokenTypeRCHEV
+	// TokenTypeGreater left chevron >
+	TokenTypeGreater
 	// TokenTypeRPAREN right parenthesis )
 	TokenTypeRPAREN
 	// TokenTypeRBRACK left bracket [
@@ -66,6 +66,15 @@ const (
 	TokenTypeSLASH
 	// TokenTypeBACKSLASH backslash
 	TokenTypeBACKSLASH
+
+	// TokenTypeEqual ==
+	TokenTypeEqual
+	// TokenTypeNotEqual !=
+	TokenTypeNotEqual
+	// TokenTypeLessOrEqual <=
+	TokenTypeLessOrEqual
+	// TokenTypeGreaterOrEqual
+	TokenTypeGreaterOrEqual
 )
 
 var tokenNames = [...]string{
@@ -83,12 +92,12 @@ var tokenNames = [...]string{
 	TokenTypeLBRACK: "LBRACK",
 	TokenTypeLBRACE: "LBRACE",
 	TokenTypeLPAREN: "LPAREN",
-	TokenTypeLCHEV:  "LCHEV",
+	TokenTypeLess:   "LCHEV",
 
-	TokenTypeRBRACK: "RBRACK",
-	TokenTypeRBRACE: "RBRACE",
-	TokenTypeRPAREN: "RPAREN",
-	TokenTypeRCHEV:  "RCHEV",
+	TokenTypeRBRACK:  "RBRACK",
+	TokenTypeRBRACE:  "RBRACE",
+	TokenTypeRPAREN:  "RPAREN",
+	TokenTypeGreater: "RCHEV",
 
 	TokenTypeCOMMA:     "COMMA",
 	TokenTypePERIOD:    "PERIOD",
@@ -106,6 +115,11 @@ var tokenNames = [...]string{
 
 	TokenTypeSLASH:     "SLASH",
 	TokenTypeBACKSLASH: "BACKSLASH",
+
+	TokenTypeEqual:          "EQUAL",
+	TokenTypeNotEqual:       "NOTEQUAL",
+	TokenTypeLessOrEqual:    "LESSOREQUAL",
+	TokenTypeGreaterOrEqual: "GREATEROREQUAL",
 }
 
 func (typ TokenType) String() string {
@@ -124,6 +138,10 @@ type Token struct {
 }
 
 func (t Token) String() string {
+	if t.Type >= TokenTypeEqual {
+		return fmt.Sprintf("%d:%d %s", t.StartLine, t.StartColumn, t.Text)
+	}
+
 	if t.Value == nil || t.Type == TokenTypeUnknown || t.Type == TokenTypeIdent {
 		return fmt.Sprintf("%d:%d %s(%s)", t.StartLine, t.StartColumn, t.Type.String(), t.Text)
 	}
