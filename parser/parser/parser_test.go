@@ -654,6 +654,41 @@ func TestParseVariableDeclaration(t *testing.T) {
 
 }
 
+func TestParseBinaryExpression(t *testing.T) {
+	file, err := Parse(strings.NewReader(`
+		fn main() {
+			var foo = 1 + 2 * 3 + 4
+		}
+	`))
+	if err != nil {
+		t.Error(err)
+	}
+
+	binaryExpr, ok := file.Body[0].(*ast.FunctionDeclaration).Block.Body[0].(*ast.VariableDeclaration).DefaultValue.(*ast.BinaryExpression)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	//fmt.Printf("%#v", binaryExpr)
+
+	if binaryExpr.Left.(*ast.ValueExpression).Value != int64(1) {
+		t.Error("Wrong value on the left most side")
+	}
+
+	binaryExprRight := binaryExpr.Right.(*ast.BinaryExpression)
+	if binaryExprRight.Right.(*ast.ValueExpression).Value != int64(4) {
+		t.Error("Wrong value on the right most side")
+	}
+
+	if binaryExprRight.Left.(*ast.BinaryExpression).Left.(*ast.ValueExpression).Value != int64(2) {
+		t.Error("Wrong value on the inner left")
+	}
+
+	if binaryExprRight.Left.(*ast.BinaryExpression).Right.(*ast.ValueExpression).Value != int64(3) {
+		t.Error("Wrong value on the inner right")
+	}
+}
+
 func TestParseMultipleVariableDeclarations(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
 		var (
@@ -753,6 +788,8 @@ func TestParseFailures(t *testing.T) {
 		{"fn foobar() { foobar(return:0) }", "1:30: return is a reserved keyword"},
 		{"var (return:foo)", "1:12: return is a reserved keyword"},
 		{"var (foo:return)", "1:16: return is a reserved keyword"},
+		// BinaryExpression
+		{"fn foobar() { var foo = 1 + }", "1:30: Expected expression got RBRACE"},
 	}
 
 	for _, test := range tests {

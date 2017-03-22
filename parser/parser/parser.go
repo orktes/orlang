@@ -453,10 +453,9 @@ func (p *Parser) parseIfStatement() (node *ast.IfStatement, nodeOk bool) {
 }
 
 func (p *Parser) parseAssigment(left ast.Expression) (node ast.Expression, ok bool) {
-	p.snapshot()
 	_, ok = p.expectToken(scanner.TokenTypeASSIGN)
 	if !ok {
-		p.restore()
+		p.unread()
 		return
 	}
 
@@ -467,7 +466,6 @@ func (p *Parser) parseAssigment(left ast.Expression) (node ast.Expression, ok bo
 	}
 
 	node = &ast.Assigment{Left: left, Right: expression}
-	p.commit()
 	return
 }
 
@@ -573,7 +571,7 @@ func (p *Parser) parseValueExpression() (expression ast.Expression, ok bool) {
 	return &ast.ValueExpression{Token: token}, true
 }
 
-func (p *Parser) parseExpression() (expression ast.Expression, ok bool) {
+func (p *Parser) parseUnaryExpression() (expression ast.Expression, ok bool) {
 	check := func(expr ast.Expression, cok bool) bool {
 		if cok {
 			ok = cok
@@ -603,6 +601,55 @@ rightLoop:
 		}
 	}
 
+	return
+}
+
+func (p *Parser) parseBinaryExpression(left ast.Expression) (node *ast.BinaryExpression, ok bool) {
+	token, ok := p.expectToken(
+		scanner.TokenTypeADD,
+		scanner.TokenTypeSUB,
+		scanner.TokenTypeASTERIX,
+		scanner.TokenTypeSLASH,
+	)
+
+	if !ok {
+		p.unread()
+		return
+	}
+
+	var right ast.Expression
+	var exprOk bool
+	switch token.Type {
+	case scanner.TokenTypeASTERIX, scanner.TokenTypeSLASH:
+		right, exprOk = p.parseUnaryExpression()
+	default:
+		right, exprOk = p.parseExpression()
+	}
+
+	if !exprOk {
+		p.error(unexpected(p.read().Type.String(), "expression"))
+		return
+	}
+
+	node = &ast.BinaryExpression{
+		Operator: token,
+		Left:     left,
+		Right:    right,
+	}
+
+	return
+}
+
+func (p *Parser) parseExpression() (expression ast.Expression, ok bool) {
+	if expression, ok = p.parseUnaryExpression(); ok {
+		for {
+			if binaryExpression, binaryOk := p.parseBinaryExpression(expression); binaryOk {
+				expression = binaryExpression
+			} else {
+				break
+			}
+		}
+	}
 	return
 }
 
