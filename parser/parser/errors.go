@@ -29,3 +29,7 @@ func unexpectedToken(got scanner.Token, expected ...scanner.TokenType) string {
 	}
 	return fmt.Sprintf("Expected %s got %s", expected, got.Type.String())
 }
+
+func reservedKeywordError(token scanner.Token) string {
+	return fmt.Sprintf("%s is a reserved keyword", token.Text)
+}

@@ -3,7 +3,7 @@ package ast
 type MultiVariableDeclaration struct {
 	Start        Position
 	End          Position
-	Declarations []VariableDeclaration
+	Declarations []*VariableDeclaration
 }
 
 func (vd *MultiVariableDeclaration) StartPos() Position {

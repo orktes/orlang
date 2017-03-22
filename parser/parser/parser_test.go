@@ -22,7 +22,26 @@ func TestParserRead(t *testing.T) {
 	if p.read().Type != scanner.TokenTypeEOF {
 		t.Error("EOF should have been returned")
 	}
+}
 
+func TestParserOnError(t *testing.T) {
+	p := NewParser(nil)
+	p.lastTokens = []scanner.Token{scanner.Token{}}
+
+	p.Error = func(indx int, pos ast.Position, msg string) {
+		if indx != 0 {
+			t.Error("Wrong index")
+		}
+
+		if pos.Column+pos.Line != 0 {
+			t.Error("Wrong pos")
+		}
+
+		if msg != "Foobar" {
+			t.Error("Wrong error")
+		}
+	}
+	p.error("Foobar")
 }
 
 func TestParserUnreadRead(t *testing.T) {
@@ -37,6 +56,71 @@ func TestParserUnreadRead(t *testing.T) {
 	if p.read().Text != "foobar" {
 		t.Error("Wrong token returned")
 	}
+}
+
+func TestParseComments(t *testing.T) {
+	file, err := Parse(strings.NewReader(`
+		// This wont be attached to a anything
+
+		// attached to foo
+		fn foo() {}
+		/* attached to bar */
+		fn bar(
+			/*attached to arg before: foo*/ foo: int /*attached to arg after: foo*/
+			,
+			/*attached to arg before: bar*/
+			bar: int /*attached to arg after: bar*/
+			,
+			/*attached to arg before: buz*/
+			baz: int
+			/*Not attached to anything*/,
+			) {
+
+			// Testing
+			var foo : bar = 1;
+
+		}
+
+		var (
+			foo : Foo, // attched to var foo
+			// attached to var bar
+			bar : Bar,
+			baz: Baz,
+			// not attched to anything
+		)
+  `))
+	if err != nil {
+		t.Error(err)
+	}
+
+	if len(file.Comments) != 3 {
+		t.Error("Wrong number of comment attached", file.Comments)
+	}
+
+	if file.NodeComments[file.Body[0]][0].Token.Text != "// attached to foo" {
+		t.Error("Wrong comment attached to node")
+	}
+
+	if file.NodeComments[file.Body[1]][0].Token.Text != "/* attached to bar */" {
+		t.Error("Wrong comment attached to node", file.NodeComments[file.Body[1]][0])
+
+	}
+
+	argComments := file.NodeComments[file.Body[1].(*ast.FunctionDeclaration).Arguments[0]]
+	if len(argComments) != 2 {
+		t.Error("Wrong number of comments")
+	}
+
+	argComments = file.NodeComments[file.Body[1].(*ast.FunctionDeclaration).Arguments[1]]
+	if len(argComments) != 2 {
+		t.Error("Wrong number of comments")
+	}
+
+	varComments := file.NodeComments[file.Body[1].(*ast.FunctionDeclaration).Block.Body[0]]
+	if varComments[0].Token.Text != "// Testing" {
+		t.Error("Wrong comment")
+	}
+
 }
 
 func TestParserPeek(t *testing.T) {
@@ -643,9 +727,19 @@ func TestParseFailures(t *testing.T) {
 		{"fn foobar() {  if true {} else f", "1:33: Expected if statement or code block got IDENT"},
 		// Function calls
 		{"fn foobar() {  foobar(.) }", "1:24: Expected [RPAREN] got PERIOD"},
+		{"fn foobar() {  fn foobar(i:int;) {} }", "1:34: Expected [RPAREN COMMA] got SEMICOLON"},
 		// Member expressions
 		{"fn foobar() {  foobar.false }", "1:29: Expected property name got BOOL"},
-		{"fn foobar() {  fn foobar(i:int;) {} }", "1:34: Expected [RPAREN COMMA] got SEMICOLON"},
+		// Reserved Keyword
+		{"fn return() {  }", "1:4: return is a reserved keyword"},
+		{"fn foobar() { var fn = 1 }", "1:26: fn is a reserved keyword"},
+		{"fn foobar() { foo.return }", "1:26: return is a reserved keyword"},
+		{"fn foobar(fn: int) {  }", "1:15: fn is a reserved keyword"},
+		{"fn foobar(int: fn) {  }", "1:23: fn is a reserved keyword"},
+		{"fn foobar() { foobar(int:return) }", "1:34: return is a reserved keyword"},
+		{"fn foobar() { foobar(return:0) }", "1:30: return is a reserved keyword"},
+		{"var (return:foo)", "1:12: return is a reserved keyword"},
+		{"var (foo:return)", "1:16: return is a reserved keyword"},
 	}
 
 	for _, test := range tests {

@@ -25,10 +25,14 @@ type Parser struct {
 	ContinueOnErrors bool
 	snapshots        [][]scanner.Token
 	readTokens       int
+	// comments attaching
+	nodeComments          map[ast.Node][]ast.Comment
+	comments              []ast.Comment
+	commentAfterNodeCheck ast.Node
 }
 
 func NewParser(s *scanner.Scanner) *Parser {
-	return &Parser{s: s}
+	return &Parser{s: s, nodeComments: map[ast.Node][]ast.Comment{}}
 }
 
 func Parse(reader io.Reader) (file *ast.File, err error) {
@@ -77,6 +81,45 @@ loop:
 		}
 	}
 
+	file.Comments = p.comments
+	file.NodeComments = p.nodeComments
+
+	return
+}
+
+func (p *Parser) processComment(tok scanner.Token) {
+	comment := ast.Comment{Token: tok}
+	if p.commentAfterNodeCheck != nil {
+		node := p.commentAfterNodeCheck
+		if comment.Token.EndLine == node.EndPos().Line {
+			p.nodeComments[node] = append(p.nodeComments[node], comment)
+			return
+		}
+	}
+	p.comments = append(p.comments, comment)
+}
+
+func (p *Parser) checkCommentForNode(node ast.Node, afterNode bool) {
+	if len(p.comments) == 0 {
+		return
+	}
+
+	for i := len(p.comments) - 1; i >= 0; i-- {
+		lastComment := p.comments[i]
+		diff := node.StartPos().Line - lastComment.Token.EndLine
+
+		if diff == 1 || diff == 0 {
+			p.comments = append(p.comments[:i], p.comments[i+1:]...)
+			p.nodeComments[node] = append(p.nodeComments[node], lastComment)
+		} else if diff > 1 {
+			break
+		}
+	}
+
+	if afterNode {
+		p.commentAfterNodeCheck = node
+	}
+
 	return
 }
 
@@ -89,14 +132,17 @@ func (p *Parser) eof() (ok bool) {
 
 func (p *Parser) parseFuncDecl() (node *ast.FunctionDeclaration, ok bool) {
 	token := p.read()
-	if token.Type == scanner.TokenTypeIdent && token.Text == "fn" {
+	if token.Type == scanner.TokenTypeIdent && token.Text == KeywordFunction {
 		ok = true
 		node = &ast.FunctionDeclaration{}
 		node.Start = ast.StartPositionFromToken(token)
 
 		funcNameTokenOrLeftParen := p.read()
 		if funcNameTokenOrLeftParen.Type == scanner.TokenTypeIdent {
-			// TODO check that identifier is not a reserved keyword
+			if isKeyword(funcNameTokenOrLeftParen.Text) {
+				p.error(reservedKeywordError(funcNameTokenOrLeftParen))
+				return
+			}
 			node.Name = funcNameTokenOrLeftParen
 		} else if funcNameTokenOrLeftParen.Type == scanner.TokenTypeLPAREN {
 			p.unread()
@@ -120,13 +166,15 @@ func (p *Parser) parseFuncDecl() (node *ast.FunctionDeclaration, ok bool) {
 		}
 
 		node.Block = blk
+
+		p.checkCommentForNode(node, false)
 	} else {
 		p.unread()
 	}
 	return
 }
 
-func (p *Parser) parseArguments() (args []ast.Argument, ok bool) {
+func (p *Parser) parseArguments() (args []*ast.Argument, ok bool) {
 	if t, lparenOk := p.expectToken(scanner.TokenTypeLPAREN); !lparenOk {
 		p.error(unexpectedToken(t, scanner.TokenTypeLPAREN))
 		return
@@ -134,7 +182,7 @@ func (p *Parser) parseArguments() (args []ast.Argument, ok bool) {
 
 	for {
 		var foundArg = false
-		var arg ast.Argument
+		var arg *ast.Argument
 		arg, ok = p.parseArgument()
 		if ok {
 			foundArg = true
@@ -166,7 +214,7 @@ func (p *Parser) parseArguments() (args []ast.Argument, ok bool) {
 	return
 }
 
-func (p *Parser) parseArgument() (arg ast.Argument, ok bool) {
+func (p *Parser) parseArgument() (arg *ast.Argument, ok bool) {
 	var token scanner.Token
 	// name : Type = DefaultValue
 	token, ok = p.expectToken(scanner.TokenTypeIdent)
@@ -175,9 +223,14 @@ func (p *Parser) parseArgument() (arg ast.Argument, ok bool) {
 		return
 	}
 
-	// TODO check that identifier is not a reserved keyword
-	arg.Name = token
+	if isKeyword(token.Text) {
+		p.error(reservedKeywordError(token))
+		return
+	}
 
+	arg = &ast.Argument{}
+	arg.Name = token
+	defer p.checkCommentForNode(arg, true)
 	token, ok = p.expectToken(scanner.TokenTypeCOLON, scanner.TokenTypeASSIGN)
 	if !ok {
 		p.error(unexpectedToken(token, scanner.TokenTypeCOLON, scanner.TokenTypeASSIGN))
@@ -188,6 +241,11 @@ func (p *Parser) parseArgument() (arg ast.Argument, ok bool) {
 		token, ok = p.expectToken(scanner.TokenTypeIdent)
 		if !ok {
 			p.error(unexpectedToken(token, scanner.TokenTypeIdent))
+			return
+		}
+
+		if isKeyword(token.Text) {
+			p.error(reservedKeywordError(token))
 			return
 		}
 
@@ -283,7 +341,7 @@ func (p *Parser) parseStatement(block bool) (node ast.Node, ok bool) {
 
 func (p *Parser) parseForLoop() (node *ast.ForLoop, nodeOk bool) {
 	token := p.read()
-	if token.Type == scanner.TokenTypeIdent && token.Text == "for" {
+	if token.Type == scanner.TokenTypeIdent && token.Text == KeywordFor {
 		nodeOk = true
 		node = &ast.ForLoop{
 			Start: ast.StartPositionFromToken(token),
@@ -336,6 +394,8 @@ func (p *Parser) parseForLoop() (node *ast.ForLoop, nodeOk bool) {
 		node.After = after
 		node.Block = block
 
+		p.checkCommentForNode(node, false)
+
 	} else {
 		p.unread()
 	}
@@ -344,11 +404,13 @@ func (p *Parser) parseForLoop() (node *ast.ForLoop, nodeOk bool) {
 
 func (p *Parser) parseIfStatement() (node *ast.IfStatement, nodeOk bool) {
 	token := p.read()
-	if token.Type == scanner.TokenTypeIdent && token.Text == "if" {
+	if token.Type == scanner.TokenTypeIdent && token.Text == KeywordIf {
 		nodeOk = true
 		node = &ast.IfStatement{
 			Start: ast.StartPositionFromToken(token),
 		}
+
+		p.checkCommentForNode(node, false)
 
 		condition, statementok := p.parseExpression() // Condition
 		if !statementok {
@@ -366,7 +428,7 @@ func (p *Parser) parseIfStatement() (node *ast.IfStatement, nodeOk bool) {
 		node.Block = block
 
 		token = p.read()
-		if token.Type == scanner.TokenTypeIdent && token.Text == "else" {
+		if token.Type == scanner.TokenTypeIdent && token.Text == KeywordElse {
 			var elblock *ast.Block
 
 			elif, elseOk := p.parseIfStatement()
@@ -397,8 +459,6 @@ func (p *Parser) parseAssigment() (node ast.Node, ok bool) {
 		return
 	}
 
-	// TODO check that identifier is not a reserved keyword
-
 	expression, ok := p.parseExpression()
 	if !ok {
 		p.error(unexpected(p.read().Type.String(), "expression"))
@@ -422,7 +482,10 @@ func (p *Parser) parseMemberExpression(target ast.Node) (node *ast.MemberExpress
 		return
 	}
 
-	// TODO check that token is not reserved keyword
+	if isKeyword(token.Text) {
+		p.error(reservedKeywordError(token))
+		return
+	}
 
 	node = &ast.MemberExpression{
 		Target:   target,
@@ -439,7 +502,7 @@ func (p *Parser) parseCallExpression(target ast.Node) (node *ast.FunctionCall, o
 		return
 	}
 
-	args := make([]ast.CallArgument, 0)
+	args := make([]*ast.CallArgument, 0)
 	for {
 		arg, ok := p.parseCallArgument()
 		if !ok {
@@ -469,11 +532,16 @@ func (p *Parser) parseCallExpression(target ast.Node) (node *ast.FunctionCall, o
 	return
 }
 
-func (p *Parser) parseCallArgument() (arg ast.CallArgument, ok bool) {
+func (p *Parser) parseCallArgument() (arg *ast.CallArgument, ok bool) {
+	arg = &ast.CallArgument{}
 	p.snapshot()
 	tokens, namedArgument := p.expectPattern(scanner.TokenTypeIdent, scanner.TokenTypeCOLON)
 	if namedArgument {
 		p.commit()
+		if isKeyword(tokens[0].Text) {
+			p.error(reservedKeywordError(tokens[0]))
+			return
+		}
 		arg.Name = &tokens[0]
 	} else {
 		p.restore()
@@ -482,6 +550,7 @@ func (p *Parser) parseCallArgument() (arg ast.CallArgument, ok bool) {
 	expr, ok := p.parseExpression()
 	if ok {
 		arg.Expression = expr
+		p.checkCommentForNode(arg, true)
 	}
 
 	return
@@ -491,6 +560,11 @@ func (p *Parser) parseValueExpression() (expression ast.Expression, ok bool) {
 	var token scanner.Token
 	if token, ok = p.expectToken(valueTypes...); !ok {
 		p.unread()
+		return
+	}
+
+	if isKeyword(token.Text) {
+		p.error(reservedKeywordError(token))
 		return
 	}
 
@@ -530,10 +604,10 @@ func (p *Parser) parseExpression() (expression ast.Expression, ok bool) {
 
 func (p *Parser) parseVarDecl() (node ast.Node, ok bool) {
 	token := p.read()
-	if token.Type == scanner.TokenTypeIdent && (token.Text == "var" || token.Text == "const") {
+	if token.Type == scanner.TokenTypeIdent && (token.Text == KeywordVar || token.Text == KeywordConst) {
 		ok = true
 
-		isConstant := token.Text == "const"
+		isConstant := token.Text == KeywordConst
 		startPos := ast.StartPositionFromToken(token)
 
 		token = p.peek()
@@ -557,7 +631,7 @@ func (p *Parser) parseVarDecl() (node ast.Node, ok bool) {
 				return
 			}
 
-			node = &declaration
+			node = declaration
 		}
 	} else {
 		p.unread()
@@ -565,7 +639,7 @@ func (p *Parser) parseVarDecl() (node ast.Node, ok bool) {
 	return
 }
 
-func (p *Parser) parseVariableDeclarations(isConstant bool) (varDecls []ast.VariableDeclaration, ok bool) {
+func (p *Parser) parseVariableDeclarations(isConstant bool) (varDecls []*ast.VariableDeclaration, ok bool) {
 	if t, lparenOk := p.expectToken(scanner.TokenTypeLPAREN); !lparenOk {
 		p.error(unexpectedToken(t, scanner.TokenTypeLPAREN))
 		return
@@ -573,7 +647,7 @@ func (p *Parser) parseVariableDeclarations(isConstant bool) (varDecls []ast.Vari
 
 	for {
 		var foundVarDecl = false
-		var varDecl ast.VariableDeclaration
+		var varDecl *ast.VariableDeclaration
 		varDecl, ok = p.parseVariableDeclaration(isConstant)
 		if ok {
 			foundVarDecl = true
@@ -606,20 +680,25 @@ func (p *Parser) parseVariableDeclarations(isConstant bool) (varDecls []ast.Vari
 	return
 }
 
-func (p *Parser) parseVariableDeclaration(isConstant bool) (varDecl ast.VariableDeclaration, ok bool) {
+func (p *Parser) parseVariableDeclaration(isConstant bool) (varDecl *ast.VariableDeclaration, ok bool) {
 	var token scanner.Token
 	// name : Type = DefaultValue
+
 	token, ok = p.expectToken(scanner.TokenTypeIdent)
 	if !ok {
 		p.unread()
 		return
 	}
 
-	// TODO check that it isnt keyword
+	if isKeyword(token.Text) {
+		p.error(reservedKeywordError(token))
+		return
+	}
 
+	varDecl = &ast.VariableDeclaration{}
 	varDecl.Constant = isConstant
 	varDecl.Name = token
-	// TODO check that identifier is not a reserved keyword
+	defer p.checkCommentForNode(varDecl, true)
 
 	token, assignOk := p.expectToken(scanner.TokenTypeCOLON, scanner.TokenTypeASSIGN)
 	if !assignOk {
@@ -634,12 +713,18 @@ func (p *Parser) parseVariableDeclaration(isConstant bool) (varDecl ast.Variable
 			return
 		}
 
+		if isKeyword(token.Text) {
+			p.error(reservedKeywordError(token))
+			return
+		}
+
 		varDecl.Type = token
 
 		if _, defaultAssOk := p.expectToken(scanner.TokenTypeASSIGN); !defaultAssOk {
 			p.unread()
 			return
 		}
+
 	}
 
 	expr, expressionOk := p.parseExpression()
@@ -689,7 +774,9 @@ func (p *Parser) read() (token scanner.Token) {
 		for {
 			tok := p.s.Scan()
 			// TODO convert NEWLINES to semicolons on some scenarios
-			if tok.Type != scanner.TokenTypeWhitespace {
+			if tok.Type == scanner.TokenTypeComment {
+				p.processComment(tok)
+			} else if tok.Type != scanner.TokenTypeWhitespace {
 				token = tok
 				p.readTokens++
 				break

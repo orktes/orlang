@@ -5,8 +5,8 @@ import "github.com/orktes/orlang/parser/scanner"
 type FunctionDeclaration struct {
 	Start       Position
 	Name        scanner.Token
-	Arguments   []Argument
-	ReturnTypes []Argument
+	Arguments   []*Argument
+	ReturnTypes []*Argument
 	Block       *Block
 }
 
