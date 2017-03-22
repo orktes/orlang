@@ -16,6 +16,18 @@ var valueTypes = []scanner.TokenType{
 	scanner.TokenTypeString,
 }
 
+var unaryPrefix = []scanner.TokenType{
+	scanner.TokenTypeADD,
+	scanner.TokenTypeSUB,
+	scanner.TokenTypeIncrement,
+	scanner.TokenTypeDecrement,
+}
+
+var unarySuffix = []scanner.TokenType{
+	scanner.TokenTypeIncrement,
+	scanner.TokenTypeDecrement,
+}
+
 type Parser struct {
 	s                *scanner.Scanner
 	tokenBuffer      []scanner.Token
@@ -572,6 +584,24 @@ func (p *Parser) parseValueExpression() (expression ast.Expression, ok bool) {
 }
 
 func (p *Parser) parseUnaryExpression() (expression ast.Expression, ok bool) {
+	// Unary PREFIX
+	token, prefixOk := p.expectToken(unaryPrefix...)
+	if prefixOk {
+		var rExpr ast.Expression
+		rExpr, ok = p.parseUnaryExpression()
+		if !ok {
+			p.error(unexpected(p.read().Type.String(), "expression"))
+			return
+		}
+		expression = &ast.UnaryExpression{
+			Operator:   token,
+			Expression: rExpr,
+		}
+		return
+	}
+
+	p.unread()
+
 	check := func(expr ast.Expression, cok bool) bool {
 		if cok {
 			ok = cok
@@ -599,6 +629,19 @@ rightLoop:
 		default:
 			break rightLoop
 		}
+	}
+
+	if ok {
+		token, suffixOk := p.expectToken(unarySuffix...)
+		if suffixOk {
+			expression = &ast.UnaryExpression{
+				Operator:   token,
+				Expression: expression,
+			}
+			return
+		}
+
+		p.unread()
 	}
 
 	return

@@ -113,10 +113,22 @@ func (s *Scanner) Scan() (token Token) {
 	case ch == '+':
 		t = TokenTypeADD
 		text = string(ch)
+		if s.read() == '+' {
+			t = TokenTypeIncrement
+			text = "++"
+		} else {
+			s.unread()
+		}
 
 	case ch == '-':
 		t = TokenTypeSUB
 		text = string(ch)
+		if s.read() == '-' {
+			t = TokenTypeDecrement
+			text = "--"
+		} else {
+			s.unread()
+		}
 
 	case ch == '*':
 		t = TokenTypeASTERIX

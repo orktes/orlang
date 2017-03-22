@@ -654,6 +654,20 @@ func TestParseVariableDeclaration(t *testing.T) {
 
 }
 
+func TestParseUnaryExpression(t *testing.T) {
+	_, err := Parse(strings.NewReader(`
+		fn main() {
+			var foo = -1
+			var bar = +1
+			var foobar = ++1
+			foobar = foobar++
+		}
+	`))
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 func TestParseBinaryExpression(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
 		fn main() {
@@ -790,6 +804,8 @@ func TestParseFailures(t *testing.T) {
 		{"var (foo:return)", "1:16: return is a reserved keyword"},
 		// BinaryExpression
 		{"fn foobar() { var foo = 1 + }", "1:30: Expected expression got RBRACE"},
+		// UnaryExpression
+		{"fn foobar() { var foo = - }", "1:28: Expected expression got RBRACE"},
 	}
 
 	for _, test := range tests {

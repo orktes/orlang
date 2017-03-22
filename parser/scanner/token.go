@@ -73,8 +73,13 @@ const (
 	TokenTypeNotEqual
 	// TokenTypeLessOrEqual <=
 	TokenTypeLessOrEqual
-	// TokenTypeGreaterOrEqual
+	// TokenTypeGreaterOrEqual >=
 	TokenTypeGreaterOrEqual
+
+	// TokenTypeIncrement ++
+	TokenTypeIncrement
+	// TokenTypeDecrement --
+	TokenTypeDecrement
 )
 
 var tokenNames = [...]string{
@@ -120,6 +125,9 @@ var tokenNames = [...]string{
 	TokenTypeNotEqual:       "NOTEQUAL",
 	TokenTypeLessOrEqual:    "LESSOREQUAL",
 	TokenTypeGreaterOrEqual: "GREATEROREQUAL",
+
+	TokenTypeIncrement: "INCREMENT",
+	TokenTypeDecrement: "DECREMENT",
 }
 
 func (typ TokenType) String() string {
