@@ -1,18 +1,16 @@
 package ast
 
-import "github.com/orktes/orlang/parser/scanner"
-
 type Assigment struct {
-	Identifier scanner.Token
-	Expression Expression
+	Left  Expression
+	Right Expression
 }
 
 func (a *Assigment) StartPos() Position {
-	return StartPositionFromToken(a.Identifier)
+	return a.Left.StartPos()
 }
 
 func (a *Assigment) EndPos() Position {
-	return a.Expression.EndPos()
+	return a.Right.EndPos()
 }
 
 func (_ *Assigment) stmtNode() {}

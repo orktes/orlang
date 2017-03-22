@@ -64,6 +64,7 @@ func TestParseComments(t *testing.T) {
 
 		// attached to foo
 		fn foo() {}
+
 		/* attached to bar */
 		fn bar(
 			/*attached to arg before: foo*/ foo: int /*attached to arg after: foo*/
@@ -77,7 +78,7 @@ func TestParseComments(t *testing.T) {
 			) {
 
 			// Testing
-			var foo : bar = 1;
+			var foo : bar = 1
 
 		}
 
@@ -413,13 +414,25 @@ func TestParseForLoop(t *testing.T) {
 			for foo; bar; baz {
 			}
 
-			for foo; bar; {
+			for foo; 1 <= 2; {
 			}
 
-			for ; bar ; {
+			for ; 1 < 2 ; {
 			}
 
-			for true {
+			for 1 == 1 {
+
+			}
+
+			for 1 != 1 {
+
+			}
+
+			for 1 > 1 {
+
+			}
+
+			for 1 >= 1 {
 
 			}
 
@@ -437,8 +450,8 @@ func TestParseForLoop(t *testing.T) {
 func TestParseAssignment(t *testing.T) {
 	_, err := Parse(strings.NewReader(`
 		fn foobar() {
-			var foo = 123;
-			foo = 124;
+			var foo = 123
+			foo = 124
 		}
 	`))
 
@@ -486,8 +499,8 @@ func TestParseIfElseIfCondition(t *testing.T) {
 func TestParseVariableDeclarationInsideFunction(t *testing.T) {
 	_, err := Parse(strings.NewReader(`
 		fn foobar() {
-			var foo = bar;
-			var barfoo : int = 123;
+			var foo = bar
+			var barfoo : int = 123
 		}
 	`))
 
@@ -712,17 +725,17 @@ func TestParseFailures(t *testing.T) {
 		{"var (foo : bar = )", "1:19: Expected expression got RPAREN"},
 		{"var (foo ", "1:10: Expected [COLON ASSIGN] got EOF"},
 		{"var (", "1:6: Expected [IDENT RPAREN] got EOF"},
-		{"fn foobar() { var foobar : int }", "1:33: Expected [SEMICOLON] got RBRACE"},
 		// For loops
 		{"fn foobar() { for var i = 0; i; [] }", "1:34: Expected code block got LBRACK"},
 		{"fn foobar() { for var i = 0; {}}", "1:31: Expected expression got LBRACE"},
 		{"fn foobar() { for var i = 0; true {}}", "1:36: Expected ; got LBRACE"},
 		{"fn foobar() { for }", "1:20: Expected statement, ; or code block got RBRACE"},
 		{"fn foobar() { for true true {} }", "1:29: Expected ; or code block got BOOL"},
-		{"fn foobar() { foo = 123 }", "1:26: Expected [SEMICOLON] got RBRACE"},
 		{"fn foobar() { foo = , }", "1:23: Expected expression got COMMA"},
 		// If statemts
 		{"fn foobar() {  if }", "1:20: Expected expression got RBRACE"},
+		{"fn foobar() {  if 1 < {} }", "1:26: Expected expression got LBRACE"},
+		{"fn foobar() {  if 1 ! {} }", "1:26: Expected = after ! got LBRACE"},
 		{"fn foobar() {  if true foo }", "1:28: Expected code block got IDENT"},
 		{"fn foobar() {  if true {} else f", "1:33: Expected if statement or code block got IDENT"},
 		// Function calls
@@ -732,7 +745,7 @@ func TestParseFailures(t *testing.T) {
 		{"fn foobar() {  foobar.false }", "1:29: Expected property name got BOOL"},
 		// Reserved Keyword
 		{"fn return() {  }", "1:4: return is a reserved keyword"},
-		{"fn foobar() { var fn = 1 }", "1:26: fn is a reserved keyword"},
+		{"fn foobar() { var fn = 1 }", "1:22: fn is a reserved keyword"},
 		{"fn foobar() { foo.return }", "1:26: return is a reserved keyword"},
 		{"fn foobar(fn: int) {  }", "1:15: fn is a reserved keyword"},
 		{"fn foobar(int: fn) {  }", "1:23: fn is a reserved keyword"},

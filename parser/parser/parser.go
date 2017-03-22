@@ -325,19 +325,6 @@ func (p *Parser) parseStatement(block bool) (node ast.Statement, ok bool) {
 	case block && check(p.parseForLoop()):
 	case block && check(p.parseIfStatement()):
 	case check(p.parseVarDecl()):
-		if block {
-			if token, tok := p.expectToken(scanner.TokenTypeSEMICOLON); !tok {
-				p.error(unexpectedToken(token, scanner.TokenTypeSEMICOLON))
-				return
-			}
-		}
-	case check(p.parseAssigment()):
-		if block {
-			if token, tok := p.expectToken(scanner.TokenTypeSEMICOLON); !tok {
-				p.error(unexpectedToken(token, scanner.TokenTypeSEMICOLON))
-				return
-			}
-		}
 	default:
 		ok = false
 	}
@@ -461,20 +448,30 @@ func (p *Parser) parseIfStatement() (node *ast.IfStatement, nodeOk bool) {
 	return
 }
 
-func (p *Parser) parseAssigment() (node ast.Statement, ok bool) {
-	tokens, ok := p.expectPattern(scanner.TokenTypeIdent, scanner.TokenTypeASSIGN)
+func (p *Parser) parseAssigment(left ast.Expression) (node ast.Expression, ok bool) {
+	p.snapshot()
+	_, ok = p.expectToken(scanner.TokenTypeASSIGN)
 	if !ok {
-		p.returnToBuffer(tokens)
+		p.restore()
 		return
 	}
 
-	expression, ok := p.parseExpression()
-	if !ok {
+	_, equals := p.expectToken(scanner.TokenTypeASSIGN)
+	if equals {
+		p.restore()
+		return nil, false
+	}
+
+	p.unread()
+
+	expression, exprOk := p.parseExpression()
+	if !exprOk {
 		p.error(unexpected(p.read().Type.String(), "expression"))
 		return
 	}
 
-	node = &ast.Assigment{Identifier: tokens[0], Expression: expression}
+	node = &ast.Assigment{Left: left, Right: expression}
+	p.commit()
 	return
 }
 
@@ -597,15 +594,77 @@ func (p *Parser) parseExpression() (expression ast.Expression, ok bool) {
 		return
 	}
 
+rightLoop:
 	for {
 		// Parse function calls, member expressions and type casts
-		if funCall, isFunCall := p.parseCallExpression(expression); isFunCall {
-			expression = funCall
-		} else if memberExpression, isMemberExpression := p.parseMemberExpression(expression); isMemberExpression {
-			expression = memberExpression
-		} else {
-			break
+		switch {
+		case check(p.parseAssigment(expression)):
+		case check(p.parseCallExpression(expression)):
+		case check(p.parseMemberExpression(expression)):
+		case check(p.parseComparisonExpression(expression)):
+		default:
+			break rightLoop
 		}
+	}
+
+	return
+}
+
+func (p *Parser) parseComparisonExpression(left ast.Expression) (node ast.Expression, ok bool) {
+	p.snapshot()
+	token, ok := p.expectToken(
+		scanner.TokenTypeASSIGN,
+		scanner.TokenTypeEXCL,
+		scanner.TokenTypeLCHEV,
+		scanner.TokenTypeRCHEV,
+	)
+
+	if !ok {
+		p.restore()
+		return
+	}
+
+	equals := p.read().Type == scanner.TokenTypeASSIGN
+	if !equals {
+		// TODO if ! or = is the first die here
+		if token.Type == scanner.TokenTypeASSIGN || token.Type == scanner.TokenTypeEXCL {
+			p.error(unexpected(p.lastToken().Type.String(), "= after "+token.Text))
+			return
+		}
+		p.unread()
+	}
+
+	right, ok := p.parseExpression()
+	if !ok {
+		p.error(unexpected(p.read().Type.String(), "expression"))
+		return
+	}
+
+	var operator ast.ComparisonExpressionOperator
+
+	switch token.Type {
+	case scanner.TokenTypeLCHEV:
+		if equals {
+			operator = ast.ComparisonExpressionOperatorLessOrEqual
+		} else {
+			operator = ast.ComparisonExpressionOperatorLess
+		}
+	case scanner.TokenTypeRCHEV:
+		if equals {
+			operator = ast.ComparisonExpressionOperatorGreaterOrEqual
+		} else {
+			operator = ast.ComparisonExpressionOperatorGreater
+		}
+	case scanner.TokenTypeEXCL:
+		operator = ast.ComparisonExpressionOperatorNotEqual
+	case scanner.TokenTypeASSIGN:
+		operator = ast.ComparisonExpressionOperatorEqual
+	}
+
+	node = &ast.ComparisonExpression{
+		Left:     left,
+		Right:    right,
+		Operator: operator,
 	}
 
 	return
