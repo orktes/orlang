@@ -145,14 +145,18 @@ type Token struct {
 	EndColumn   int
 }
 
-func (t Token) String() string {
+func (t Token) StringValue() string {
 	if t.Type >= TokenTypeEqual {
-		return fmt.Sprintf("%d:%d %s", t.StartLine, t.StartColumn, t.Text)
+		return t.Text
 	}
 
 	if t.Value == nil || t.Type == TokenTypeUnknown || t.Type == TokenTypeIdent {
-		return fmt.Sprintf("%d:%d %s(%s)", t.StartLine, t.StartColumn, t.Type.String(), t.Text)
+		return fmt.Sprintf("%s(%s)", t.Type.String(), t.Text)
 	}
 
-	return fmt.Sprintf("%d:%d %s(%v)", t.StartLine, t.StartColumn, t.Type.String(), t.Value)
+	return fmt.Sprintf("%s(%v)", t.Type.String(), t.Value)
+}
+
+func (t Token) String() string {
+	return fmt.Sprintf("%d:%d %s", t.StartLine, t.StartColumn, t.StringValue())
 }

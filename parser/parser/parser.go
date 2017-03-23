@@ -178,7 +178,7 @@ func (p *Parser) parseFuncDecl() (node *ast.FunctionDeclaration, ok bool) {
 
 		blk, blockOk := p.parseBlock()
 		if !blockOk {
-			p.error(unexpected(p.read().Type.String(), "code block"))
+			p.error(unexpected(p.read().StringValue(), "code block"))
 			return
 		}
 
@@ -276,7 +276,7 @@ func (p *Parser) parseArgument() (arg *ast.Argument, ok bool) {
 
 	expr, ok := p.parseExpression()
 	if !ok {
-		p.error(unexpected(p.read().Type.String(), "expression"))
+		p.error(unexpected(p.read().StringValue(), "expression"))
 		return
 	}
 
@@ -365,9 +365,9 @@ func (p *Parser) parseForLoop() (node *ast.ForLoop, nodeOk bool) {
 		token, ok := p.expectToken(scanner.TokenTypeSEMICOLON, scanner.TokenTypeLBRACE)
 		if !ok {
 			if statementok {
-				p.error(unexpected(token.Type.String(), "; or code block"))
+				p.error(unexpected(token.StringValue(), "; or code block"))
 			} else {
-				p.error(unexpected(token.Type.String(), "statement, ; or code block"))
+				p.error(unexpected(token.StringValue(), "statement, ; or code block"))
 			}
 
 			return
@@ -382,12 +382,12 @@ func (p *Parser) parseForLoop() (node *ast.ForLoop, nodeOk bool) {
 
 		condition, statementok = p.parseExpression() // Condition
 		if !statementok {
-			p.error(unexpected(p.read().Type.String(), "expression"))
+			p.error(unexpected(p.read().StringValue(), "expression"))
 			return
 		}
 		token, ok = p.expectToken(scanner.TokenTypeSEMICOLON)
 		if !ok {
-			p.error(unexpected(token.Type.String(), ";"))
+			p.error(unexpected(token.StringValue(), ";"))
 			return
 		}
 
@@ -396,7 +396,7 @@ func (p *Parser) parseForLoop() (node *ast.ForLoop, nodeOk bool) {
 	parseBlock:
 		block, blockOk := p.parseBlock() // Block
 		if !blockOk {
-			p.error(unexpected(p.read().Type.String(), "code block"))
+			p.error(unexpected(p.read().StringValue(), "code block"))
 			return
 		}
 
@@ -428,13 +428,13 @@ func (p *Parser) parseIfStatement() (node *ast.IfStatement, nodeOk bool) {
 
 		condition, statementok := p.parseExpression() // Condition
 		if !statementok {
-			p.error(unexpected(p.read().Type.String(), "expression"))
+			p.error(unexpected(p.read().StringValue(), "expression"))
 			return
 		}
 
 		block, blockOk := p.parseBlock() // Block
 		if !blockOk {
-			p.error(unexpected(p.read().Type.String(), "code block"))
+			p.error(unexpected(p.read().StringValue(), "code block"))
 			return
 		}
 
@@ -453,7 +453,7 @@ func (p *Parser) parseIfStatement() (node *ast.IfStatement, nodeOk bool) {
 					Body:  []ast.Node{elif},
 				}
 			} else if elblock, elseOk = p.parseBlock(); !elseOk {
-				p.error(unexpected(p.read().Type.String(), "if statement or code block"))
+				p.error(unexpected(p.read().StringValue(), "if statement or code block"))
 			}
 
 			node.Else = elblock
@@ -475,7 +475,7 @@ func (p *Parser) parseAssigment(left ast.Expression) (node ast.Expression, ok bo
 
 	expression, exprOk := p.parseExpression()
 	if !exprOk {
-		p.error(unexpected(p.read().Type.String(), "expression"))
+		p.error(unexpected(p.read().StringValue(), "expression"))
 		return
 	}
 
@@ -492,7 +492,7 @@ func (p *Parser) parseMemberExpression(target ast.Expression) (node *ast.MemberE
 
 	token, propertyOk := p.expectToken(scanner.TokenTypeIdent)
 	if !propertyOk {
-		p.error(unexpected(token.Type.String(), "property name"))
+		p.error(unexpected(token.StringValue(), "property name"))
 		return
 	}
 
@@ -592,7 +592,7 @@ func (p *Parser) parseUnaryExpression() (expression ast.Expression, ok bool) {
 		var rExpr ast.Expression
 		rExpr, ok = p.parseUnaryExpression()
 		if !ok {
-			p.error(unexpected(p.read().Type.String(), "expression"))
+			p.error(unexpected(p.read().StringValue(), "expression"))
 			return
 		}
 		expression = &ast.UnaryExpression{
@@ -672,7 +672,7 @@ func (p *Parser) parseBinaryExpression(left ast.Expression) (node *ast.BinaryExp
 	}
 
 	if !exprOk {
-		p.error(unexpected(p.read().Type.String(), "expression"))
+		p.error(unexpected(p.read().StringValue(), "expression"))
 		return
 	}
 
@@ -715,7 +715,7 @@ func (p *Parser) parseComparisonExpression(left ast.Expression) (node ast.Expres
 
 	right, expressionOk := p.parseExpression()
 	if !expressionOk {
-		p.error(unexpected(p.read().Type.String(), "expression"))
+		p.error(unexpected(p.read().StringValue(), "expression"))
 		return
 	}
 
@@ -753,7 +753,7 @@ func (p *Parser) parseVarDecl() (node ast.Statement, ok bool) {
 			// Single argument def
 			declaration, declOk := p.parseVariableDeclaration(isConstant)
 			if !declOk {
-				p.error(unexpected(p.read().Type.String(), "variable declaration"))
+				p.error(unexpected(p.read().StringValue(), "variable declaration"))
 				return
 			}
 
@@ -855,7 +855,7 @@ func (p *Parser) parseVariableDeclaration(isConstant bool) (varDecl *ast.Variabl
 
 	expr, expressionOk := p.parseExpression()
 	if !expressionOk {
-		p.error(unexpected(p.read().Type.String(), "expression"))
+		p.error(unexpected(p.read().StringValue(), "expression"))
 		return
 	}
 

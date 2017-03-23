@@ -756,42 +756,42 @@ func TestParseFailures(t *testing.T) {
 		{"bar () {}", "1:1: Unexpected token IDENT"},
 		// Invalid functions
 		{"fn test{}", "1:8: Expected [LPAREN] got LBRACE"},
-		{"fn test()", "1:10: Expected code block got EOF"},
+		{"fn test()", "1:10: Expected code block got EOF()"},
 		{"fn test(,) {}", "1:9: Expected [IDENT RPAREN] got COMMA"},
 		{"fn test(bar , int, foo : float = 0.2) {}", "1:13: Expected [COLON ASSIGN] got COMMA"},
 		{"fn test(foo : float foo) {}", "1:21: Expected [RPAREN COMMA] got foo"},
 		{"fn test(foo : ) {}", "1:15: Expected [IDENT] got RPAREN"},
-		{"fn test(foo : bar = ) {}", "1:21: Expected expression got RPAREN"},
-		{"fn test(foo : int) {]", "1:21: Expected code block got RBRACK"},
+		{"fn test(foo : bar = ) {}", "1:21: Expected expression got RPAREN())"},
+		{"fn test(foo : int) {]", "1:21: Expected code block got RBRACK(])"},
 		{"fn", "1:3: Expected [IDENT LPAREN] got EOF"},
 		{"fn (foo : int) {}", "1:17: Root level functions can't be anonymous"},
 		{"fn ( {}", "1:6: Expected [IDENT RPAREN] got LBRACE"},
 		// Variable declarations
-		{"var [", "1:5: Expected variable declaration got LBRACK"},
+		{"var [", "1:5: Expected variable declaration got LBRACK([)"},
 		{"var (bar , int, foo : float = 0.2)", "1:10: Expected [COLON ASSIGN] got COMMA"},
 		{"var (foo : float foo)", "1:18: Expected [RPAREN COMMA] got foo"},
 		{"var (foo : )", "1:12: Expected [IDENT] got RPAREN"},
-		{"var (foo : bar = )", "1:18: Expected expression got RPAREN"},
+		{"var (foo : bar = )", "1:18: Expected expression got RPAREN())"},
 		{"var (foo ", "1:10: Expected [COLON ASSIGN] got EOF"},
 		{"var (", "1:6: Expected [IDENT RPAREN] got EOF"},
 		// For loops
-		{"fn foobar() { for var i = 0; i; [] }", "1:33: Expected code block got LBRACK"},
-		{"fn foobar() { for var i = 0; {}}", "1:30: Expected expression got LBRACE"},
-		{"fn foobar() { for var i = 0; true {}}", "1:35: Expected ; got LBRACE"},
-		{"fn foobar() { for }", "1:19: Expected statement, ; or code block got RBRACE"},
-		{"fn foobar() { for true true {} }", "1:24: Expected ; or code block got BOOL"},
-		{"fn foobar() { foo = , }", "1:21: Expected expression got COMMA"},
+		{"fn foobar() { for var i = 0; i; [] }", "1:33: Expected code block got LBRACK([)"},
+		{"fn foobar() { for var i = 0; {}}", "1:30: Expected expression got LBRACE({)"},
+		{"fn foobar() { for var i = 0; true {}}", "1:35: Expected ; got LBRACE({)"},
+		{"fn foobar() { for }", "1:19: Expected statement, ; or code block got RBRACE(})"},
+		{"fn foobar() { for true true {} }", "1:24: Expected ; or code block got BOOL(true)"},
+		{"fn foobar() { foo = , }", "1:21: Expected expression got COMMA(,)"},
 		// If statemts
-		{"fn foobar() {  if }", "1:19: Expected expression got RBRACE"},
-		{"fn foobar() {  if 1 < {} }", "1:23: Expected expression got LBRACE"},
-		{"fn foobar() {  if 1 ! {} }", "1:21: Expected code block got EXCLAMATION"},
-		{"fn foobar() {  if true foo }", "1:24: Expected code block got IDENT"},
-		{"fn foobar() {  if true {} else f", "1:32: Expected if statement or code block got IDENT"},
+		{"fn foobar() {  if }", "1:19: Expected expression got RBRACE(})"},
+		{"fn foobar() {  if 1 < {} }", "1:23: Expected expression got LBRACE({)"},
+		{"fn foobar() {  if 1 ! {} }", "1:21: Expected code block got EXCLAMATION(!)"},
+		{"fn foobar() {  if true foo }", "1:24: Expected code block got IDENT(foo)"},
+		{"fn foobar() {  if true {} else f", "1:32: Expected if statement or code block got IDENT(f)"},
 		// Function calls
 		{"fn foobar() {  foobar(.) }", "1:23: Expected [RPAREN] got PERIOD"},
 		{"fn foobar() {  fn foobar(i:int;) {} }", "1:31: Expected [RPAREN COMMA] got SEMICOLON"},
 		// Member expressions
-		{"fn foobar() {  foobar.false }", "1:23: Expected property name got BOOL"},
+		{"fn foobar() {  foobar.false }", "1:23: Expected property name got BOOL(false)"},
 		// Reserved Keyword
 		{"fn return() {  }", "1:4: return is a reserved keyword"},
 		{"fn foobar() { var fn = 1 }", "1:19: fn is a reserved keyword"},
@@ -803,9 +803,9 @@ func TestParseFailures(t *testing.T) {
 		{"var (return:foo)", "1:6: return is a reserved keyword"},
 		{"var (foo:return)", "1:10: return is a reserved keyword"},
 		// BinaryExpression
-		{"fn foobar() { var foo = 1 + }", "1:29: Expected expression got RBRACE"},
+		{"fn foobar() { var foo = 1 + }", "1:29: Expected expression got RBRACE(})"},
 		// UnaryExpression
-		{"fn foobar() { var foo = - }", "1:27: Expected expression got RBRACE"},
+		{"fn foobar() { var foo = - }", "1:27: Expected expression got RBRACE(})"},
 	}
 
 	for _, test := range tests {
