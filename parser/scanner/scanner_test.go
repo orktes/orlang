@@ -94,7 +94,7 @@ var tests = []struct {
 		},
 	},
 	{
-		src: "[]{},.:;+-=*&()<>!#",
+		src: "[]{},.:;+-=*&()<>!#++--!=\\/",
 		results: []Token{
 			Token{Type: TokenTypeLBRACK, StartColumn: 0, Text: `[`},
 			Token{Type: TokenTypeRBRACK, StartColumn: 1, Text: `]`},
@@ -115,7 +115,12 @@ var tests = []struct {
 			Token{Type: TokenTypeGreater, StartColumn: 16, Text: `>`},
 			Token{Type: TokenTypeEXCL, StartColumn: 17, Text: `!`},
 			Token{Type: TokenTypeHASHBANG, StartColumn: 18, Text: `#`},
-			Token{Type: TokenTypeEOF, StartColumn: 19, Text: ``},
+			Token{Type: TokenTypeIncrement, StartColumn: 19, Text: `++`},
+			Token{Type: TokenTypeDecrement, StartColumn: 21, Text: `--`},
+			Token{Type: TokenTypeNotEqual, StartColumn: 23, Text: `!=`},
+			Token{Type: TokenTypeBACKSLASH, StartColumn: 25, Text: `\`},
+			Token{Type: TokenTypeSLASH, StartColumn: 26, Text: `/`},
+			Token{Type: TokenTypeEOF, StartColumn: 27, Text: ``},
 		},
 	},
 	{
