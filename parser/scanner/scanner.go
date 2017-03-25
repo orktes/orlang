@@ -102,7 +102,7 @@ func (s *Scanner) Scan() (token Token) {
 		t = TokenTypeCOLON
 		text = string(ch)
 
-	case ch == '\n':
+	case ch == '\n' || ch == '\r':
 		t = TokenTypeWhitespace
 		text = string(ch)
 
@@ -392,7 +392,7 @@ func (s *Scanner) scanIdent() (t TokenType, text string, val interface{}) {
 		if ch := s.read(); ch == eof {
 			s.unread()
 			break
-		} else if !isLetter(ch) && !isNumber(ch) {
+		} else if !isLetter(ch) && !isNumber(ch) && ch != '_' {
 			s.unread()
 			break
 		} else {

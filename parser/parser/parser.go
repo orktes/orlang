@@ -255,7 +255,7 @@ func (p *Parser) parseArgument() (arg *ast.Argument, ok bool) {
 	}
 
 	if token.Type == scanner.TokenTypeCOLON {
-		token, ok = p.expectToken(scanner.TokenTypeIdent)
+		token, ok = p.parseType()
 		if !ok {
 			p.error(unexpectedToken(token, scanner.TokenTypeIdent))
 			return
@@ -570,6 +570,11 @@ func (p *Parser) parseCallArgument() (arg *ast.CallArgument, ok bool) {
 	return
 }
 
+func (p *Parser) parseType() (token scanner.Token, ok bool) {
+	// TODO parse inline type declaration as well
+	return p.expectToken(scanner.TokenTypeIdent)
+}
+
 func (p *Parser) parseValueExpression() (expression ast.Expression, ok bool) {
 	var token scanner.Token
 	if token, ok = p.expectToken(valueTypes...); !ok {
@@ -833,7 +838,7 @@ func (p *Parser) parseVariableDeclaration(isConstant bool) (varDecl *ast.Variabl
 	}
 
 	if token.Type == scanner.TokenTypeCOLON {
-		token, colonOk := p.expectToken(scanner.TokenTypeIdent)
+		token, colonOk := p.parseType()
 		if !colonOk {
 			p.error(unexpectedToken(token, scanner.TokenTypeIdent))
 			return
