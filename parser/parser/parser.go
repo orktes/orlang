@@ -261,11 +261,6 @@ func (p *Parser) parseArgument() (arg *ast.Argument, ok bool) {
 			return
 		}
 
-		if isKeyword(token.Text) {
-			p.error(reservedKeywordError(token))
-			return
-		}
-
 		arg.Type = token
 
 		if _, defaultAssOk := p.expectToken(scanner.TokenTypeASSIGN); !defaultAssOk {
@@ -572,7 +567,15 @@ func (p *Parser) parseCallArgument() (arg *ast.CallArgument, ok bool) {
 
 func (p *Parser) parseType() (token scanner.Token, ok bool) {
 	// TODO parse inline type declaration as well
-	return p.expectToken(scanner.TokenTypeIdent)
+
+	token, ok = p.expectToken(scanner.TokenTypeIdent)
+
+	if isKeyword(token.Text) {
+		p.error(reservedKeywordError(token))
+		return
+	}
+
+	return
 }
 
 func (p *Parser) parseValueExpression() (expression ast.Expression, ok bool) {
@@ -841,11 +844,6 @@ func (p *Parser) parseVariableDeclaration(isConstant bool) (varDecl *ast.Variabl
 		token, colonOk := p.parseType()
 		if !colonOk {
 			p.error(unexpectedToken(token, scanner.TokenTypeIdent))
-			return
-		}
-
-		if isKeyword(token.Text) {
-			p.error(reservedKeywordError(token))
 			return
 		}
 
