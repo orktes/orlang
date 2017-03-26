@@ -1,13 +1,14 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/orktes/orlang/parser/ast"
-	"github.com/orktes/orlang/parser/parser"
-	"github.com/orktes/orlang/parser/scanner"
-	"github.com/orktes/orlang/parser/util"
+	"github.com/orktes/orlang/parser/linter"
 	"github.com/spf13/cobra"
 )
 
@@ -17,32 +18,87 @@ var lintCmd = &cobra.Command{
 	Short: "Lint source file",
 	Long:  `Lint source file`,
 	Run: func(cmd *cobra.Command, args []string) {
+		format := cmd.Flag("format").Value.String()
 
-		for _, filePath := range args {
-			var hr *util.HistoryReader
+		switch format {
+		case "json":
+			fmt.Print("[")
+		}
+
+		files := args
+
+		for index, filePath := range files {
 			file, err := os.Open(filePath)
 			if err != nil {
-				fmt.Println(hr.FormatError(filePath, err))
-				break
+				panic(err)
 			}
 
-			hr = util.NewHistoryReader(file)
-			p := parser.NewParser(scanner.NewScanner(hr))
-			p.ContinueOnErrors = true
-			lastTokenErrorIndex := -2
-			p.Error = func(tokenIndx int, pos ast.Position, message string) {
-				if tokenIndx != lastTokenErrorIndex+1 {
-					fmt.Printf("%s\n\n", hr.FormatParseError(filePath, pos, message))
-				}
-				lastTokenErrorIndex = tokenIndx
-			}
-			_, err = p.Parse()
-
+			lintError, err := linter.Lint(file)
 			if err != nil {
-				fmt.Printf("%s\n\n", hr.FormatError(filePath, err))
+				panic(err)
+			}
+
+			switch format {
+			case "text":
+				for _, lintError := range lintError {
+					fmt.Println(formatParseError(
+						filePath,
+						lintError.Position,
+						lintError.CodeLine,
+						lintError.Message,
+					))
+				}
+			case "json":
+				normalizedFilePath, err := filepath.Abs(filePath)
+				if err != nil {
+					panic(err)
+				}
+				json.NewEncoder(os.Stdout).Encode(map[string]interface{}{
+					"Filename": normalizedFilePath,
+					"Errors":   lintError,
+				})
+			default:
+				panic("Unknown output format")
+			}
+
+			if index != len(files)-1 {
+				switch format {
+				case "json":
+					fmt.Print(",")
+				}
 			}
 		}
+
+		switch format {
+		case "json":
+			fmt.Println("]")
+		}
 	},
+}
+
+func formatParseError(filePath string, pos ast.Position, line string, err string) string {
+	if line != "" {
+		return fmt.Sprintf(
+			`%s:%d:%d
+----------------------------------------------------------
+%s
+%s
+%s
+----------------------------------------------------------`, filePath, pos.Line+1, pos.Column+1, strings.Replace(line, "\t", " ", -1), pointer(pos.Column), pad(pos.Column-int(len(err)/2), err))
+	}
+	return fmt.Sprintf("%s %#v %s", filePath, pos, err)
+}
+
+func pad(padding int, str string) (res string) {
+	if padding < 0 {
+		padding = 0
+	}
+	res = strings.Repeat(" ", padding)
+	return res + str
+}
+
+func pointer(padding int) (res string) {
+	return pad(padding, "^")
 }
 
 func init() {
@@ -52,7 +108,7 @@ func init() {
 
 	// Cobra supports Persistent Flags which will work for this command
 	// and all subcommands, e.g.:
-	// lintCmd.PersistentFlags().String("foo", "", "A help for foo")
+	lintCmd.PersistentFlags().String("format", "text", "Format for output [text|json]")
 
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:

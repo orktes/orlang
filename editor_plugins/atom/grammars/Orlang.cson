@@ -1,0 +1,5 @@
+'name': 'Orlang'
+'scopeName': 'source.orlang'
+'fileTypes': [
+  'or',
+]

@@ -752,8 +752,8 @@ func TestParseFailures(t *testing.T) {
 		err string
 	}{
 		// Undefined token
-		{"unexpected", "1:1: Unexpected token IDENT"},
-		{"bar () {}", "1:1: Unexpected token IDENT"},
+		{"unexpected", "1:1: Unexpected token IDENT(unexpected)"},
+		{"bar () {}", "1:1: Unexpected token IDENT(bar)"},
 		// Invalid functions
 		{"fn test{}", "1:8: Expected [LPAREN] got LBRACE"},
 		{"fn test()", "1:10: Expected code block got EOF()"},

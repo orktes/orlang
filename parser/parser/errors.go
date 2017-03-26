@@ -22,7 +22,7 @@ func unexpected(got string, expected string) string {
 
 func unexpectedToken(got scanner.Token, expected ...scanner.TokenType) string {
 	if len(expected) == 0 {
-		return fmt.Sprintf("Unexpected token %s", got.Type.String())
+		return fmt.Sprintf("Unexpected token %s", got.StringValue())
 	}
 	if got.Type == scanner.TokenTypeIdent {
 		return fmt.Sprintf("Expected %s got %s", expected, got.Text)
