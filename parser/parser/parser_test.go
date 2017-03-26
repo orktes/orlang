@@ -816,6 +816,8 @@ func TestParseFailures(t *testing.T) {
 		{"fn foobar() { var foo = 1 + }", "1:29: Expected expression got RBRACE(})"},
 		// UnaryExpression
 		{"fn foobar() { var foo = - }", "1:27: Expected expression got RBRACE(})"},
+		// Ellipsis
+		{"fn foobar() { var foo = ... }", "1:25: Expected expression got ..."},
 	}
 
 	for _, test := range tests {
