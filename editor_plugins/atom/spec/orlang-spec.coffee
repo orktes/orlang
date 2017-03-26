@@ -1,40 +1,40 @@
-Atom = require '../lib/atom'
+Orlang = require '../lib/orlang'
 
 # Use the command `window:run-package-specs` (cmd-alt-ctrl-p) to run specs.
 #
 # To run a specific `it` or `describe` block add an `f` to the front (e.g. `fit`
 # or `fdescribe`). Remove the `f` to unfocus the block.
 
-describe "Atom", ->
+describe "Orlang", ->
   [workspaceElement, activationPromise] = []
 
   beforeEach ->
     workspaceElement = atom.views.getView(atom.workspace)
-    activationPromise = atom.packages.activatePackage('atom')
+    activationPromise = atom.packages.activatePackage('orlang')
 
-  describe "when the atom:toggle event is triggered", ->
+  describe "when the orlang:toggle event is triggered", ->
     it "hides and shows the modal panel", ->
       # Before the activation event the view is not on the DOM, and no panel
       # has been created
-      expect(workspaceElement.querySelector('.atom')).not.toExist()
+      expect(workspaceElement.querySelector('.orlang')).not.toExist()
 
       # This is an activation event, triggering it will cause the package to be
       # activated.
-      atom.commands.dispatch workspaceElement, 'atom:toggle'
+      atom.commands.dispatch workspaceElement, 'orlang:toggle'
 
       waitsForPromise ->
         activationPromise
 
       runs ->
-        expect(workspaceElement.querySelector('.atom')).toExist()
+        expect(workspaceElement.querySelector('.orlang')).toExist()
 
-        atomElement = workspaceElement.querySelector('.atom')
-        expect(atomElement).toExist()
+        orlangElement = workspaceElement.querySelector('.orlang')
+        expect(orlangElement).toExist()
 
-        atomPanel = atom.workspace.panelForItem(atomElement)
-        expect(atomPanel.isVisible()).toBe true
-        atom.commands.dispatch workspaceElement, 'atom:toggle'
-        expect(atomPanel.isVisible()).toBe false
+        orlangPanel = atom.workspace.panelForItem(orlangElement)
+        expect(orlangPanel.isVisible()).toBe true
+        atom.commands.dispatch workspaceElement, 'orlang:toggle'
+        expect(orlangPanel.isVisible()).toBe false
 
     it "hides and shows the view", ->
       # This test shows you an integration test testing at the view level.
@@ -45,18 +45,18 @@ describe "Atom", ->
       # workspaceElement to the DOM are generally slower than those off DOM.
       jasmine.attachToDOM(workspaceElement)
 
-      expect(workspaceElement.querySelector('.atom')).not.toExist()
+      expect(workspaceElement.querySelector('.orlang')).not.toExist()
 
       # This is an activation event, triggering it causes the package to be
       # activated.
-      atom.commands.dispatch workspaceElement, 'atom:toggle'
+      atom.commands.dispatch workspaceElement, 'orlang:toggle'
 
       waitsForPromise ->
         activationPromise
 
       runs ->
         # Now we can test for view visibility
-        atomElement = workspaceElement.querySelector('.atom')
-        expect(atomElement).toBeVisible()
-        atom.commands.dispatch workspaceElement, 'atom:toggle'
-        expect(atomElement).not.toBeVisible()
+        orlangElement = workspaceElement.querySelector('.orlang')
+        expect(orlangElement).toBeVisible()
+        atom.commands.dispatch workspaceElement, 'orlang:toggle'
+        expect(orlangElement).not.toBeVisible()

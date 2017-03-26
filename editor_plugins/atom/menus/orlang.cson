@@ -2,19 +2,19 @@
 'context-menu':
   'atom-text-editor': [
     {
-      'label': 'Toggle atom'
-      'command': 'atom:toggle'
+      'label': 'Toggle orlang'
+      'command': 'orlang:toggle'
     }
   ]
 'menu': [
   {
     'label': 'Packages'
     'submenu': [
-      'label': 'atom'
+      'label': 'orlang'
       'submenu': [
         {
           'label': 'Toggle'
-          'command': 'atom:toggle'
+          'command': 'orlang:toggle'
         }
       ]
     ]

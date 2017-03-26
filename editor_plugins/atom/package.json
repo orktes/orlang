@@ -1,14 +1,11 @@
 {
-  "name": "atom",
+  "name": "orlang",
   "main": "./lib/atom",
   "version": "0.0.0",
-  "description": "A short description of your package",
+  "description": "Atom plugin for the orlang language",
   "keywords": [
   ],
-  "activationCommands": {
-    "atom-workspace": "atom:toggle"
-  },
-  "repository": "https://github.com/atom/atom",
+  "repository": "https://github.com/orktes/orlang",
   "license": "MIT",
   "engines": {
     "atom": ">=1.0.0 <2.0.0"
