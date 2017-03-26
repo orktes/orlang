@@ -10,6 +10,7 @@ var (
 	KeywordFor      = registerKeyword("for")
 	KeywordVar      = registerKeyword("var")
 	KeywordConst    = registerKeyword("const")
+	KeywordExtern   = registerKeyword("extern")
 )
 
 func registerKeyword(kw string) string {

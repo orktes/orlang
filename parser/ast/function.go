@@ -8,6 +8,7 @@ type FunctionDeclaration struct {
 	Arguments   []*Argument
 	ReturnTypes []*Argument
 	Block       *Block
+	Extern      bool
 }
 
 func (fd *FunctionDeclaration) StartPos() Position {

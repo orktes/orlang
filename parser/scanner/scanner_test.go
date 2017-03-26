@@ -94,7 +94,7 @@ var tests = []struct {
 		},
 	},
 	{
-		src: "[]{},.:;+-=*&()<>!#++--!=\\/<=>===",
+		src: "[]{},.:;+-=*&()<>!#++--!=\\/<=>===.....",
 		results: []Token{
 			Token{Type: TokenTypeLBRACK, StartColumn: 0, Text: `[`},
 			Token{Type: TokenTypeRBRACK, StartColumn: 1, Text: `]`},
@@ -123,7 +123,9 @@ var tests = []struct {
 			Token{Type: TokenTypeLessOrEqual, StartColumn: 27, Text: `<=`},
 			Token{Type: TokenTypeGreaterOrEqual, StartColumn: 29, Text: `>=`},
 			Token{Type: TokenTypeEqual, StartColumn: 31, Text: `==`},
-			Token{Type: TokenTypeEOF, StartColumn: 33, Text: ``},
+			Token{Type: TokenTypeEllipsis, StartColumn: 33, Text: `...`},
+			Token{Type: TokenTypeUnknown, StartColumn: 36, Text: `..`},
+			Token{Type: TokenTypeEOF, StartColumn: 38, Text: ``},
 		},
 	},
 	{

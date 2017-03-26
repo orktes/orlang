@@ -6,6 +6,7 @@ type Argument struct {
 	Name         scanner.Token
 	Type         scanner.Token
 	DefaultValue Expression
+	Variadic     bool
 }
 
 func (a *Argument) StartPos() Position {

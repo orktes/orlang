@@ -86,6 +86,17 @@ func (s *Scanner) Scan() (token Token) {
 		if isNumber(next) {
 			t, text, val = s.scanNumber(ch)
 			break
+		} else if next == '.' {
+			s.read()
+			next = s.read()
+			if next == '.' {
+				t = TokenTypeEllipsis
+				text = "..."
+				break
+			}
+			s.unread()
+			text = ".."
+			break
 		}
 		t = TokenTypePERIOD
 		text = string(ch)

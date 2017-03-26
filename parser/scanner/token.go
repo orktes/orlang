@@ -80,6 +80,9 @@ const (
 	TokenTypeIncrement
 	// TokenTypeDecrement --
 	TokenTypeDecrement
+
+	// TokenTypeEllipsis ...
+	TokenTypeEllipsis
 )
 
 var tokenNames = [...]string{
@@ -128,6 +131,8 @@ var tokenNames = [...]string{
 
 	TokenTypeIncrement: "INCREMENT",
 	TokenTypeDecrement: "DECREMENT",
+
+	TokenTypeEllipsis: "ELLIPSIS",
 }
 
 func (typ TokenType) String() string {

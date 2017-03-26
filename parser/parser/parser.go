@@ -149,7 +149,7 @@ func (p *Parser) eof() (ok bool) {
 
 func (p *Parser) parseFuncDecl() (node *ast.FunctionDeclaration, ok bool) {
 	token := p.read()
-	if token.Type == scanner.TokenTypeIdent && token.Text == KeywordFunction {
+	if token.Type == scanner.TokenTypeIdent && (token.Text == KeywordFunction || token.Text == KeywordExtern) {
 		ok = true
 		node = &ast.FunctionDeclaration{}
 		node.Start = ast.StartPositionFromToken(token)
@@ -176,13 +176,15 @@ func (p *Parser) parseFuncDecl() (node *ast.FunctionDeclaration, ok bool) {
 
 		node.Arguments = arguments
 
-		blk, blockOk := p.parseBlock()
-		if !blockOk {
-			p.error(unexpected(p.read().StringValue(), "code block"))
-			return
-		}
+		if token.Text != KeywordExtern {
+			blk, blockOk := p.parseBlock()
+			if !blockOk {
+				p.error(unexpected(p.read().StringValue(), "code block"))
+				return
+			}
 
-		node.Block = blk
+			node.Block = blk
+		}
 
 		p.checkCommentForNode(node, false)
 	} else {
@@ -255,10 +257,18 @@ func (p *Parser) parseArgument() (arg *ast.Argument, ok bool) {
 	}
 
 	if token.Type == scanner.TokenTypeCOLON {
-		token, ok = p.parseType()
-		if !ok {
-			p.error(unexpectedToken(token, scanner.TokenTypeIdent))
-			return
+		_, variadic := p.expectToken(scanner.TokenTypeEllipsis)
+		arg.Variadic = variadic
+		if !variadic {
+			p.unread()
+		}
+
+		token, typeOk := p.parseType()
+		if !typeOk {
+			if !arg.Variadic {
+				p.error(unexpectedToken(p.read(), scanner.TokenTypeIdent))
+				return
+			}
 		}
 
 		arg.Type = token
@@ -566,13 +576,14 @@ func (p *Parser) parseCallArgument() (arg *ast.CallArgument, ok bool) {
 }
 
 func (p *Parser) parseType() (token scanner.Token, ok bool) {
-	// TODO parse inline type declaration as well
-
 	token, ok = p.expectToken(scanner.TokenTypeIdent)
+	if !ok {
+		p.unread()
+		return
+	}
 
 	if isKeyword(token.Text) {
 		p.error(reservedKeywordError(token))
-		return
 	}
 
 	return
@@ -843,7 +854,7 @@ func (p *Parser) parseVariableDeclaration(isConstant bool) (varDecl *ast.Variabl
 	if token.Type == scanner.TokenTypeCOLON {
 		token, colonOk := p.parseType()
 		if !colonOk {
-			p.error(unexpectedToken(token, scanner.TokenTypeIdent))
+			p.error(unexpectedToken(p.read(), scanner.TokenTypeIdent))
 			return
 		}
 
