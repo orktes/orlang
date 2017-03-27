@@ -142,15 +142,9 @@ func (p *Parser) parseMacro() (node *ast.Macro, ok bool) {
 	for {
 		pattern, patternOk := p.parseMacroPattern()
 		if !patternOk {
-			return
-		}
-		patterns = append(patterns, pattern)
-
-		_, commaOk := p.expectToken(scanner.TokenTypeCOMMA)
-		if !commaOk {
-			p.unread()
 			break
 		}
+		patterns = append(patterns, pattern)
 	}
 
 	rbrace, rbraceOk := p.expectToken(scanner.TokenTypeRBRACE)
