@@ -138,6 +138,13 @@ var tests = []struct {
 		},
 	},
 	{
+		src: "$a",
+		results: []Token{
+			Token{Type: TokenTypeMacroIdent, StartColumn: 0, Text: `$a`, Value: nil},
+			Token{Type: TokenTypeEOF, StartColumn: 2, Text: ``},
+		},
+	},
+	{
 		src: "12348 1234.5 1234.5.5", // Sounds like a hack but I'll leave it to the parser to decide what to do
 		results: []Token{
 			Token{Type: TokenTypeNumber, StartColumn: 0, Text: `12348`, Value: int64(12348)},

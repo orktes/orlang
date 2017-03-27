@@ -755,6 +755,40 @@ func TestExternDefinition(t *testing.T) {
 	}
 }
 
+func TestMacroSubsitutions(t *testing.T) {
+	p := NewParser(testScanner(`
+		x == 1
+		y = $x
+
+		var foo : int = 123
+		$y
+	`))
+	expr, _ := p.parseExpression()
+	p.macroSubstitutions["$x"] = []ast.Node{expr}
+
+	expr, _ = p.parseExpression()
+	if len(p.macroSubstitutions["$x"]) != 0 {
+		t.Error("Subsitution not used")
+	}
+
+	if expr.(*ast.Assigment).Right.(*ast.ComparisonExpression).Right.(*ast.ValueExpression).Value != int64(1) {
+		t.Error("Wrong value assigned after subsitution")
+	}
+
+	stmt, _ := p.parseStatement(false)
+	p.macroSubstitutions["$y"] = []ast.Node{stmt}
+
+	stmt, _ = p.parseStatement(false)
+	if len(p.macroSubstitutions["$y"]) != 0 {
+		t.Error("Subsitution not used")
+	}
+
+	if stmt.(*ast.VariableDeclaration).Name.Text != "foo" {
+		t.Error("Wrong subsitution")
+	}
+
+}
+
 func TestParseFailures(t *testing.T) {
 	tests := []struct {
 		src string
@@ -818,6 +852,9 @@ func TestParseFailures(t *testing.T) {
 		{"fn foobar() { var foo = - }", "1:27: Expected expression got RBRACE(})"},
 		// Ellipsis
 		{"fn foobar() { var foo = ... }", "1:25: Expected expression got ..."},
+		// MacroSubstitutions inside normal code
+		{"fn foobar() {var foo = $f}", "1:24: Could not find matching node for MACROIDENT($f)"},
+		{"fn foobar() {$f}", "1:14: Could not find matching node for MACROIDENT($f)"},
 	}
 
 	for _, test := range tests {

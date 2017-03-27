@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/orktes/orlang/parser/ast"
@@ -42,11 +43,12 @@ type Parser struct {
 	nodeComments          map[ast.Node][]ast.Comment
 	comments              []ast.Comment
 	commentAfterNodeCheck ast.Node
+	macroSubstitutions    map[string][]ast.Node
 }
 
 // NewParser return new Parser for a given scanner
 func NewParser(s *scanner.Scanner) *Parser {
-	return &Parser{s: s, nodeComments: map[ast.Node][]ast.Comment{}}
+	return &Parser{s: s, nodeComments: map[ast.Node][]ast.Comment{}, macroSubstitutions: map[string][]ast.Node{}}
 }
 
 // Parse source code from io.Reader
@@ -144,6 +146,25 @@ func (p *Parser) eof() (ok bool) {
 	if _, ok = p.expectToken(scanner.TokenTypeEOF); !ok {
 		p.unread()
 	}
+	return
+}
+
+func (p *Parser) parseMacroSubstitution() (node ast.Node, ok bool) {
+	token, ok := p.expectToken(scanner.TokenTypeMacroIdent)
+	if !ok {
+		p.unread()
+		return
+	}
+
+	subs := p.macroSubstitutions[token.Text]
+
+	if len(subs) > 0 {
+		node = subs[0]
+		p.macroSubstitutions[token.Text] = subs[1:]
+	} else {
+		p.error(fmt.Sprintf("Could not find matching node for %s", token.StringValue()))
+	}
+
 	return
 }
 
@@ -351,6 +372,16 @@ loop:
 }
 
 func (p *Parser) parseStatement(block bool) (node ast.Statement, ok bool) {
+	subs, ok := p.parseMacroSubstitution()
+	if ok {
+		var typeOk bool
+		node, typeOk = subs.(ast.Statement)
+		if !typeOk {
+			p.error("Expected statement")
+		}
+		return
+	}
+
 	ok = true
 	var check = func(n ast.Statement, ok bool) bool {
 		if ok {
@@ -720,6 +751,16 @@ func (p *Parser) parseBinaryExpression(left ast.Expression) (node *ast.BinaryExp
 }
 
 func (p *Parser) parseExpression() (expression ast.Expression, ok bool) {
+	node, ok := p.parseMacroSubstitution()
+	if ok {
+		var typeOk bool
+		expression, typeOk = node.(ast.Expression)
+		if !typeOk {
+			p.error("Expected expression")
+		}
+		return
+	}
+
 	if expression, ok = p.parseUnaryExpression(); ok {
 		for {
 			if binaryExpression, binaryOk := p.parseBinaryExpression(expression); binaryOk {

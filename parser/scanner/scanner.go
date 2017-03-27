@@ -70,6 +70,11 @@ func (s *Scanner) Scan() (token Token) {
 		s.unread()
 		t, text, val = s.scanIdent()
 
+	case ch == '$':
+		t = TokenTypeMacroIdent
+		_, text, val = s.scanIdent()
+		text = "$" + text
+
 	case isNumber(ch):
 		t, text, val = s.scanNumber(ch)
 

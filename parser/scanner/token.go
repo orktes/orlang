@@ -12,6 +12,8 @@ const (
 	TokenTypeEOF
 	// TokenTypeIdent ident
 	TokenTypeIdent
+	// TokenTypeMacroIdent ident used in macros
+	TokenTypeMacroIdent
 	// TokenTypeWhitespace whitespace
 	TokenTypeWhitespace
 	// TokenTypeString string literal
@@ -91,11 +93,12 @@ var tokenNames = [...]string{
 	TokenTypeEOF:     "EOF",
 	TokenTypeComment: "COMMENT",
 
-	TokenTypeIdent:   "IDENT",
-	TokenTypeNumber:  "NUMBER",
-	TokenTypeFloat:   "FLOAT",
-	TokenTypeBoolean: "BOOL",
-	TokenTypeString:  "STRING",
+	TokenTypeIdent:      "IDENT",
+	TokenTypeMacroIdent: "MACROIDENT",
+	TokenTypeNumber:     "NUMBER",
+	TokenTypeFloat:      "FLOAT",
+	TokenTypeBoolean:    "BOOL",
+	TokenTypeString:     "STRING",
 
 	TokenTypeLBRACK: "LBRACK",
 	TokenTypeLBRACE: "LBRACE",
