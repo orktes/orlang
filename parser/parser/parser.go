@@ -176,6 +176,20 @@ func (p *Parser) parseFuncDecl() (node *ast.FunctionDeclaration, ok bool) {
 
 		node.Arguments = arguments
 
+		_, returnTypeColonOk := p.expectToken(scanner.TokenTypeCOLON)
+		if returnTypeColonOk {
+			if returnArgs, returnArgsOk := p.parseArguments(); returnArgsOk {
+				node.ReturnTypes = returnArgs
+			} else if returnArg, returnArgsOk := p.parseArgument(); returnArgsOk {
+				node.ReturnTypes = []*ast.Argument{returnArg}
+			} else {
+				p.error(unexpected(p.read().StringValue(), "function return type"))
+				return
+			}
+		} else {
+			p.unread()
+		}
+
 		if token.Text != KeywordExtern {
 			blk, blockOk := p.parseBlock()
 			if !blockOk {
@@ -194,8 +208,8 @@ func (p *Parser) parseFuncDecl() (node *ast.FunctionDeclaration, ok bool) {
 }
 
 func (p *Parser) parseArguments() (args []*ast.Argument, ok bool) {
-	if t, lparenOk := p.expectToken(scanner.TokenTypeLPAREN); !lparenOk {
-		p.error(unexpectedToken(t, scanner.TokenTypeLPAREN))
+	if _, lparenOk := p.expectToken(scanner.TokenTypeLPAREN); !lparenOk {
+		p.unread()
 		return
 	}
 
@@ -250,9 +264,10 @@ func (p *Parser) parseArgument() (arg *ast.Argument, ok bool) {
 	arg = &ast.Argument{}
 	arg.Name = token
 	defer p.checkCommentForNode(arg, true)
-	token, ok = p.expectToken(scanner.TokenTypeCOLON, scanner.TokenTypeASSIGN)
-	if !ok {
-		p.error(unexpectedToken(token, scanner.TokenTypeCOLON, scanner.TokenTypeASSIGN))
+
+	token, colonOK := p.expectToken(scanner.TokenTypeCOLON, scanner.TokenTypeASSIGN)
+	if !colonOK {
+		p.unread()
 		return
 	}
 
@@ -271,7 +286,7 @@ func (p *Parser) parseArgument() (arg *ast.Argument, ok bool) {
 			}
 		}
 
-		arg.Type = token
+		arg.Type = &token
 
 		if _, defaultAssOk := p.expectToken(scanner.TokenTypeASSIGN); !defaultAssOk {
 			p.unread()

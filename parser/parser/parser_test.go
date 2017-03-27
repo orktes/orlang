@@ -511,7 +511,7 @@ func TestParseVariableDeclarationInsideFunction(t *testing.T) {
 
 func TestParseFunctionCall(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
-		fn foobar(x : int = 0, y: int = 0) {
+		fn foobar(x : int = 0, y: int = 0) : (int, float) {
 			foobar()
 			foobar()()
 			foobar()()()
@@ -748,7 +748,7 @@ func TestParseMultipleVariableDeclarations(t *testing.T) {
 
 func TestExternDefinition(t *testing.T) {
 	_, err := Parse(strings.NewReader(`
-		extern printf(format: string, args:...) //: int
+		extern printf(format: string, args:...) : int
 	`))
 	if err != nil {
 		t.Error(err)
@@ -767,8 +767,8 @@ func TestParseFailures(t *testing.T) {
 		{"fn test{}", "1:8: Expected [LPAREN] got LBRACE"},
 		{"fn test()", "1:10: Expected code block got EOF()"},
 		{"fn test(,) {}", "1:9: Expected [IDENT RPAREN] got COMMA"},
-		{"fn test(bar i = 1) {}", "1:13: Expected [COLON ASSIGN] got i"},
-		{"fn test(bar , int, foo : float = 0.2) {}", "1:13: Expected [COLON ASSIGN] got COMMA"},
+		{"fn test(bar i = 1) {}", "1:13: Expected [RPAREN COMMA] got i"},
+		{"fn test(int) : {}", "1:16: Expected function return type got LBRACE({)"},
 		{"fn test(foo : float foo) {}", "1:21: Expected [RPAREN COMMA] got foo"},
 		{"fn test(foo : ) {}", "1:15: Expected [IDENT] got RPAREN"},
 		{"fn test(foo : bar = ) {}", "1:21: Expected expression got RPAREN())"},
