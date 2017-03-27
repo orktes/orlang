@@ -226,17 +226,17 @@ func (p *Parser) parseMacroPattern() (macroPattern *ast.MacroPattern, ok bool) {
 
 	tokens := []scanner.Token{}
 
-	parentCount := 1
+	parenCount := 1
 
 loop:
 	for {
 		t := p.read()
 		switch t.Type {
 		case scanner.TokenTypeLPAREN:
-			parentCount++
+			parenCount++
 		case scanner.TokenTypeRPAREN:
-			parentCount--
-			if parentCount == 0 {
+			parenCount--
+			if parenCount == 0 {
 				p.unread()
 				break loop
 			}
