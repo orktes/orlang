@@ -763,30 +763,84 @@ func TestMacroSubsitutions(t *testing.T) {
 		var foo : int = 123
 		$y
 	`))
+
 	expr, _ := p.parseExpression()
-	p.macroSubstitutions["$x"] = []ast.Node{expr}
+	p.activeMacro = &ast.Macro{Name: scanner.Token{Text: "foo"}}
+	p.macroSubstitutions[p.activeMacro] = map[string]ast.Node{}
+	p.macroSubstitutions[p.activeMacro]["$x"] = expr
 
 	expr, _ = p.parseExpression()
-	if len(p.macroSubstitutions["$x"]) != 0 {
-		t.Error("Subsitution not used")
-	}
-
 	if expr.(*ast.Assigment).Right.(*ast.ComparisonExpression).Right.(*ast.ValueExpression).Value != int64(1) {
 		t.Error("Wrong value assigned after subsitution")
 	}
 
 	stmt, _ := p.parseStatement(false)
-	p.macroSubstitutions["$y"] = []ast.Node{stmt}
+	p.macroSubstitutions[p.activeMacro]["$y"] = stmt
 
 	stmt, _ = p.parseStatement(false)
-	if len(p.macroSubstitutions["$y"]) != 0 {
-		t.Error("Subsitution not used")
-	}
-
 	if stmt.(*ast.VariableDeclaration).Name.Text != "foo" {
 		t.Error("Wrong subsitution")
 	}
 
+}
+
+func TestMacro(t *testing.T) {
+	file, err := Parse(strings.NewReader(`
+		macro fooMacro {
+			($a:expr, $b:expr) : ($a + $b)
+		}
+		fn main() {
+			var foo = fooMacro!(1,2)
+		}
+	`))
+	if err != nil {
+		t.Error(err)
+	}
+
+	macro := file.Body[0].(*ast.Macro)
+	pattern := macro.Patterns[0]
+
+	if pattern.Pattern[0].Name != "$a" {
+		t.Error("Wrong pattern key name")
+	}
+
+	if pattern.Pattern[0].Type != "expr" {
+		t.Error("Wrong pattern key type")
+	}
+
+	if pattern.Pattern[1].Name != "$b" {
+		t.Error("Wrong pattern key name")
+	}
+
+	if pattern.Pattern[1].Type != "expr" {
+		t.Error("Wrong pattern key type")
+	}
+
+	tokens := pattern.TokensSets[0].GetTokens(nil)
+	if len(tokens) != 3 {
+		t.Error("Wrong amount of tokens", tokens)
+	}
+
+	if tokens[0].StringValue() != "MACROIDENT($a)" {
+		t.Error("Wrong token")
+	}
+
+	if tokens[1].StringValue() != "ADD(+)" {
+		t.Error("Wrong token")
+	}
+
+	if tokens[2].StringValue() != "MACROIDENT($b)" {
+		t.Error("Wrong token")
+	}
+
+	binaryExpr := file.Body[1].(*ast.FunctionDeclaration).Block.Body[0].(*ast.VariableDeclaration).DefaultValue.(*ast.BinaryExpression)
+	if binaryExpr.Left.(*ast.ValueExpression).Value != int64(1) {
+		t.Error("Wrong value")
+	}
+
+	if binaryExpr.Right.(*ast.ValueExpression).Value != int64(2) {
+		t.Error("Wrong value")
+	}
 }
 
 func TestParseFailures(t *testing.T) {
@@ -856,7 +910,6 @@ func TestParseFailures(t *testing.T) {
 		{"fn foobar() {var foo = $f}", "1:24: Could not find matching node for MACROIDENT($f)"},
 		{"fn foobar() {$f}", "1:14: Could not find matching node for MACROIDENT($f)"},
 	}
-
 	for _, test := range tests {
 		_, err := Parse(strings.NewReader(test.src))
 

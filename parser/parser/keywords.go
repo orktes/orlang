@@ -11,6 +11,7 @@ var (
 	KeywordVar      = registerKeyword("var")
 	KeywordConst    = registerKeyword("const")
 	KeywordExtern   = registerKeyword("extern")
+	KeywordMacro    = registerKeyword("macro")
 )
 
 func registerKeyword(kw string) string {
