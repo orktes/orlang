@@ -6,7 +6,7 @@ macro fooMacro {
 }
 
 macro ifMacro {
-  ($b:block, $a:expr) : (if $b $a)
+  ($b:block, $a:expr) : (if $a $b)
 }
 
 fn main() {
