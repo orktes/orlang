@@ -315,7 +315,7 @@ func (p *Parser) parseMacroSubstitutionStatement() (stmt ast.Statement, ok bool)
 	return
 }
 
-func (p *Parser) parseMacroSubstitution() (node ast.Node, ok bool) {
+func (p *Parser) parseMacroSubstitution() (substitution interface{}, ok bool) {
 	token, ok := p.expectToken(scanner.TokenTypeMacroIdent)
 	if !ok {
 		p.unread()
@@ -323,10 +323,7 @@ func (p *Parser) parseMacroSubstitution() (node ast.Node, ok bool) {
 	}
 
 	if token.Value != nil {
-		node, ok = token.Value.(ast.Node)
-		if ok {
-			return
-		}
+		return token.Value, true
 	}
 
 	p.error(fmt.Sprintf("Could not find matching node for %s", token.Text))
@@ -730,11 +727,12 @@ func (p *Parser) parseMacroCall(nameToken scanner.Token) (matchingPattern *ast.M
 		return
 	}
 
-	nodes := []ast.Node{}
+	values := []interface{}{}
+
 	for {
 		node, ok := p.parseStatementOrExpression(true)
 		if ok {
-			nodes = append(nodes, node)
+			values = append(values, node)
 		}
 		_, commaOk := p.expectToken(scanner.TokenTypeCOMMA)
 		if !commaOk {
@@ -751,21 +749,21 @@ func (p *Parser) parseMacroCall(nameToken scanner.Token) (matchingPattern *ast.M
 
 patternLoop:
 	for _, pattern := range macro.Patterns {
-		if len(pattern.Pattern) != len(nodes) {
+		if len(pattern.Pattern) != len(values) {
 			continue
 		}
 
 		for i, arg := range pattern.Pattern {
-			node := nodes[i]
-			var ok bool
+			node := values[i]
+			var castOk bool
 			switch arg.Type {
 			case "expr":
-				_, ok = node.(ast.Expression)
+				_, castOk = node.(ast.Expression)
 			case "stmt":
-				_, ok = node.(ast.Statement)
+				_, castOk = node.(ast.Statement)
 			}
 
-			if !ok {
+			if !castOk {
 				continue patternLoop
 			}
 		}
@@ -780,10 +778,23 @@ patternLoop:
 
 	buf := []scanner.Token{}
 	for _, set := range matchingPattern.TokensSets {
-		buf = append(buf, set.GetTokens(matchingPattern.Pattern, nodes)...)
+		buf = append(buf, set.GetTokens(matchingPattern.Pattern, values)...)
+	}
+
+	// This is a dirty hack to get error traces to point to the macro call instead of the macro definition
+	// TODO figure out the proper way to maintain both info
+	for i, t := range buf {
+		t.StartLine = nameToken.StartLine
+		t.StartColumn = nameToken.StartColumn
+
+		t.EndLine = rparen.EndLine
+		t.EndColumn = rparen.EndColumn
+
+		buf[i] = t
 	}
 
 	p.returnToBuffer(buf)
+	ok = true
 
 	return
 }
