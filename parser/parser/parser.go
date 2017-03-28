@@ -730,8 +730,8 @@ func (p *Parser) parseMacroCall(nameToken scanner.Token) (matchingPattern *ast.M
 	values := []interface{}{}
 
 	for {
-		node, ok := p.parseStatementOrExpression(true)
-		if ok {
+		node, statementOk := p.parseStatementOrExpression(true)
+		if statementOk {
 			values = append(values, node)
 		}
 		_, commaOk := p.expectToken(scanner.TokenTypeCOMMA)
