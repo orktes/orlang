@@ -788,7 +788,6 @@ func (p *Parser) parseMacroCall(nameToken scanner.Token) (matchingPattern *ast.M
 	parenCount := 1
 loop:
 	for {
-		// TODO convert to switch with check
 		switch {
 		case checkPatterns("block") && check(p.parseBlock()):
 		case (checkPatterns("expr") || checkPatterns("stmt")) && check(p.parseStatementOrExpression(false)):
