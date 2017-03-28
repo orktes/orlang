@@ -242,23 +242,31 @@ patternLoop:
 	}
 
 	// Tokens
-	lparen, lparenOk := p.expectToken(scanner.TokenTypeLPAREN)
+	lparen, lparenOk := p.expectToken(
+		scanner.TokenTypeLPAREN,
+		scanner.TokenTypeLBRACE,
+		scanner.TokenTypeLBRACK,
+	)
 	if !lparenOk {
-		p.error(unexpectedToken(lparen, scanner.TokenTypeLPAREN))
+		p.error(unexpectedToken(lparen,
+			scanner.TokenTypeLPAREN,
+			scanner.TokenTypeLBRACE,
+			scanner.TokenTypeLBRACK,
+		))
 		return
 	}
 
+	closingParenType = getClosingTokenType(lparen)
 	tokens := []scanner.Token{}
-
 	parenCount = 1
 
 loop:
 	for {
 		t := p.readToken(false)
 		switch t.Type {
-		case scanner.TokenTypeLPAREN:
+		case lparen.Type:
 			parenCount++
-		case scanner.TokenTypeRPAREN:
+		case closingParenType:
 			parenCount--
 			if parenCount == 0 {
 				p.unread()
@@ -270,9 +278,9 @@ loop:
 
 	macroPattern.TokensSets = append(macroPattern.TokensSets, ast.TokenSliceSet(tokens))
 
-	rparen, rparenOk = p.expectToken(scanner.TokenTypeRPAREN)
+	rparen, rparenOk = p.expectToken(closingParenType)
 	if !rparenOk {
-		p.error(unexpectedToken(rparen, scanner.TokenTypeRPAREN))
+		p.error(unexpectedToken(rparen, closingParenType))
 		return
 	}
 

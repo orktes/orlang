@@ -790,7 +790,7 @@ func TestStatementInMacro(t *testing.T) {
 func TestMacro(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
 		macro fooMacro {
-			{$a:block}: (if true $a)
+			{$a:block}: {if true $a}
 			($a:expr, $b:expr) : ($a + $b)
 			($a:expr {} $b:expr) : ($a - $b)
 			($a:expr { $b:expr }) : ($a * $b)
