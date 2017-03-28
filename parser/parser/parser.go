@@ -44,18 +44,15 @@ type Parser struct {
 	comments              []ast.Comment
 	commentAfterNodeCheck ast.Node
 	// macros
-	macroSubstitutions map[*ast.Macro]map[string]ast.Node
-	macros             map[string]*ast.Macro
-	activeMacro        *ast.Macro
+	macros map[string]*ast.Macro
 }
 
 // NewParser return new Parser for a given scanner
 func NewParser(s *scanner.Scanner) *Parser {
 	return &Parser{
-		s:                  s,
-		nodeComments:       map[ast.Node][]ast.Comment{},
-		macroSubstitutions: map[*ast.Macro]map[string]ast.Node{},
-		macros:             map[string]*ast.Macro{},
+		s:            s,
+		nodeComments: map[ast.Node][]ast.Comment{},
+		macros:       map[string]*ast.Macro{},
 	}
 }
 
@@ -305,16 +302,14 @@ func (p *Parser) parseMacroSubstitution() (node ast.Node, ok bool) {
 		return
 	}
 
-	activeMacroSubs, ok := p.macroSubstitutions[p.activeMacro]
-	if !ok {
-		p.error(fmt.Sprintf("Could not find matching node for %s", token.StringValue()))
-		return
+	if token.Value != nil {
+		node, ok = token.Value.(ast.Node)
+		if ok {
+			return
+		}
 	}
 
-	node, ok = activeMacroSubs[token.Text]
-	if !ok {
-		p.error(fmt.Sprintf("Could not find matching node for %s", token.StringValue()))
-	}
+	p.error(fmt.Sprintf("Could not find matching node for %s", token.Text))
 
 	return
 }
@@ -503,7 +498,6 @@ loop:
 		}
 		switch {
 		case check(p.parseStatementOrExpression(true)):
-		case check(p.parseBlock()):
 		default:
 			if _, tok := p.expectToken(scanner.TokenTypeRBRACE); !tok {
 				p.unread()
@@ -525,11 +519,7 @@ loop:
 func (p *Parser) parseStatement(block bool) (node ast.Statement, ok bool) {
 	subs, ok := p.parseMacroSubstitution()
 	if ok {
-		var typeOk bool
-		node, typeOk = subs.(ast.Statement)
-		if !typeOk {
-			p.error("Expected statement")
-		}
+		node, ok = subs.(ast.Statement)
 		return
 	}
 
@@ -711,7 +701,7 @@ func (p *Parser) parseMemberExpression(target ast.Expression) (node *ast.MemberE
 	return
 }
 
-func (p *Parser) parseMacroCall() (ok bool) {
+func (p *Parser) parseMacroCall() (matchingPattern *ast.MacroPattern, ok bool) {
 	p.snapshot()
 	tokens, ok := p.expectPattern(scanner.TokenTypeIdent, scanner.TokenTypeEXCL)
 	if !ok {
@@ -729,9 +719,6 @@ func (p *Parser) parseMacroCall() (ok bool) {
 		return
 	}
 
-	p.activeMacro = macro
-	p.macroSubstitutions[macro] = map[string]ast.Node{}
-
 	lparen, lparenOk := p.expectToken(scanner.TokenTypeLPAREN)
 	if !lparenOk {
 		p.error(unexpectedToken(lparen, scanner.TokenTypeLPAREN))
@@ -740,7 +727,7 @@ func (p *Parser) parseMacroCall() (ok bool) {
 
 	nodes := []ast.Node{}
 	for {
-		node, ok := p.parseStatementOrExpression(false)
+		node, ok := p.parseStatementOrExpression(true)
 		if ok {
 			nodes = append(nodes, node)
 		}
@@ -756,8 +743,6 @@ func (p *Parser) parseMacroCall() (ok bool) {
 		p.error(unexpectedToken(rparen, scanner.TokenTypeRPAREN))
 		return
 	}
-
-	var matchingPattern *ast.MacroPattern
 
 patternLoop:
 	for _, pattern := range macro.Patterns {
@@ -778,8 +763,6 @@ patternLoop:
 			if !ok {
 				continue patternLoop
 			}
-
-			p.macroSubstitutions[macro][arg.Name] = node
 		}
 
 		matchingPattern = pattern
@@ -792,7 +775,7 @@ patternLoop:
 
 	buf := []scanner.Token{}
 	for _, set := range matchingPattern.TokensSets {
-		buf = append(buf, set.GetTokens(nodes)...)
+		buf = append(buf, set.GetTokens(matchingPattern.Pattern, nodes)...)
 	}
 
 	p.returnToBuffer(buf)
@@ -891,14 +874,14 @@ func (p *Parser) parseValueExpression() (expression ast.Expression, ok bool) {
 }
 
 func (p *Parser) parseUnaryExpression() (expression ast.Expression, ok bool) {
+	if pattern, success := p.parseMacroCall(); success && pattern != nil {
+		return p.parseUnaryExpression()
+	}
+
 	// TODO check we are inside a macro
 	node, ok := p.parseMacroSubstitution()
 	if ok {
-		var typeOk bool
-		expression, typeOk = node.(ast.Expression)
-		if !typeOk {
-			p.error("Expected expression")
-		}
+		expression, ok = node.(ast.Expression)
 		return
 	}
 
@@ -1001,8 +984,6 @@ func (p *Parser) parseBinaryExpression(left ast.Expression) (node *ast.BinaryExp
 }
 
 func (p *Parser) parseExpression() (expression ast.Expression, ok bool) {
-	p.parseMacroCall()
-
 	if expression, ok = p.parseUnaryExpression(); ok {
 		for {
 			if binaryExpression, binaryOk := p.parseBinaryExpression(expression); binaryOk {

@@ -18,13 +18,25 @@ func (mcr *Macro) EndPos() Position {
 }
 
 type MacroTokenSet interface {
-	GetTokens(args []Node) []scanner.Token
+	GetTokens(Pattern []*MacroArgument, args []Node) []scanner.Token
 }
 
 type TokenSliceSet []scanner.Token
 
-func (tss TokenSliceSet) GetTokens(args []Node) []scanner.Token {
-	return tss
+func (tss TokenSliceSet) GetTokens(Pattern []*MacroArgument, args []Node) (tokens []scanner.Token) {
+	tokens = make([]scanner.Token, len(tss))
+	for i, token := range tss {
+		if token.Type == scanner.TokenTypeMacroIdent {
+			for argI, arg := range Pattern {
+				if arg.Name == token.Text {
+					token.Value = args[argI]
+					break
+				}
+			}
+		}
+		tokens[i] = token
+	}
+	return tokens
 }
 
 type MacroArgument struct {

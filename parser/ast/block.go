@@ -14,6 +14,9 @@ func (blk *Block) EndPos() Position {
 	return blk.End
 }
 
+func (_ *Block) exprNode() {
+}
+
 func (blk *Block) AppendNode(node Node) {
 	blk.Body = append(blk.Body, node)
 }

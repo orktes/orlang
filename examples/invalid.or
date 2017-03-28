@@ -1,8 +1,13 @@
 // This is to test orlang lint
 
+macro fooMacro {
+  ($a:expr, $b:expr) : ($a + $b)
+  ($a:stmt) : (
+    $a
+  )
+}
+
 fn main() {
-  for var i = 1; i <; 1 {
-    fn foobar() {
-    }
-  }
+  var foo = fooMacro!(1,2)
+  fooMacro!(var bliz : int)
 }
