@@ -14,6 +14,8 @@ const (
 	TokenTypeIdent
 	// TokenTypeMacroIdent ident used in macros
 	TokenTypeMacroIdent
+	// TokenTypeMacroCallIdent ident used in macro calls
+	TokenTypeMacroCallIdent
 	// TokenTypeWhitespace whitespace
 	TokenTypeWhitespace
 	// TokenTypeString string literal
@@ -93,12 +95,13 @@ var tokenNames = [...]string{
 	TokenTypeEOF:     "EOF",
 	TokenTypeComment: "COMMENT",
 
-	TokenTypeIdent:      "IDENT",
-	TokenTypeMacroIdent: "MACROIDENT",
-	TokenTypeNumber:     "NUMBER",
-	TokenTypeFloat:      "FLOAT",
-	TokenTypeBoolean:    "BOOL",
-	TokenTypeString:     "STRING",
+	TokenTypeIdent:          "IDENT",
+	TokenTypeMacroIdent:     "MACROIDENT",
+	TokenTypeMacroCallIdent: "MACROCALLIDENT",
+	TokenTypeNumber:         "NUMBER",
+	TokenTypeFloat:          "FLOAT",
+	TokenTypeBoolean:        "BOOL",
+	TokenTypeString:         "STRING",
 
 	TokenTypeLBRACK: "LBRACK",
 	TokenTypeLBRACE: "LBRACE",

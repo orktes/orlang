@@ -227,7 +227,7 @@ func (p *Parser) parseMacroPattern() (macroPattern *ast.MacroPattern, ok bool) {
 
 loop:
 	for {
-		t := p.read()
+		t := p.readToken(false)
 		switch t.Type {
 		case scanner.TokenTypeLPAREN:
 			parenCount++
@@ -291,6 +291,26 @@ func (p *Parser) checkCommentForNode(node ast.Node, afterNode bool) {
 func (p *Parser) eof() (ok bool) {
 	if _, ok = p.expectToken(scanner.TokenTypeEOF); !ok {
 		p.unread()
+	}
+	return
+}
+
+func (p *Parser) parseMacroSubstitutionExpression() (expr ast.Expression, ok bool) {
+	node, ok := p.parseMacroSubstitution()
+	if ok {
+		if expr, ok = node.(ast.Expression); !ok {
+			p.unread()
+		}
+	}
+	return
+}
+
+func (p *Parser) parseMacroSubstitutionStatement() (stmt ast.Statement, ok bool) {
+	node, ok := p.parseMacroSubstitution()
+	if ok {
+		if stmt, ok = node.(ast.Statement); !ok {
+			p.unread()
+		}
 	}
 	return
 }
@@ -517,12 +537,6 @@ loop:
 }
 
 func (p *Parser) parseStatement(block bool) (node ast.Statement, ok bool) {
-	subs, ok := p.parseMacroSubstitution()
-	if ok {
-		node, ok = subs.(ast.Statement)
-		return
-	}
-
 	ok = true
 	var check = func(n ast.Statement, ok bool) bool {
 		if ok {
@@ -534,6 +548,7 @@ func (p *Parser) parseStatement(block bool) (node ast.Statement, ok bool) {
 	switch {
 	case block && check(p.parseForLoop()):
 	case block && check(p.parseIfStatement()):
+	case check(p.parseMacroSubstitutionStatement()):
 	case check(p.parseVarDecl()):
 	default:
 		ok = false
@@ -701,20 +716,10 @@ func (p *Parser) parseMemberExpression(target ast.Expression) (node *ast.MemberE
 	return
 }
 
-func (p *Parser) parseMacroCall() (matchingPattern *ast.MacroPattern, ok bool) {
-	p.snapshot()
-	tokens, ok := p.expectPattern(scanner.TokenTypeIdent, scanner.TokenTypeEXCL)
-	if !ok {
-		p.restore()
-		return
-	}
-	p.commit()
-
-	macroName := tokens[0].Text
-
+func (p *Parser) parseMacroCall(nameToken scanner.Token) (matchingPattern *ast.MacroPattern, ok bool) {
+	macroName := nameToken.Value.(string)
 	macro, macroOk := p.macros[macroName]
 	if !macroOk {
-		p.unread()
 		p.error(fmt.Sprintf("No macro with name %s", macroName))
 		return
 	}
@@ -874,17 +879,6 @@ func (p *Parser) parseValueExpression() (expression ast.Expression, ok bool) {
 }
 
 func (p *Parser) parseUnaryExpression() (expression ast.Expression, ok bool) {
-	if pattern, success := p.parseMacroCall(); success && pattern != nil {
-		return p.parseUnaryExpression()
-	}
-
-	// TODO check we are inside a macro
-	node, ok := p.parseMacroSubstitution()
-	if ok {
-		expression, ok = node.(ast.Expression)
-		return
-	}
-
 	token, prefixOk := p.expectToken(unaryPrefix...)
 	if prefixOk {
 		var rExpr ast.Expression
@@ -914,6 +908,7 @@ func (p *Parser) parseUnaryExpression() (expression ast.Expression, ok bool) {
 	switch {
 	case check(p.parseFuncDecl()):
 	case check(p.parseValueExpression()):
+	case check(p.parseMacroSubstitutionExpression()):
 	default:
 		return
 	}
@@ -1189,7 +1184,8 @@ func (p *Parser) expectToken(tokenTypes ...scanner.TokenType) (token scanner.Tok
 	return
 }
 
-func (p *Parser) read() (token scanner.Token) {
+func (p *Parser) readToken(expandMacros bool) (token scanner.Token) {
+readToken:
 	if len(p.tokenBuffer) > 0 {
 		token = p.tokenBuffer[0]
 		p.tokenBuffer = p.tokenBuffer[1:]
@@ -1208,11 +1204,24 @@ func (p *Parser) read() (token scanner.Token) {
 	}
 
 	p.lastTokens = []scanner.Token{token}
+
 	if len(p.snapshots) > 0 {
 		p.snapshots[len(p.snapshots)-1] = append(p.snapshots[len(p.snapshots)-1], token)
 	}
 
+	if expandMacros && token.Type == scanner.TokenTypeMacroCallIdent {
+		if pattrn, ok := p.parseMacroCall(token); pattrn != nil && ok {
+			goto readToken
+		} else {
+			// TODO throw error or something here
+		}
+	}
+
 	return
+}
+
+func (p *Parser) read() (token scanner.Token) {
+	return p.readToken(true)
 }
 
 func (p *Parser) unread() {

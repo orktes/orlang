@@ -69,6 +69,16 @@ func (s *Scanner) Scan() (token Token) {
 	case isLetter(ch):
 		s.unread()
 		t, text, val = s.scanIdent()
+		if t == TokenTypeIdent {
+			next := s.read()
+			if next == '!' {
+				t = TokenTypeMacroCallIdent
+				val = text
+				text = text + "!"
+			} else {
+				s.unread()
+			}
+		}
 
 	case ch == '$':
 		t = TokenTypeMacroIdent

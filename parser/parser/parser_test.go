@@ -759,7 +759,7 @@ func TestMacro(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
 		macro fooMacro {
 			($a:expr, $b:expr) : ($a + $b)
-			($a:expr) : ($a + 1)
+			($a:expr) : (fooMacro!($a, 1))
 		}
 		fn main() {
 			var foo = fooMacro!(1,2)
@@ -823,6 +823,7 @@ func TestMacro(t *testing.T) {
 	if binaryExpr.Right.(*ast.ValueExpression).Value != int64(1) {
 		t.Error("Wrong value")
 	}
+
 }
 
 func TestParseFailures(t *testing.T) {
