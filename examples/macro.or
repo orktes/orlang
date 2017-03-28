@@ -5,15 +5,20 @@ macro fooMacro {
   ($a:expr) : ($a + 1)
 }
 
-macro ifMacro {
-  ($b:block, $a:expr) : (if $a $b)
+macro ifNot {
+  ($a:expr, $b:block) : (if $a {} else $b)
 }
+
+var foo : int = fooMacro!(1)
 
 fn main() {
   var foo = fooMacro!(1, 2) // equals 3
   var bar = fooMacro!(1) // equals 2
-  ifMacro!(
-    {},
-    1 < 0
+
+  ifNot!(
+    false,
+    {
+      // If not
+    }
   )
 }

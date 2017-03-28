@@ -772,6 +772,21 @@ func TestBlockInMacro(t *testing.T) {
 	}
 }
 
+func TestStatementInMacro(t *testing.T) {
+	_, err := Parse(strings.NewReader(`
+		macro stmt {
+		  ($a:stmt) : ($a)
+		}
+		fn main() {
+			stmt!(var foo : int = 0)
+		}
+	`))
+
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 func TestMacro(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
 		macro fooMacro {
