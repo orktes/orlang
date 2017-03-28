@@ -18,19 +18,21 @@ func (mcr *Macro) EndPos() Position {
 }
 
 type MacroTokenSet interface {
-	GetTokens(Pattern []*MacroArgument, args []interface{}) []scanner.Token
+	GetTokens(pattern []MacroMatch, args []interface{}) []scanner.Token
 }
 
 type TokenSliceSet []scanner.Token
 
-func (tss TokenSliceSet) GetTokens(Pattern []*MacroArgument, args []interface{}) (tokens []scanner.Token) {
+func (tss TokenSliceSet) GetTokens(pattern []MacroMatch, args []interface{}) (tokens []scanner.Token) {
 	tokens = make([]scanner.Token, len(tss))
 	for i, token := range tss {
 		if token.Type == scanner.TokenTypeMacroIdent {
-			for argI, arg := range Pattern {
-				if arg.Name == token.Text {
-					token.Value = args[argI]
-					break
+			for argI, patrn := range pattern {
+				if arg, ok := patrn.(*MacroMatchArgument); ok {
+					if arg.Name == token.Text {
+						token.Value = args[argI]
+						break
+					}
 				}
 			}
 		}
@@ -39,12 +41,24 @@ func (tss TokenSliceSet) GetTokens(Pattern []*MacroArgument, args []interface{})
 	return tokens
 }
 
-type MacroArgument struct {
+type MacroMatch interface {
+	macroMatch()
+}
+
+type MacroMatchArgument struct {
 	Name string
 	Type string
 }
 
+func (_ *MacroMatchArgument) macroMatch() {}
+
+type MacroMatchToken struct {
+	Token scanner.Token
+}
+
+func (_ *MacroMatchToken) macroMatch() {}
+
 type MacroPattern struct {
-	Pattern    []*MacroArgument
+	Pattern    []MacroMatch
 	TokensSets []MacroTokenSet
 }

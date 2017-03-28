@@ -110,6 +110,7 @@ loop:
 
 	file.Comments = p.comments
 	file.NodeComments = p.nodeComments
+	file.Macros = p.macros
 
 	return
 }
@@ -160,6 +161,33 @@ func (p *Parser) parseMacro() (node *ast.Macro, ok bool) {
 	return
 }
 
+func (p *Parser) parseMacroMatchArgument() (macroMatchArgument *ast.MacroMatchArgument, ok bool) {
+	keyToken, ok := p.expectToken(scanner.TokenTypeMacroIdent)
+	if !ok {
+		p.unread()
+		return
+	}
+
+	colonToken, colonOk := p.expectToken(scanner.TokenTypeCOLON)
+	if !colonOk {
+		p.error(unexpectedToken(colonToken, scanner.TokenTypeCOLON))
+		return
+	}
+
+	typeToken, typeOk := p.expectToken(scanner.TokenTypeIdent)
+	if !typeOk {
+		p.error(unexpected(typeToken.StringValue(), "pattern key type"))
+		return
+	}
+
+	macroMatchArgument = &ast.MacroMatchArgument{
+		Name: keyToken.Text,
+		Type: typeToken.Text,
+	}
+
+	return
+}
+
 func (p *Parser) parseMacroPattern() (macroPattern *ast.MacroPattern, ok bool) {
 	_, ok = p.expectToken(scanner.TokenTypeLPAREN)
 	if !ok {
@@ -169,37 +197,31 @@ func (p *Parser) parseMacroPattern() (macroPattern *ast.MacroPattern, ok bool) {
 
 	macroPattern = &ast.MacroPattern{}
 
+	parenCount := 1
+
+patternLoop:
 	for {
-		keyToken, keyOk := p.expectToken(scanner.TokenTypeMacroIdent)
-		if !keyOk {
-			p.error(unexpected(keyToken.StringValue(), "pattern key"))
-			return
+		var mma ast.MacroMatch
+		var pOk bool
+		if mma, pOk = p.parseMacroMatchArgument(); !pOk {
+			token := p.read()
+			switch token.Type {
+			case scanner.TokenTypeLPAREN:
+				parenCount++
+			case scanner.TokenTypeRPAREN:
+				parenCount--
+				if parenCount == 0 {
+					p.unread()
+					break patternLoop
+				}
+			case scanner.TokenTypeEOF:
+				p.error("Expected token but got eof")
+				return
+			}
+			mma = &ast.MacroMatchToken{Token: token}
 		}
 
-		colonToken, colonOk := p.expectToken(scanner.TokenTypeCOLON)
-		if !colonOk {
-			p.error(unexpectedToken(colonToken, scanner.TokenTypeCOLON))
-			return
-		}
-
-		typeToken, typeOk := p.expectToken(scanner.TokenTypeIdent)
-		if !typeOk {
-			p.error(unexpected(typeToken.StringValue(), "pattern key type"))
-			return
-		}
-
-		// TODO check type is one of the allowed
-
-		macroPattern.Pattern = append(macroPattern.Pattern, &ast.MacroArgument{
-			Name: keyToken.Text,
-			Type: typeToken.Text,
-		})
-
-		_, commaOk := p.expectToken(scanner.TokenTypeCOMMA)
-		if !commaOk {
-			p.unread()
-			break
-		}
+		macroPattern.Pattern = append(macroPattern.Pattern, mma)
 	}
 
 	rparen, rparenOk := p.expectToken(scanner.TokenTypeRPAREN)
@@ -223,7 +245,7 @@ func (p *Parser) parseMacroPattern() (macroPattern *ast.MacroPattern, ok bool) {
 
 	tokens := []scanner.Token{}
 
-	parenCount := 1
+	parenCount = 1
 
 loop:
 	for {
@@ -742,21 +764,51 @@ func (p *Parser) parseMacroCall(nameToken scanner.Token) (matchingPattern *ast.M
 	}
 
 	values := []interface{}{}
+	check := func(value interface{}, vOk bool) bool {
+		if vOk {
+			values = append(values, value)
+		}
+		return vOk
+	}
 
+	checkPatterns := func(t string) bool {
+		indx := len(values)
+		for _, pattern := range macro.Patterns {
+			if len(pattern.Pattern) > indx {
+				if m, ok := pattern.Pattern[indx].(*ast.MacroMatchArgument); ok {
+					if m.Type == t {
+						return true
+					}
+				}
+			}
+		}
+		return false
+	}
+
+	parenCount := 1
+loop:
 	for {
-		// TODO move blocks to be expressions
-		var node ast.Node
-		node, statementOk := p.parseBlock()
-		if !statementOk {
-			node, statementOk = p.parseStatementOrExpression(true)
-		}
-		if statementOk {
-			values = append(values, node)
-		}
-		_, commaOk := p.expectToken(scanner.TokenTypeCOMMA)
-		if !commaOk {
-			p.unread()
-			break
+		// TODO convert to switch with check
+		switch {
+		case checkPatterns("block") && check(p.parseBlock()):
+		case (checkPatterns("expr") || checkPatterns("stmt")) && check(p.parseStatementOrExpression(false)):
+		default:
+			token := p.read()
+			switch token.Type {
+			case scanner.TokenTypeLPAREN:
+				parenCount++
+			case scanner.TokenTypeRPAREN:
+				parenCount--
+				if parenCount == 0 {
+					p.unread()
+					break loop
+				}
+			case scanner.TokenTypeEOF:
+				p.error("Expected token but got eof")
+				return
+			}
+
+			values = append(values, token)
 		}
 	}
 
@@ -766,26 +818,35 @@ func (p *Parser) parseMacroCall(nameToken scanner.Token) (matchingPattern *ast.M
 		return
 	}
 
-patternLoop:
+patternCheckLoop:
 	for _, pattern := range macro.Patterns {
 		if len(pattern.Pattern) != len(values) {
 			continue
 		}
 
-		for i, arg := range pattern.Pattern {
+		for i, m := range pattern.Pattern {
 			node := values[i]
 			var castOk bool
-			switch arg.Type {
-			case "block":
-				_, castOk = node.(*ast.Block)
-			case "expr":
-				_, castOk = node.(ast.Expression)
-			case "stmt":
-				_, castOk = node.(ast.Statement)
+			switch m := m.(type) {
+			case *ast.MacroMatchToken:
+				var t scanner.Token
+				if t, castOk = node.(scanner.Token); castOk {
+					// TODO Find a better way to compare tokens
+					castOk = m.Token.StringValue() == t.StringValue()
+				}
+			case *ast.MacroMatchArgument:
+				switch m.Type {
+				case "block":
+					_, castOk = node.(*ast.Block)
+				case "expr":
+					_, castOk = node.(ast.Expression)
+				case "stmt":
+					_, castOk = node.(ast.Statement)
+				}
 			}
 
 			if !castOk {
-				continue patternLoop
+				continue patternCheckLoop
 			}
 		}
 

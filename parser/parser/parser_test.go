@@ -792,11 +792,15 @@ func TestMacro(t *testing.T) {
 		macro fooMacro {
 			($a:block): (if true $a)
 			($a:expr, $b:expr) : ($a + $b)
-			($a:expr) : (fooMacro!($a, 1))
+			($a:expr {} $b:expr) : ($a - $b)
+			($a:expr { $b:expr }) : ($a * $b)
+			($a:expr {}) : (fooMacro!($a, 1))
 		}
 		fn main() {
 			var foo = fooMacro!(1,2)
-			var bar = fooMacro!(1)
+			var bar = fooMacro!(1 {} )
+			var bar = fooMacro!(1 {} 2)
+			var bar = fooMacro!(1 { 2 })
 			fooMacro!({
 
 			})
@@ -809,19 +813,19 @@ func TestMacro(t *testing.T) {
 	macro := file.Body[0].(*ast.Macro)
 	pattern := macro.Patterns[1]
 
-	if pattern.Pattern[0].Name != "$a" {
+	if pattern.Pattern[0].(*ast.MacroMatchArgument).Name != "$a" {
 		t.Error("Wrong pattern key name")
 	}
 
-	if pattern.Pattern[0].Type != "expr" {
+	if pattern.Pattern[0].(*ast.MacroMatchArgument).Type != "expr" {
 		t.Error("Wrong pattern key type")
 	}
 
-	if pattern.Pattern[1].Name != "$b" {
+	if pattern.Pattern[2].(*ast.MacroMatchArgument).Name != "$b" {
 		t.Error("Wrong pattern key name")
 	}
 
-	if pattern.Pattern[1].Type != "expr" {
+	if pattern.Pattern[2].(*ast.MacroMatchArgument).Type != "expr" {
 		t.Error("Wrong pattern key type")
 	}
 
@@ -860,6 +864,31 @@ func TestMacro(t *testing.T) {
 		t.Error("Wrong value")
 	}
 
+	binaryExpr = file.Body[1].(*ast.FunctionDeclaration).Block.Body[2].(*ast.VariableDeclaration).DefaultValue.(*ast.BinaryExpression)
+	if binaryExpr.Left.(*ast.ValueExpression).Value != int64(1) {
+		t.Error("Wrong value")
+	}
+
+	if binaryExpr.Right.(*ast.ValueExpression).Value != int64(2) {
+		t.Error("Wrong value")
+	}
+
+	if binaryExpr.Operator.Type != scanner.TokenTypeSUB {
+		t.Error("Wrong operator")
+	}
+
+	binaryExpr = file.Body[1].(*ast.FunctionDeclaration).Block.Body[3].(*ast.VariableDeclaration).DefaultValue.(*ast.BinaryExpression)
+	if binaryExpr.Left.(*ast.ValueExpression).Value != int64(1) {
+		t.Error("Wrong value")
+	}
+
+	if binaryExpr.Right.(*ast.ValueExpression).Value != int64(2) {
+		t.Error("Wrong value")
+	}
+
+	if binaryExpr.Operator.Type != scanner.TokenTypeASTERIX {
+		t.Error("Wrong operator")
+	}
 }
 
 func TestParseFailures(t *testing.T) {
