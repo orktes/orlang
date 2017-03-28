@@ -798,8 +798,8 @@ func TestMacro(t *testing.T) {
 		}
 		fn main() {
 			var foo = fooMacro!(1,2)
-			var bar = fooMacro!(1 {} )
-			var bar = fooMacro!(1 {} 2)
+			var bar = fooMacro![1 {} ]
+			var bar = fooMacro!{1 {} 2}
 			var bar = fooMacro!(1 { 2 })
 			fooMacro!({
 

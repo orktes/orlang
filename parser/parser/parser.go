@@ -757,12 +757,21 @@ func (p *Parser) parseMacroCall(nameToken scanner.Token) (matchingPattern *ast.M
 		return
 	}
 
-	lparen, lparenOk := p.expectToken(scanner.TokenTypeLPAREN)
+	lparen, lparenOk := p.expectToken(
+		scanner.TokenTypeLPAREN,
+		scanner.TokenTypeLBRACE,
+		scanner.TokenTypeLBRACK,
+	)
 	if !lparenOk {
-		p.error(unexpectedToken(lparen, scanner.TokenTypeLPAREN))
+		p.error(unexpectedToken(lparen,
+			scanner.TokenTypeLPAREN,
+			scanner.TokenTypeLBRACE,
+			scanner.TokenTypeLBRACK,
+		))
 		return
 	}
 
+	closingTokenType := getClosingTokenType(lparen)
 	values := []interface{}{}
 	check := func(value interface{}, vOk bool) bool {
 		if vOk {
@@ -794,9 +803,9 @@ loop:
 		default:
 			token := p.read()
 			switch token.Type {
-			case scanner.TokenTypeLPAREN:
+			case lparen.Type:
 				parenCount++
-			case scanner.TokenTypeRPAREN:
+			case closingTokenType:
 				parenCount--
 				if parenCount == 0 {
 					p.unread()
@@ -811,9 +820,9 @@ loop:
 		}
 	}
 
-	rparen, rparenOk := p.expectToken(scanner.TokenTypeRPAREN)
+	rparen, rparenOk := p.expectToken(closingTokenType)
 	if !rparenOk {
-		p.error(unexpectedToken(rparen, scanner.TokenTypeRPAREN))
+		p.error(unexpectedToken(rparen, closingTokenType))
 		return
 	}
 
