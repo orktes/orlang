@@ -856,14 +856,14 @@ func TestParseFailures(t *testing.T) {
 		{"var (", "1:6: Expected [IDENT RPAREN] got EOF"},
 		// For loops
 		{"fn foobar() { for var i = 0; i; [] }", "1:33: Expected code block got LBRACK([)"},
-		//{"fn foobar() { for var i = 0; {}}", "1:30: Expected expression got LBRACE({)"},
+		{"fn foobar() { for var i = 0; {}}", "1:30: Expected expression got LBRACE({)"},
 		{"fn foobar() { for var i = 0; true {}}", "1:35: Expected ; got LBRACE({)"},
 		{"fn foobar() { for }", "1:19: Expected statement, ; or code block got RBRACE(})"},
 		{"fn foobar() { for true true {} }", "1:24: Expected ; or code block got BOOL(true)"},
 		{"fn foobar() { foo = , }", "1:21: Expected expression got COMMA(,)"},
 		// If statemts
 		{"fn foobar() {  if }", "1:19: Expected expression got RBRACE(})"},
-		//{"fn foobar() {  if 1 < {} }", "1:23: Expected expression got LBRACE({)"},
+		{"fn foobar() {  if 1 < {} }", "1:23: Expected expression got LBRACE({)"},
 		{"fn foobar() {  if 1 ! {} }", "1:21: Expected code block got EXCLAMATION(!)"},
 		{"fn foobar() {  if true foo }", "1:24: Expected code block got IDENT(foo)"},
 		{"fn foobar() {  if true {} else f", "1:32: Expected if statement or code block got IDENT(f)"},
