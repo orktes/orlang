@@ -755,15 +755,36 @@ func TestExternDefinition(t *testing.T) {
 	}
 }
 
+func TestBlockInMacro(t *testing.T) {
+	_, err := Parse(strings.NewReader(`
+		macro ifMacro {
+		  ($a:expr, $b:block) : (if $a $b)
+		}
+		fn main() {
+			ifMacro!(true, {
+
+			})
+		}
+	`))
+
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 func TestMacro(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
 		macro fooMacro {
+			($a:block): (if true $a)
 			($a:expr, $b:expr) : ($a + $b)
 			($a:expr) : (fooMacro!($a, 1))
 		}
 		fn main() {
 			var foo = fooMacro!(1,2)
 			var bar = fooMacro!(1)
+			fooMacro!({
+
+			})
 		}
 	`))
 	if err != nil {
@@ -771,7 +792,7 @@ func TestMacro(t *testing.T) {
 	}
 
 	macro := file.Body[0].(*ast.Macro)
-	pattern := macro.Patterns[0]
+	pattern := macro.Patterns[1]
 
 	if pattern.Pattern[0].Name != "$a" {
 		t.Error("Wrong pattern key name")

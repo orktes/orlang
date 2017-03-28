@@ -295,6 +295,16 @@ func (p *Parser) eof() (ok bool) {
 	return
 }
 
+func (p *Parser) parseMacroSubstitutionBlock() (block *ast.Block, ok bool) {
+	node, ok := p.parseMacroSubstitution()
+	if ok {
+		if block, ok = node.(*ast.Block); !ok {
+			p.unread()
+		}
+	}
+	return
+}
+
 func (p *Parser) parseMacroSubstitutionExpression() (expr ast.Expression, ok bool) {
 	node, ok := p.parseMacroSubstitution()
 	if ok {
@@ -497,6 +507,10 @@ func (p *Parser) parseStatementOrExpression(block bool) (node ast.Node, ok bool)
 }
 
 func (p *Parser) parseBlock() (node *ast.Block, ok bool) {
+	if node, ok = p.parseMacroSubstitutionBlock(); ok {
+		return
+	}
+
 	if _, lok := p.expectToken(scanner.TokenTypeLBRACE); !lok {
 		p.unread()
 		return
@@ -730,7 +744,12 @@ func (p *Parser) parseMacroCall(nameToken scanner.Token) (matchingPattern *ast.M
 	values := []interface{}{}
 
 	for {
-		node, statementOk := p.parseStatementOrExpression(true)
+		// TODO move blocks to be expressions
+		var node ast.Node
+		node, statementOk := p.parseBlock()
+		if !statementOk {
+			node, statementOk = p.parseStatementOrExpression(true)
+		}
 		if statementOk {
 			values = append(values, node)
 		}
@@ -757,6 +776,8 @@ patternLoop:
 			node := values[i]
 			var castOk bool
 			switch arg.Type {
+			case "block":
+				_, castOk = node.(*ast.Block)
 			case "expr":
 				_, castOk = node.(ast.Expression)
 			case "stmt":
