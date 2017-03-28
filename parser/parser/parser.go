@@ -189,12 +189,17 @@ func (p *Parser) parseMacroMatchArgument() (macroMatchArgument *ast.MacroMatchAr
 }
 
 func (p *Parser) parseMacroPattern() (macroPattern *ast.MacroPattern, ok bool) {
-	_, ok = p.expectToken(scanner.TokenTypeLPAREN)
+	lparen, ok := p.expectToken(
+		scanner.TokenTypeLPAREN,
+		scanner.TokenTypeLBRACE,
+		scanner.TokenTypeLBRACK,
+	)
 	if !ok {
 		p.unread()
 		return
 	}
 
+	closingParenType := getClosingTokenType(lparen)
 	macroPattern = &ast.MacroPattern{}
 
 	parenCount := 1
@@ -206,9 +211,9 @@ patternLoop:
 		if mma, pOk = p.parseMacroMatchArgument(); !pOk {
 			token := p.read()
 			switch token.Type {
-			case scanner.TokenTypeLPAREN:
+			case lparen.Type:
 				parenCount++
-			case scanner.TokenTypeRPAREN:
+			case closingParenType:
 				parenCount--
 				if parenCount == 0 {
 					p.unread()
@@ -224,9 +229,9 @@ patternLoop:
 		macroPattern.Pattern = append(macroPattern.Pattern, mma)
 	}
 
-	rparen, rparenOk := p.expectToken(scanner.TokenTypeRPAREN)
+	rparen, rparenOk := p.expectToken(closingParenType)
 	if !rparenOk {
-		p.error(unexpectedToken(rparen, scanner.TokenTypeRPAREN))
+		p.error(unexpectedToken(rparen, closingParenType))
 		return
 	}
 
