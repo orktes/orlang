@@ -1,13 +1,16 @@
 // This is to test orlang lint
 
 macro fooMacro {
-  ($a:expr, $b:expr) : ($a + $b)
+  ($a:expr, $b:expr) : (
+    if $a == $b {
+
+    }
+  )
   ($a:stmt) : (
     $a
   )
 }
 
 fn main() {
-  var foo = fooMacro!(1,2)
-  fooMacro!(var bliz : int)
+  var foo = fooMacro!(1, 2)
 }
