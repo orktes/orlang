@@ -795,12 +795,14 @@ func TestMacro(t *testing.T) {
 			($a:expr {} $b:expr) : ($a - $b)
 			($a:expr { $b:expr }) : ($a * $b)
 			($a:expr {}) : (fooMacro!($a, 1))
+			() : (1)
 		}
 		fn main() {
 			var foo = fooMacro!(1,2)
 			var bar = fooMacro![1 {} ]
 			var bar = fooMacro!{1 {} 2}
 			var bar = fooMacro!(1 { 2 })
+			var bar = fooMacro!
 			fooMacro!({
 
 			})
@@ -889,6 +891,11 @@ func TestMacro(t *testing.T) {
 	if binaryExpr.Operator.Type != scanner.TokenTypeASTERIX {
 		t.Error("Wrong operator")
 	}
+
+	if file.Body[1].(*ast.FunctionDeclaration).Block.Body[4].(*ast.VariableDeclaration).DefaultValue.(*ast.ValueExpression).Value != int64(1) {
+		t.Error("Wrong value")
+	}
+
 }
 
 func TestParseFailures(t *testing.T) {

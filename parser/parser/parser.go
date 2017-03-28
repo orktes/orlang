@@ -765,6 +765,9 @@ func (p *Parser) parseMemberExpression(target ast.Expression) (node *ast.MemberE
 func (p *Parser) parseMacroCall(nameToken scanner.Token) (matchingPattern *ast.MacroPattern, ok bool) {
 	macroName := nameToken.Value.(string)
 	macro, macroOk := p.macros[macroName]
+	values := []interface{}{}
+	endToken := nameToken
+
 	if !macroOk {
 		p.error(fmt.Sprintf("No macro with name %s", macroName))
 		return
@@ -775,68 +778,66 @@ func (p *Parser) parseMacroCall(nameToken scanner.Token) (matchingPattern *ast.M
 		scanner.TokenTypeLBRACE,
 		scanner.TokenTypeLBRACK,
 	)
+
 	if !lparenOk {
-		p.error(unexpectedToken(lparen,
-			scanner.TokenTypeLPAREN,
-			scanner.TokenTypeLBRACE,
-			scanner.TokenTypeLBRACK,
-		))
-		return
+		p.unread()
+		goto patternCheckLoop
 	}
 
-	closingTokenType := getClosingTokenType(lparen)
-	values := []interface{}{}
-	check := func(value interface{}, vOk bool) bool {
-		if vOk {
-			values = append(values, value)
+	{
+		closingTokenType := getClosingTokenType(lparen)
+		check := func(value interface{}, vOk bool) bool {
+			if vOk {
+				values = append(values, value)
+			}
+			return vOk
 		}
-		return vOk
-	}
 
-	checkPatterns := func(t string) bool {
-		indx := len(values)
-		for _, pattern := range macro.Patterns {
-			if len(pattern.Pattern) > indx {
-				if m, ok := pattern.Pattern[indx].(*ast.MacroMatchArgument); ok {
-					if m.Type == t {
-						return true
+		checkPatterns := func(t string) bool {
+			indx := len(values)
+			for _, pattern := range macro.Patterns {
+				if len(pattern.Pattern) > indx {
+					if m, ok := pattern.Pattern[indx].(*ast.MacroMatchArgument); ok {
+						if m.Type == t {
+							return true
+						}
 					}
 				}
 			}
+			return false
 		}
-		return false
-	}
 
-	parenCount := 1
-loop:
-	for {
-		switch {
-		case checkPatterns("block") && check(p.parseBlock()):
-		case (checkPatterns("expr") || checkPatterns("stmt")) && check(p.parseStatementOrExpression(false)):
-		default:
-			token := p.read()
-			switch token.Type {
-			case lparen.Type:
-				parenCount++
-			case closingTokenType:
-				parenCount--
-				if parenCount == 0 {
-					p.unread()
-					break loop
+		parenCount := 1
+	loop:
+		for {
+			switch {
+			case checkPatterns("block") && check(p.parseBlock()):
+			case (checkPatterns("expr") || checkPatterns("stmt")) && check(p.parseStatementOrExpression(false)):
+			default:
+				token := p.read()
+				switch token.Type {
+				case lparen.Type:
+					parenCount++
+				case closingTokenType:
+					parenCount--
+					if parenCount == 0 {
+						p.unread()
+						break loop
+					}
+				case scanner.TokenTypeEOF:
+					p.error("Expected token but got eof")
+					return
 				}
-			case scanner.TokenTypeEOF:
-				p.error("Expected token but got eof")
-				return
+
+				values = append(values, token)
 			}
-
-			values = append(values, token)
 		}
-	}
 
-	rparen, rparenOk := p.expectToken(closingTokenType)
-	if !rparenOk {
-		p.error(unexpectedToken(rparen, closingTokenType))
-		return
+		endToken, rparenOk := p.expectToken(closingTokenType)
+		if !rparenOk {
+			p.error(unexpectedToken(endToken, closingTokenType))
+			return
+		}
 	}
 
 patternCheckLoop:
@@ -890,8 +891,8 @@ patternCheckLoop:
 		t.StartLine = nameToken.StartLine
 		t.StartColumn = nameToken.StartColumn
 
-		t.EndLine = rparen.EndLine
-		t.EndColumn = rparen.EndColumn
+		t.EndLine = endToken.EndLine
+		t.EndColumn = endToken.EndColumn
 
 		buf[i] = t
 	}
