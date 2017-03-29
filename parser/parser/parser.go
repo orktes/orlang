@@ -1,7 +1,6 @@
 package parser
 
 import (
-	"fmt"
 	"io"
 
 	"github.com/orktes/orlang/parser/ast"
@@ -155,52 +154,6 @@ func (p *Parser) eof() (ok bool) {
 	if _, ok = p.expectToken(scanner.TokenTypeEOF); !ok {
 		p.unread()
 	}
-	return
-}
-
-func (p *Parser) parseMacroSubstitutionBlock() (block *ast.Block, ok bool) {
-	node, ok := p.parseMacroSubstitution()
-	if ok {
-		if block, ok = node.(*ast.Block); !ok {
-			p.unread()
-		}
-	}
-	return
-}
-
-func (p *Parser) parseMacroSubstitutionExpression() (expr ast.Expression, ok bool) {
-	node, ok := p.parseMacroSubstitution()
-	if ok {
-		if expr, ok = node.(ast.Expression); !ok {
-			p.unread()
-		}
-	}
-	return
-}
-
-func (p *Parser) parseMacroSubstitutionStatement() (stmt ast.Statement, ok bool) {
-	node, ok := p.parseMacroSubstitution()
-	if ok {
-		if stmt, ok = node.(ast.Statement); !ok {
-			p.unread()
-		}
-	}
-	return
-}
-
-func (p *Parser) parseMacroSubstitution() (substitution interface{}, ok bool) {
-	token, ok := p.expectToken(scanner.TokenTypeMacroIdent)
-	if !ok {
-		p.unread()
-		return
-	}
-
-	if token.Value != nil {
-		return token.Value, true
-	}
-
-	p.error(fmt.Sprintf("Could not find matching node for %s", token.Text))
-
 	return
 }
 

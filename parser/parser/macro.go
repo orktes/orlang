@@ -296,7 +296,8 @@ func (p *Parser) parseMacroCall(nameToken scanner.Token) (matchingPattern *ast.M
 		for {
 			switch {
 			case checkPatterns("block") && check(p.parseBlock()):
-			case (checkPatterns("expr") || checkPatterns("stmt")) && check(p.parseStatementOrExpression(false)):
+			case checkPatterns("expr") && check(p.parseExpression()):
+			case checkPatterns("stmt") && check(p.parseStatement(false)):
 			default:
 				token := p.read()
 				switch token.Type {
@@ -383,6 +384,52 @@ patternCheckLoop:
 
 	p.returnToBuffer(buf)
 	ok = true
+
+	return
+}
+
+func (p *Parser) parseMacroSubstitutionBlock() (block *ast.Block, ok bool) {
+	node, ok := p.parseMacroSubstitution()
+	if ok {
+		if block, ok = node.(*ast.Block); !ok {
+			p.unread()
+		}
+	}
+	return
+}
+
+func (p *Parser) parseMacroSubstitutionExpression() (expr ast.Expression, ok bool) {
+	node, ok := p.parseMacroSubstitution()
+	if ok {
+		if expr, ok = node.(ast.Expression); !ok {
+			p.unread()
+		}
+	}
+	return
+}
+
+func (p *Parser) parseMacroSubstitutionStatement() (stmt ast.Statement, ok bool) {
+	node, ok := p.parseMacroSubstitution()
+	if ok {
+		if stmt, ok = node.(ast.Statement); !ok {
+			p.unread()
+		}
+	}
+	return
+}
+
+func (p *Parser) parseMacroSubstitution() (substitution interface{}, ok bool) {
+	token, ok := p.expectToken(scanner.TokenTypeMacroIdent)
+	if !ok {
+		p.unread()
+		return
+	}
+
+	if token.Value != nil {
+		return token.Value, true
+	}
+
+	p.error(fmt.Sprintf("Could not find matching node for %s", token.Text))
 
 	return
 }
