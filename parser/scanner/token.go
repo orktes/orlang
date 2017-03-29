@@ -62,6 +62,8 @@ const (
 	TokenTypeASTERIX
 	// TokenTypeAMPERSAND ampersan &
 	TokenTypeAMPERSAND
+	// TokenTypeDOLLAR ampersan $
+	TokenTypeDOLLAR
 	// TokenTypeHASHBANG hashbang #
 	TokenTypeHASHBANG
 	// TokenTypeEXCL exclamation mark
@@ -123,6 +125,7 @@ var tokenNames = [...]string{
 	TokenTypeSUB:        "SUB",
 	TokenTypeAMPERSAND:  "AMPERSAND",
 	TokenTypeASTERIX:    "ASTERIX",
+	TokenTypeDOLLAR:     "DOLLAR",
 	TokenTypeWhitespace: "WHITESPACE",
 	TokenTypeHASHBANG:   "HASHBANG",
 	TokenTypeEXCL:       "EXCLAMATION",

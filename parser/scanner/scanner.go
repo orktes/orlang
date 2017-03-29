@@ -81,9 +81,15 @@ func (s *Scanner) Scan() (token Token) {
 		}
 
 	case ch == '$':
-		t = TokenTypeMacroIdent
-		_, text, val = s.scanIdent()
-		text = "$" + text
+		t = TokenTypeDOLLAR
+		next := s.peek()
+		if isLetter(next) {
+			t = TokenTypeMacroIdent
+			_, text, val = s.scanIdent()
+			text = "$" + text
+		} else {
+			text = "$"
+		}
 
 	case isNumber(ch):
 		t, text, val = s.scanNumber(ch)

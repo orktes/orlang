@@ -787,6 +787,46 @@ func TestStatementInMacro(t *testing.T) {
 	}
 }
 
+func TestSimpleMacroRepetition(t *testing.T) {
+	t.Skip()
+	file, err := Parse(strings.NewReader(`
+		macro test {
+			($( $x:expr ),*): (
+				$(
+           $x
+        )*
+			)
+		}
+
+		fn main() {
+			test!(1, 2, 3, 4, 5)
+	  }
+  `))
+	if err != nil {
+		t.Error(err)
+	}
+
+	getValue := func(index int) int64 {
+		return file.Body[1].(*ast.FunctionDeclaration).Block.Body[index].(*ast.ValueExpression).Value.(int64)
+	}
+
+	if getValue(0) != int64(1) {
+		t.Error("Wrong value")
+	}
+	if getValue(1) != int64(2) {
+		t.Error("Wrong value")
+	}
+	if getValue(2) != int64(3) {
+		t.Error("Wrong value")
+	}
+	if getValue(3) != int64(4) {
+		t.Error("Wrong value")
+	}
+	if getValue(4) != int64(5) {
+		t.Error("Wrong value")
+	}
+}
+
 func TestMacro(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
 		macro fooMacro {

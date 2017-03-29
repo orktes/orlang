@@ -41,6 +41,14 @@ func (tss TokenSliceSet) GetTokens(pattern []MacroMatch, args []interface{}) (to
 	return tokens
 }
 
+type MacroRepetitionTokenSet struct {
+	Sets []MacroTokenSet
+}
+
+func (mrts MacroRepetitionTokenSet) GetTokens(pattern []MacroMatch, args []interface{}) (tokens []scanner.Token) {
+	return tokens
+}
+
 type MacroMatch interface {
 	macroMatch()
 }
@@ -51,6 +59,14 @@ type MacroMatchArgument struct {
 }
 
 func (_ *MacroMatchArgument) macroMatch() {}
+
+type MacroMatchRepetition struct {
+	Pattern   []MacroMatch
+	Operand   scanner.Token
+	Delimiter *scanner.Token
+}
+
+func (_ *MacroMatchRepetition) macroMatch() {}
 
 type MacroMatchToken struct {
 	Token scanner.Token
