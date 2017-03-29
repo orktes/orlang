@@ -58,8 +58,8 @@ const (
 	TokenTypeADD
 	// TokenTypeSUB subtraction/minux sign -
 	TokenTypeSUB
-	// TokenTypeASTERIX asterix/pointer/times
-	TokenTypeASTERIX
+	// TokenTypeASTERISK asterisk/pointer/times
+	TokenTypeASTERISK
 	// TokenTypeAMPERSAND ampersan &
 	TokenTypeAMPERSAND
 	// TokenTypeDOLLAR ampersan $
@@ -124,7 +124,7 @@ var tokenNames = [...]string{
 	TokenTypeADD:        "ADD",
 	TokenTypeSUB:        "SUB",
 	TokenTypeAMPERSAND:  "AMPERSAND",
-	TokenTypeASTERIX:    "ASTERIX",
+	TokenTypeASTERISK:   "ASTERISK",
 	TokenTypeDOLLAR:     "DOLLAR",
 	TokenTypeWhitespace: "WHITESPACE",
 	TokenTypeHASHBANG:   "HASHBANG",

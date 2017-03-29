@@ -107,7 +107,7 @@ var tests = []struct {
 			Token{Type: TokenTypeADD, StartColumn: 8, Text: `+`},
 			Token{Type: TokenTypeSUB, StartColumn: 9, Text: `-`},
 			Token{Type: TokenTypeASSIGN, StartColumn: 10, Text: `=`},
-			Token{Type: TokenTypeASTERIX, StartColumn: 11, Text: `*`},
+			Token{Type: TokenTypeASTERISK, StartColumn: 11, Text: `*`},
 			Token{Type: TokenTypeAMPERSAND, StartColumn: 12, Text: `&`},
 			Token{Type: TokenTypeLPAREN, StartColumn: 13, Text: `(`},
 			Token{Type: TokenTypeRPAREN, StartColumn: 14, Text: `)`},

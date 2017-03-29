@@ -928,7 +928,7 @@ func TestMacro(t *testing.T) {
 		t.Error("Wrong value")
 	}
 
-	if binaryExpr.Operator.Type != scanner.TokenTypeASTERIX {
+	if binaryExpr.Operator.Type != scanner.TokenTypeASTERISK {
 		t.Error("Wrong operator")
 	}
 

@@ -163,7 +163,7 @@ func (s *Scanner) Scan() (token Token) {
 		}
 
 	case ch == '*':
-		t = TokenTypeASTERIX
+		t = TokenTypeASTERISK
 		text = string(ch)
 
 	case ch == '&':

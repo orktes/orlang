@@ -701,7 +701,7 @@ func (p *Parser) parseBinaryExpression(left ast.Expression) (node *ast.BinaryExp
 	token, ok := p.expectToken(
 		scanner.TokenTypeADD,
 		scanner.TokenTypeSUB,
-		scanner.TokenTypeASTERIX,
+		scanner.TokenTypeASTERISK,
 		scanner.TokenTypeSLASH,
 	)
 
@@ -713,7 +713,7 @@ func (p *Parser) parseBinaryExpression(left ast.Expression) (node *ast.BinaryExp
 	var right ast.Expression
 	var exprOk bool
 	switch token.Type {
-	case scanner.TokenTypeASTERIX, scanner.TokenTypeSLASH:
+	case scanner.TokenTypeASTERISK, scanner.TokenTypeSLASH:
 		right, exprOk = p.parseUnaryExpression()
 	default:
 		right, exprOk = p.parseExpression()
