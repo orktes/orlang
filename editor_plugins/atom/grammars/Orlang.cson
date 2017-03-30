@@ -3,3 +3,5 @@
 'fileTypes': [
   'or',
 ]
+'foldingStartMarker': '({|\\()\\s*$'
+'foldingStopMarker': '(}|\\))\\s*$'
