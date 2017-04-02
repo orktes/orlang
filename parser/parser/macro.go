@@ -76,7 +76,7 @@ read:
 	case scanner.TokenTypeADD, scanner.TokenTypeASTERISK, scanner.TokenTypeQUESTIONMARK:
 		match.Operand = delimiterOrOperand
 	case scanner.TokenTypeEOF:
-		p.error(unexpected(p.read().StringValue(), "macro repetition delimeter or operand (+, * or ?)"))
+		p.error(unexpected(delimiterOrOperand.StringValue(), "macro repetition delimeter or operand (+, * or ?)"))
 		return
 	default:
 		// delimiter
@@ -201,6 +201,9 @@ loop:
 				}
 				continue loop
 			}
+		case scanner.TokenTypeEOF:
+			p.error("Expected token but got eof")
+			return
 		case lparen.Type:
 			parenCount++
 		case closingParenType:

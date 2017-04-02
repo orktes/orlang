@@ -86,8 +86,12 @@ loop:
 		case p.eof():
 			break loop
 		case check(p.parseMacro()):
-			macro := node.(*ast.Macro)
-			p.macros[macro.Name.Text] = macro
+			if node != nil {
+				macro, isMacro := node.(*ast.Macro)
+				if isMacro {
+					p.macros[macro.Name.Text] = macro
+				}
+			}
 		default:
 			token := p.read()
 			p.error(unexpectedToken(token))

@@ -1130,6 +1130,8 @@ func TestParseFailures(t *testing.T) {
 		// MacroSubstitutions inside normal code
 		{"fn foobar() {var foo = $f}", "1:24: Could not find matching node for $f"},
 		{"fn foobar() {$f}", "1:14: Could not find matching node for $f"},
+		// Macros
+		{"macro M { ($(foo),,*) : () }", "1:19: Macro repetition can only have one token as a delimiter"},
 	}
 	for _, test := range tests {
 		_, err := Parse(strings.NewReader(test.src))
