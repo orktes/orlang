@@ -878,72 +878,73 @@ func TestMacroBrainFuck(t *testing.T) {
 
 	file, err := Parse(strings.NewReader(`
 		macro bf {
-			(
-				$(
-					$( > )?
-					$( < )?
-					$( + )?
-					$( ++ )?
-					$( - )?
-					$( -- )?
-					$( . )?
-					$( , )?
-					$( [ )?
-				)*
-			): (
-				fn (input: []char) {
-					var data : []char; // TODO initialize
-					var dataPointer : int = 0
-					var i : int = 0;
-					$(
-						$(
-		           dataPointer++
+		  (
+		    $(
+		      $( > )?
+		      $( < )?
+		      $( + )?
+		      $( ++ )?
+		      $( - )?
+		      $( -- )?
+		      $( . )?
+		      $( , )?
+		      $( [ )?
+		    )*
+		  ): (
+		    fn (input: []char) {
+		      var data : []char; // TODO initialize
+		      var dataPointer : int = 0
+		      var i : int = 0;
+		      $(
+		        $(
+		          dataPointer++
 		        )*
-						$(
-		           dataPointer--
+		        $(
+		          dataPointer--
 		        )*
-						$(
-		           data[dataPointer] = data[dataPointer] + 1
+		        $(
+		          data[dataPointer] = data[dataPointer] + 1
 		        )*
-						$(
-		           data[dataPointer] = data[dataPointer] + 2
+		        $(
+		          data[dataPointer] = data[dataPointer] + 2
 		        )*
-						$(
-		           data[dataPointer] = data[dataPointer] - 1
+		        $(
+		          data[dataPointer] = data[dataPointer] - 1
 		        )*
-						$(
-		           data[dataPointer] = data[dataPointer] - 2
+		        $(
+		          data[dataPointer] = data[dataPointer] - 2
 		        )*
-						$(
+		        $(
 		          putchar(data[dataPointer])
 		        )*
-						$(
+		        $(
 		          data[dataPointer] = getchar()
 		        )*
-						$(
-							// Just continue
-						)
-						$(
-							loop = 1;
-	            for loop > 0 {
-                var current_char = input[--i];
-                if (current_char == '[') {
-                    loop--;
-                } else if (current_char == ']') {
-                    loop++;
-                }
-	            }
+		        $(
+		          // Just continue
+		        )
+		        $(
+		          loop = 1;
+		          for loop > 0 {
+		            var current_char = input[--i];
+		            if (current_char == '[') {
+		              loop--;
+		            } else if (current_char == ']') {
+		              loop++;
+		            }
+		          }
 		        )*
-					)*
-				}
-			)
+		      )*
+		    }
+		  )
 		}
 
 		fn main() {
-			bf!(
-				,[.[-],]
-			)(input: input) // TODO array input
-	  }
+		  bf!(
+		    ,[.[-],]
+		  )(input: input) // TODO array input
+		}
+
   `))
 	if err != nil {
 		t.Error(err)

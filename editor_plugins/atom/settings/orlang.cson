@@ -1,4 +1,12 @@
 '.source.orlang':
   'editor':
-    'increaseIndentPattern': '^.*(\\{[^}]*|\\[[^\\]]*)$'
-    'decreaseIndentPattern': '^\\s*[}\\]],?\\s*$'
+    'commentStart': '// '
+    'increaseIndentPattern': '(?x)
+       ^ .* \\{ [^}"\']* $
+      |^ .* \\( [^\\)"\']* $
+      |^ \\s* \\{ \\} $
+      '
+    'decreaseIndentPattern': '(?x)
+       ^ \\s* (\\s* /[*] .* [*]/ \\s*)* \\}
+      |^ \\s* (\\s* /[*] .* [*]/ \\s*)* \\)
+      '
