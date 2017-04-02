@@ -108,6 +108,10 @@ func TestMacroMatcherWithAtMostOnceRepetition(t *testing.T) {
     ($($foo:expr)? foo) : ()
   `)
 
+	if !matcher.acceptsType("token") {
+		t.Error("Should accept token")
+	}
+
 	if !matcher.acceptsType("expr") {
 		t.Error("Should accept expr")
 	}
