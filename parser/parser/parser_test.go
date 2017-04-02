@@ -837,22 +837,22 @@ func TestSimpleMacroRepetition(t *testing.T) {
 func TestMultipleMacroRepetition(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
 		macro test {
-			(
-				$( foo ),*
-				$( bar ),*
-			): (
-				$(
-           1
-        )*
-				$(
-           2
-        )*
-			)
+		  (
+		    $( foo ),*
+		    $( bar ),*
+		  ): (
+		    $(
+		       1
+		    )*
+		    $(
+		       2
+		    )*
+		  )
 		}
 
 		fn main() {
-			test!(foo, foo, bar)
-	  }
+		  test!(foo, foo, bar)
+		}
   `))
 	if err != nil {
 		t.Error(err)
