@@ -68,6 +68,8 @@ const (
 	TokenTypeHASHBANG
 	// TokenTypeEXCL exclamation mark
 	TokenTypeEXCL
+	// TokenTypeQUESTIONMARK ?
+	TokenTypeQUESTIONMARK
 	// TokenTypeSLASH slash
 	TokenTypeSLASH
 	// TokenTypeBACKSLASH backslash
@@ -120,15 +122,16 @@ var tokenNames = [...]string{
 	TokenTypeCOLON:     "COLON",
 	TokenTypeSEMICOLON: "SEMICOLON",
 
-	TokenTypeASSIGN:     "ASSIGN",
-	TokenTypeADD:        "ADD",
-	TokenTypeSUB:        "SUB",
-	TokenTypeAMPERSAND:  "AMPERSAND",
-	TokenTypeASTERISK:   "ASTERISK",
-	TokenTypeDOLLAR:     "DOLLAR",
-	TokenTypeWhitespace: "WHITESPACE",
-	TokenTypeHASHBANG:   "HASHBANG",
-	TokenTypeEXCL:       "EXCLAMATION",
+	TokenTypeASSIGN:       "ASSIGN",
+	TokenTypeADD:          "ADD",
+	TokenTypeSUB:          "SUB",
+	TokenTypeAMPERSAND:    "AMPERSAND",
+	TokenTypeASTERISK:     "ASTERISK",
+	TokenTypeDOLLAR:       "DOLLAR",
+	TokenTypeWhitespace:   "WHITESPACE",
+	TokenTypeHASHBANG:     "HASHBANG",
+	TokenTypeEXCL:         "EXCLAMATION",
+	TokenTypeQUESTIONMARK: "QUESTIONMARK",
 
 	TokenTypeSLASH:     "SLASH",
 	TokenTypeBACKSLASH: "BACKSLASH",

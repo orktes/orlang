@@ -138,6 +138,13 @@ feed:
 
 		accepts = subProcessor.feed(val)
 		if accepts {
+			if mmr, ok := mm.(*ast.MacroMatchRepetition); ok {
+				// Should be iterated at most once
+				if mmr.Operand.Type == scanner.TokenTypeQUESTIONMARK {
+					goto cursorStep
+				}
+			}
+
 			goto result
 		} else {
 			subProcessor.noMatch = noMatchState
@@ -186,6 +193,7 @@ feed:
 		}
 	}
 
+cursorStep:
 	if accepts {
 		mp.delimiterSet = false
 		mp.currentPos++

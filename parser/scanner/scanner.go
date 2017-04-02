@@ -218,6 +218,10 @@ func (s *Scanner) Scan() (token Token) {
 		t = TokenTypeHASHBANG
 		text = string(ch)
 
+	case ch == '?':
+		t = TokenTypeQUESTIONMARK
+		text = string(ch)
+
 	case ch == '!':
 		t = TokenTypeEXCL
 		text = string(ch)

@@ -102,3 +102,32 @@ func TestMacroMatcherWithRepetitionWithDelimiter(t *testing.T) {
 		t.Error("Should have accepted a expr")
 	}
 }
+
+func TestMacroMatcherWithAtMostOnceRepetition(t *testing.T) {
+	matcher := testCreateMacroMatcher(`
+    ($($foo:expr)? foo) : ()
+  `)
+
+	if !matcher.acceptsType("expr") {
+		t.Error("Should accept expr")
+	}
+
+	matcher.feed(&ast.ValueExpression{})
+	if matcher.acceptsType("expr") {
+		t.Error("Should not accept another one")
+	}
+
+	if !matcher.acceptsType("token") {
+		t.Error("Should accept token")
+	}
+
+	matcher.feed(scanner.Token{
+		Type:  scanner.TokenTypeIdent,
+		Text:  "foo",
+		Value: "foo",
+	})
+
+	if matcher.match() == nil {
+		t.Error("Match should be found")
+	}
+}

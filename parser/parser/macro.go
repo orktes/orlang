@@ -73,10 +73,10 @@ func (p *Parser) parseMacroMatchRepetition() (match *ast.MacroMatchRepetition, o
 read:
 	delimiterOrOperand := p.readToken(false)
 	switch delimiterOrOperand.Type {
-	case scanner.TokenTypeADD, scanner.TokenTypeASTERISK:
+	case scanner.TokenTypeADD, scanner.TokenTypeASTERISK, scanner.TokenTypeQUESTIONMARK:
 		match.Operand = delimiterOrOperand
 	case scanner.TokenTypeEOF:
-		p.error(unexpected(p.read().StringValue(), "macro repetition delimeter or operand"))
+		p.error(unexpected(p.read().StringValue(), "macro repetition delimeter or operand (+, * or ?)"))
 		return
 	default:
 		// delimiter
