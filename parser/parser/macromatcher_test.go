@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/orktes/orlang/parser/ast"
+	"github.com/orktes/orlang/parser/scanner"
 )
 
 func testCreateMacroMatcher(str string) *macroMatcher {
@@ -81,5 +82,23 @@ func TestMacroMatcherWithMultiplePatterns(t *testing.T) {
 
 	if matcher.match() == nil {
 		t.Error("First pattern should match empty")
+	}
+}
+
+func TestMacroMatcherWithRepetitionWithDelimiter(t *testing.T) {
+	matcher := testCreateMacroMatcher(`
+    ($($foo:expr),*) : ()
+  `)
+
+	if !matcher.acceptsType("expr") {
+		t.Error("Should accept expr")
+	}
+	matcher.feed(&ast.ValueExpression{})
+	if matcher.acceptsType("expr") {
+		t.Error("Should wait for delimiter ,")
+	}
+	matcher.feed(scanner.Token{Type: scanner.TokenTypeCOMMA, Text: ","})
+	if !matcher.acceptsType("expr") {
+		t.Error("Should have accepted a expr")
 	}
 }

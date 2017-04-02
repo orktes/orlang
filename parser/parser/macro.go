@@ -189,11 +189,16 @@ loop:
 		t := p.readToken(false)
 		switch t.Type {
 		case scanner.TokenTypeDOLLAR:
-			subset, ok := p.parseMacroTokenSets()
-			if ok {
+			subset, mtsOk := p.parseMacroTokenSets()
+			if mtsOk {
 				set = append(set, ast.MacroTokenSliceSet(tokens))
 				set = append(set, ast.MacroRepetitionTokenSet{Sets: subset})
 				tokens = []scanner.Token{}
+				asterisk, asteriskOk := p.expectToken(scanner.TokenTypeASTERISK)
+				if !asteriskOk {
+					p.error(unexpectedToken(asterisk, scanner.TokenTypeASTERISK))
+					return
+				}
 				continue loop
 			}
 		case lparen.Type:

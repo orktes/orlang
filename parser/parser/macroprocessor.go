@@ -1,7 +1,6 @@
 package parser
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/orktes/orlang/parser/ast"
@@ -17,6 +16,8 @@ type macroProcessor struct {
 	parentProcessor      *macroProcessor
 	values               map[string][]interface{}
 	repeating            bool
+	delimiter            *scanner.Token
+	delimiterSet         bool
 	loops                int
 }
 
@@ -32,6 +33,7 @@ func newMacroPreprocessor(pattern []ast.MacroMatch, repeating bool) (mp *macroPr
 		if mmr, ok := mm.(*ast.MacroMatchRepetition); ok {
 			sp := newMacroPreprocessor(mmr.Pattern, true)
 			sp.parentProcessor = mp
+			sp.delimiter = mmr.Delimiter
 			mp.subProcessors[mm] = sp
 			mp.orderedSubProcessors = append(mp.orderedSubProcessors, sp)
 		}
@@ -93,13 +95,31 @@ func (mp *macroProcessor) acceptsType(t string) bool {
 	return mp.acceptsTypeWithIndex(mp.currentPos, t)
 }
 
+func (mp *macroProcessor) waitingForDelimiter() (tok scanner.Token, waiting bool) {
+	if mp.repeating && mp.delimiter != nil {
+		return *mp.delimiter, mp.loops > 0 && mp.currentPos == len(mp.pattern) && !mp.delimiterSet
+	}
+	return
+}
+
 func (mp *macroProcessor) feed(val interface{}) (accepts bool) {
 	if mp.noMatch {
 		return false
 	}
-
 	var mm ast.MacroMatch
 	var indx int
+
+	if del, waiting := mp.waitingForDelimiter(); waiting {
+		var t scanner.Token
+		if t, accepts = val.(scanner.Token); accepts {
+			// TODO create a better way to compare tokens
+			accepts = t.StringValue() == del.StringValue()
+			if accepts {
+				mp.delimiterSet = true
+			}
+		}
+		goto result
+	}
 
 feed:
 	if mp.currentPos > len(mp.pattern)-1 {
@@ -167,6 +187,7 @@ feed:
 	}
 
 	if accepts {
+		mp.delimiterSet = false
 		mp.currentPos++
 		if mp.currentPos > len(mp.pattern)-1 {
 			mp.loops++
@@ -185,9 +206,19 @@ func (mp *macroProcessor) acceptsTypeWithIndex(indx int, t string) (accepts bool
 	if mp.noMatch {
 		return false
 	}
-	if indx > len(mp.pattern)-1 {
-		return false
+
+	if _, waiting := mp.waitingForDelimiter(); waiting {
+		// subProcessor is waiting for delimiter
+		return t == "token"
 	}
+
+	if indx > len(mp.pattern)-1 {
+		if !mp.repeating {
+			return false
+		}
+		indx = 0
+	}
+
 	mm := mp.pattern[indx]
 	if subProcessor, ok := mp.subProcessors[mm]; ok {
 		accepts = subProcessor.acceptsType(t)
@@ -220,13 +251,12 @@ func (mp *macroProcessor) expand(sets []ast.MacroTokenSet) (tokens []scanner.Tok
 	reps := 0
 	for _, set := range sets {
 		switch s := set.(type) {
-		case *ast.MacroRepetitionTokenSet:
+		case ast.MacroRepetitionTokenSet:
 			if reps > len(mp.orderedSubProcessors)-1 {
-				// TODO proper error message
-				err = errors.New("Match repetitions need to match macro expansion")
-				return
+				reps = len(mp.orderedSubProcessors) - 1
 			}
 			sp := mp.orderedSubProcessors[reps]
+			reps++
 			var newTokens []scanner.Token
 			newTokens, err = sp.expand(s.Sets)
 			if err != nil {
