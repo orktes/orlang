@@ -21,6 +21,7 @@ var unaryPrefix = []scanner.TokenType{
 	scanner.TokenTypeSUB,
 	scanner.TokenTypeIncrement,
 	scanner.TokenTypeDecrement,
+	scanner.TokenTypeEXCL,
 }
 
 var unarySuffix = []scanner.TokenType{
