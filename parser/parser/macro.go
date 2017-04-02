@@ -264,7 +264,6 @@ func (p *Parser) parseMacroCall(nameToken scanner.Token) (matchingPattern *ast.M
 	macro, macroOk := p.macros[macroName]
 	macroMatcher := newMacroMatcher(macro)
 	endToken := nameToken
-	values := []interface{}{}
 
 	if !macroOk {
 		p.error(fmt.Sprintf("No macro with name %s", macroName))
@@ -286,8 +285,7 @@ func (p *Parser) parseMacroCall(nameToken scanner.Token) (matchingPattern *ast.M
 		closingTokenType := getClosingTokenType(lparen)
 		check := func(value interface{}, vOk bool) bool {
 			if vOk {
-				macroMatcher.feed(value)
-				values = append(values, value) // TODO remove
+				vOk = macroMatcher.feed(value)
 			}
 			return vOk
 		}
@@ -315,7 +313,9 @@ func (p *Parser) parseMacroCall(nameToken scanner.Token) (matchingPattern *ast.M
 					return
 				}
 
-				check(token, true)
+				if !check(token, true) {
+					p.error(fmt.Sprintf("No rules expected token %s", token.StringValue()))
+				}
 			}
 		}
 

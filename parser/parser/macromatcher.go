@@ -38,14 +38,17 @@ func (mm *macroMatcher) acceptsType(t string) bool {
 	return false
 }
 
-func (mm *macroMatcher) feed(val interface{}) {
+func (mm *macroMatcher) feed(val interface{}) (ok bool) {
 	for i := 0; i < len(mm.processors); i++ {
 		p := mm.processors[i]
 		if !p.processor.feed(val) {
 			mm.processors = append(mm.processors[:i], mm.processors[i+1:]...)
 			i--
+		} else {
+			ok = true
 		}
 	}
+	return
 }
 
 func (mm *macroMatcher) match() *macroMatcherProcessor {

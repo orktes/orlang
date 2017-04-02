@@ -1132,6 +1132,7 @@ func TestParseFailures(t *testing.T) {
 		{"fn foobar() {$f}", "1:14: Could not find matching node for $f"},
 		// Macros
 		{"macro M { ($(foo),,*) : () }", "1:19: Macro repetition can only have one token as a delimiter"},
+		{"macro M { () : () } fn main() { M!(foo) }", "1:36: No rules expected token IDENT(foo)"},
 	}
 	for _, test := range tests {
 		_, err := Parse(strings.NewReader(test.src))
