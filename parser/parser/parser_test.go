@@ -791,19 +791,19 @@ func TestStatementInMacro(t *testing.T) {
 func TestSimpleMacroRepetition(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
 		macro test {
-			($( $x:expr ),*): (
-				$(
-           $x
-        )*
-				$(
-           $x
-        )*
-			)
+		  ($( $x:expr ),*): (
+		    $(
+		      $x
+		    )*
+		    $(
+		      $x
+		    )*
+		  )
 		}
 
 		fn main() {
-			test!(1, 2, 3, 4, 5)
-	  }
+		  test!(1, 2, 3, 4, 5)
+		}
   `))
 	if err != nil {
 		t.Error(err)
