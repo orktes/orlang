@@ -154,3 +154,33 @@ func TestMacroProcessorFeed(t *testing.T) {
 		t.Error("Wrong number of loops")
 	}
 }
+
+func TestMacroNestedRepetitions(t *testing.T) {
+	p := NewParser(testScanner(`($(
+			$($bar:expr)+
+		)+)`))
+	patterns, ok := p.parseMacroMatchPatterns()
+	if !ok {
+		t.Error("Should be able to parse")
+	}
+	mp := newMacroPreprocessor(patterns, false)
+	if !mp.acceptsType("expr") {
+		t.Error("Should accept expr")
+	}
+	if mp.ok() {
+		t.Error("Outer repetitio is at least once")
+	}
+	if !mp.feed(&ast.FunctionCall{}) {
+		t.Error("Should allow expr")
+	}
+	if !mp.ok() {
+		t.Error("Should be okay after one item")
+	}
+
+	if !mp.feed(&ast.FunctionCall{}) {
+		t.Error("Should allow expr")
+	}
+	if !mp.ok() {
+		t.Error("Should be okay after two item")
+	}
+}
