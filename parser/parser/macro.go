@@ -191,7 +191,7 @@ loop:
 		case scanner.TokenTypeDOLLAR:
 			subset, ok := p.parseMacroTokenSets()
 			if ok {
-				set = append(set, ast.TokenSliceSet(tokens))
+				set = append(set, ast.MacroTokenSliceSet(tokens))
 				set = append(set, ast.MacroRepetitionTokenSet{Sets: subset})
 				tokens = []scanner.Token{}
 				continue loop
@@ -208,7 +208,7 @@ loop:
 		tokens = append(tokens, t)
 	}
 
-	set = append(set, ast.TokenSliceSet(tokens))
+	set = append(set, ast.MacroTokenSliceSet(tokens))
 
 	rparen, rparenOk := p.expectToken(closingParenType)
 	if !rparenOk {
@@ -326,11 +326,10 @@ patternCheckLoop:
 		return
 	}
 
-	matchingPattern = matchingProcessor.pattern
-
-	buf := []scanner.Token{}
-	for _, set := range matchingPattern.TokensSets {
-		buf = append(buf, set.GetTokens(matchingPattern.Pattern, values)...)
+	buf, err := matchingProcessor.processor.expand(matchingProcessor.pattern.TokensSets)
+	if err != nil {
+		p.error(err.Error())
+		return
 	}
 
 	// This is a dirty hack to get error traces to point to the macro call instead of the macro definition

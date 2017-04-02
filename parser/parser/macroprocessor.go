@@ -1,33 +1,39 @@
 package parser
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/orktes/orlang/parser/ast"
 	"github.com/orktes/orlang/parser/scanner"
 )
 
 type macroProcessor struct {
-	pattern         []ast.MacroMatch
-	currentPos      int
-	noMatch         bool
-	subProcessors   map[ast.MacroMatch]*macroProcessor
-	parentProcessor *macroProcessor
-	values          map[string][]interface{}
-	repeating       bool
-	loops           int
+	pattern              []ast.MacroMatch
+	currentPos           int
+	noMatch              bool
+	subProcessors        map[ast.MacroMatch]*macroProcessor
+	orderedSubProcessors []*macroProcessor
+	parentProcessor      *macroProcessor
+	values               map[string][]interface{}
+	repeating            bool
+	loops                int
 }
 
 func newMacroPreprocessor(pattern []ast.MacroMatch, repeating bool) (mp *macroProcessor) {
 	mp = &macroProcessor{
-		pattern:       pattern,
-		subProcessors: map[ast.MacroMatch]*macroProcessor{},
-		values:        map[string][]interface{}{},
-		repeating:     repeating,
+		pattern:              pattern,
+		subProcessors:        map[ast.MacroMatch]*macroProcessor{},
+		orderedSubProcessors: []*macroProcessor{},
+		values:               map[string][]interface{}{},
+		repeating:            repeating,
 	}
 	for _, mm := range pattern {
 		if mmr, ok := mm.(*ast.MacroMatchRepetition); ok {
 			sp := newMacroPreprocessor(mmr.Pattern, true)
 			sp.parentProcessor = mp
 			mp.subProcessors[mm] = sp
+			mp.orderedSubProcessors = append(mp.orderedSubProcessors, sp)
 		}
 	}
 	return
@@ -139,6 +145,8 @@ feed:
 	switch m := mm.(type) {
 	case *ast.MacroMatchArgument:
 		switch m.Type {
+		case "token":
+			_, accepts = val.(scanner.Token)
 		case "block":
 			_, accepts = val.(*ast.Block)
 		case "expr":
@@ -203,6 +211,49 @@ func (mp *macroProcessor) acceptsTypeWithIndex(indx int, t string) (accepts bool
 		accepts = val.Type == t
 	case *ast.MacroMatchToken:
 		accepts = t == "token" // Figure out some better way to check this
+	}
+
+	return
+}
+
+func (mp *macroProcessor) expand(sets []ast.MacroTokenSet) (tokens []scanner.Token, err error) {
+	reps := 0
+	for _, set := range sets {
+		switch s := set.(type) {
+		case *ast.MacroRepetitionTokenSet:
+			if reps > len(mp.orderedSubProcessors)-1 {
+				// TODO proper error message
+				err = errors.New("Match repetitions need to match macro expansion")
+				return
+			}
+			sp := mp.orderedSubProcessors[reps]
+			var newTokens []scanner.Token
+			newTokens, err = sp.expand(s.Sets)
+			if err != nil {
+				return
+			}
+			tokens = append(tokens, newTokens...)
+		case ast.MacroTokenSliceSet:
+			newTokens := make([]scanner.Token, len(s))
+			if mp.loops == 0 {
+				// Macro had no call arguments. i.e matcher has not looped
+				mp.loops = 1
+			}
+			for i := 0; i < mp.loops; i++ {
+				for index, token := range s {
+					if token.Type == scanner.TokenTypeMacroIdent {
+						val := mp.get(token.Text, i)
+						if val == nil {
+							err = fmt.Errorf("Could not find macro argument for metavariable %s", token.Text)
+							return
+						}
+						token.Value = val
+					}
+					newTokens[index] = token
+				}
+				tokens = append(tokens, newTokens...)
+			}
+		}
 	}
 
 	return

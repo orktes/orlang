@@ -871,7 +871,7 @@ func TestMacro(t *testing.T) {
 		t.Error("Wrong pattern key type")
 	}
 
-	tokens := pattern.TokensSets[0].GetTokens(nil, nil)
+	tokens := pattern.TokensSets[0].(ast.MacroTokenSliceSet)
 	if len(tokens) != 3 {
 		t.Error("Wrong amount of tokens", tokens)
 	}
