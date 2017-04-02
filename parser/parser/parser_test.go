@@ -889,6 +889,7 @@ func TestMacroBrainFuck(t *testing.T) {
 		      $( . )?
 		      $( , )?
 		      $( [ )?
+					$( ] )?
 		    )*
 		  ): (
 		    fn (input: []char) {
