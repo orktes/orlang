@@ -50,6 +50,8 @@ func (p *Parser) parseMacro() (node *ast.Macro, ok bool) {
 		Patterns: patterns,
 	}
 
+	p.checkCommentForNode(node, false)
+
 	return
 }
 
