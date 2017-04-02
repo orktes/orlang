@@ -254,8 +254,9 @@ func (p *Parser) parseMacroPattern() (macroPattern *ast.MacroPattern, ok bool) {
 func (p *Parser) parseMacroCall(nameToken scanner.Token) (matchingPattern *ast.MacroPattern, ok bool) {
 	macroName := nameToken.Value.(string)
 	macro, macroOk := p.macros[macroName]
-	values := []interface{}{}
+	macroMatcher := newMacroMatcher(macro)
 	endToken := nameToken
+	values := []interface{}{}
 
 	if !macroOk {
 		p.error(fmt.Sprintf("No macro with name %s", macroName))
@@ -277,27 +278,19 @@ func (p *Parser) parseMacroCall(nameToken scanner.Token) (matchingPattern *ast.M
 		closingTokenType := getClosingTokenType(lparen)
 		check := func(value interface{}, vOk bool) bool {
 			if vOk {
-				values = append(values, value)
+				macroMatcher.feed(value)
+				values = append(values, value) // TODO remove
 			}
 			return vOk
-		}
-
-		checkPatterns := func(t string) bool {
-			for _, pattern := range macro.Patterns {
-				if macroPatternMatchesNextType(t, pattern, values) {
-					return true
-				}
-			}
-			return false
 		}
 
 		parenCount := 1
 	loop:
 		for {
 			switch {
-			case checkPatterns("block") && check(p.parseBlock()):
-			case checkPatterns("expr") && check(p.parseExpression()):
-			case checkPatterns("stmt") && check(p.parseStatement(false)):
+			case macroMatcher.acceptsType("block") && check(p.parseBlock()):
+			case macroMatcher.acceptsType("expr") && check(p.parseExpression()):
+			case macroMatcher.acceptsType("stmt") && check(p.parseStatement(false)):
 			default:
 				token := p.read()
 				switch token.Type {
@@ -314,7 +307,7 @@ func (p *Parser) parseMacroCall(nameToken scanner.Token) (matchingPattern *ast.M
 					return
 				}
 
-				values = append(values, token)
+				check(token, true)
 			}
 		}
 
@@ -326,44 +319,14 @@ func (p *Parser) parseMacroCall(nameToken scanner.Token) (matchingPattern *ast.M
 	}
 
 patternCheckLoop:
-	for _, pattern := range macro.Patterns {
-		if len(pattern.Pattern) != len(values) {
-			continue
-		}
 
-		for i, m := range pattern.Pattern {
-			node := values[i]
-			var castOk bool
-			switch m := m.(type) {
-			case *ast.MacroMatchToken:
-				var t scanner.Token
-				if t, castOk = node.(scanner.Token); castOk {
-					// TODO Find a better way to compare tokens
-					castOk = m.Token.StringValue() == t.StringValue()
-				}
-			case *ast.MacroMatchArgument:
-				switch m.Type {
-				case "block":
-					_, castOk = node.(*ast.Block)
-				case "expr":
-					_, castOk = node.(ast.Expression)
-				case "stmt":
-					_, castOk = node.(ast.Statement)
-				}
-			}
-
-			if !castOk {
-				continue patternCheckLoop
-			}
-		}
-
-		matchingPattern = pattern
-	}
-
-	if matchingPattern == nil {
+	matchingProcessor := macroMatcher.match()
+	if matchingProcessor == nil {
 		p.error("Macro call doens't match available patterns")
 		return
 	}
+
+	matchingPattern = matchingProcessor.pattern
 
 	buf := []scanner.Token{}
 	for _, set := range matchingPattern.TokensSets {

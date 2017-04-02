@@ -6,13 +6,14 @@ import (
 )
 
 type macroProcessor struct {
-	pattern       []ast.MacroMatch
-	currentPos    int
-	noMatch       bool
-	subProcessors map[ast.MacroMatch]*macroProcessor
-	values        map[string][]interface{}
-	repeating     bool
-	loops         int
+	pattern         []ast.MacroMatch
+	currentPos      int
+	noMatch         bool
+	subProcessors   map[ast.MacroMatch]*macroProcessor
+	parentProcessor *macroProcessor
+	values          map[string][]interface{}
+	repeating       bool
+	loops           int
 }
 
 func newMacroPreprocessor(pattern []ast.MacroMatch, repeating bool) (mp *macroProcessor) {
@@ -24,10 +25,29 @@ func newMacroPreprocessor(pattern []ast.MacroMatch, repeating bool) (mp *macroPr
 	}
 	for _, mm := range pattern {
 		if mmr, ok := mm.(*ast.MacroMatchRepetition); ok {
-			mp.subProcessors[mm] = newMacroPreprocessor(mmr.Pattern, true)
+			sp := newMacroPreprocessor(mmr.Pattern, true)
+			sp.parentProcessor = mp
+			mp.subProcessors[mm] = sp
 		}
 	}
 	return
+}
+
+func (mp *macroProcessor) get(key string, index int) interface{} {
+	vals, ok := mp.values[key]
+	if !ok {
+		if mp.parentProcessor != nil {
+			return mp.parentProcessor.get(key, index)
+		}
+		return nil
+	}
+
+	valLen := len(vals)
+	if index > valLen-1 {
+		index = valLen - 1
+	}
+
+	return vals[index]
 }
 
 func (mp *macroProcessor) ok() bool {
@@ -186,16 +206,4 @@ func (mp *macroProcessor) acceptsTypeWithIndex(indx int, t string) (accepts bool
 	}
 
 	return
-}
-
-func macroPatternMatchesNextType(t string, pattern *ast.MacroPattern, values []interface{}) bool {
-	indx := len(values)
-	if len(pattern.Pattern) > indx {
-		if m, ok := pattern.Pattern[indx].(*ast.MacroMatchArgument); ok {
-			if m.Type == t {
-				return true
-			}
-		}
-	}
-	return false
 }

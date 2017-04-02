@@ -108,7 +108,9 @@ func TestMacroProcessorFeed(t *testing.T) {
 		t.Error("Should already accept expr")
 	}
 
-	if !mp.feed(&ast.FunctionCall{}) {
+	if !mp.feed(&ast.FunctionCall{
+		Callee: &ast.ValueExpression{Token: scanner.Token{Text: "foo"}},
+	}) {
 		t.Error("Should feed in function call expression")
 	}
 
@@ -119,6 +121,7 @@ func TestMacroProcessorFeed(t *testing.T) {
 	if mp.feed(&ast.FunctionCall{}) {
 		t.Error("Should only allow one expression")
 	}
+
 	if mp.feed(&ast.FunctionCall{}) {
 		t.Error("Should only allow one expression")
 	}
@@ -133,5 +136,21 @@ func TestMacroProcessorFeed(t *testing.T) {
 
 	if len(mp.subProcessors[patterns[0]].values["$bar"]) != 2 {
 		t.Error("expected to capture the two if statements")
+	}
+
+	if mp.subProcessors[patterns[0]].get("$foo", 0).(*ast.FunctionCall).Callee.(*ast.ValueExpression).Token.Text != "foo" {
+		t.Error("Get didnt return correct value from parent processor")
+	}
+
+	if mp.subProcessors[patterns[0]].get("$foo", 1).(*ast.FunctionCall).Callee.(*ast.ValueExpression).Token.Text != "foo" {
+		t.Error("Get didnt return correct value from parent processor")
+	}
+
+	if _, ok := mp.subProcessors[patterns[0]].get("$bar", 1).(*ast.IfStatement); !ok {
+		t.Error("Get didnt return correct value")
+	}
+
+	if mp.subProcessors[patterns[0]].loops != 2 {
+		t.Error("Wrong number of loops")
 	}
 }
