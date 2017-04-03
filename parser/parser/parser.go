@@ -426,7 +426,8 @@ func (p *Parser) lastToken() (token scanner.Token) {
 	}
 
 	// This should not happen
-	panic("No token in buffer")
+	// TODO figure out why we sometimes endup here
+	return p.peek()
 }
 
 func (p *Parser) skip() {

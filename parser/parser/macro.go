@@ -149,7 +149,6 @@ patternLoop:
 				case closingParenType:
 					parenCount--
 					if parenCount == 0 {
-						p.unread()
 						break patternLoop
 					}
 				case scanner.TokenTypeEOF:
@@ -162,13 +161,6 @@ patternLoop:
 
 		patterns = append(patterns, mma)
 	}
-
-	openingToken, rparenOk := p.expectToken(closingParenType)
-	if !rparenOk {
-		p.error(unexpectedToken(openingToken, closingParenType))
-		return
-	}
-
 	return
 }
 
@@ -211,20 +203,14 @@ loop:
 		case closingParenType:
 			parenCount--
 			if parenCount == 0 {
-				p.unread()
 				break loop
 			}
 		}
 		tokens = append(tokens, t)
 	}
 
+	// add rest of the tokens
 	set = append(set, ast.MacroTokenSliceSet(tokens))
-
-	rparen, rparenOk := p.expectToken(closingParenType)
-	if !rparenOk {
-		p.error(unexpectedToken(rparen, closingParenType))
-		return
-	}
 
 	return
 }
@@ -308,7 +294,6 @@ func (p *Parser) parseMacroCall(nameToken scanner.Token) (ok bool) {
 				case closingTokenType:
 					parenCount--
 					if parenCount == 0 {
-						p.unread()
 						break loop
 					}
 				case scanner.TokenTypeEOF:
@@ -321,16 +306,9 @@ func (p *Parser) parseMacroCall(nameToken scanner.Token) (ok bool) {
 				}
 			}
 		}
-
-		endToken, rparenOk := p.expectToken(closingTokenType)
-		if !rparenOk {
-			p.error(unexpectedToken(endToken, closingTokenType))
-			return
-		}
 	}
 
 patternCheckLoop:
-
 	matchingProcessor := macroMatcher.match()
 	if matchingProcessor == nil {
 		p.error("Macro call doens't match available patterns")

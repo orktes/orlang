@@ -175,17 +175,6 @@ func TestParserSkip(t *testing.T) {
 	}
 }
 
-func TestLastTokenWithEmptyBuffer(t *testing.T) {
-	p := NewParser(testScanner("foobar;barfoo;"))
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("Should have paniced")
-		}
-	}()
-
-	p.lastToken()
-}
-
 func TestParseVariableDeclarationsFailure(t *testing.T) {
 	p := NewParser(testScanner("foo:bar)"))
 	_, ok := p.parseVariableDeclarations(true)
@@ -1133,6 +1122,19 @@ func TestParseFailures(t *testing.T) {
 		// Macros
 		{"macro M { ($(foo),,*) : () }", "1:19: Macro repetition can only have one token as a delimiter"},
 		{"macro M { () : () } fn main() { M!(foo) }", "1:36: No rules expected token IDENT(foo)"},
+		{"macro M { () : () } fn main() { M!( }", "1:37: No rules expected token RBRACE(})"},
+		{"macro M { () : ($()) } fn main() { M!() }", "1:20: Expected [ASTERISK] got RPAREN"},
+		{"macro M { () : ($(", "1:19: Expected token but got eof"},
+		{"macro M { (()) : ($(", "1:21: Expected token but got eof"},
+		{"macro M { ($foo) : ()", "1:16: Expected [COLON] got RPAREN"},
+		{"macro M { ($foo:) : ()", "1:17: Expected pattern key type got RPAREN())"},
+		{"macro M { ($) : ()", "1:13: Expected macro pattern got RPAREN())"},
+		{"macro { () : () }", "1:7: Expected macro name got LBRACE({)"},
+		{"macro M () : () }", "1:9: Expected [LBRACE] got LPAREN"},
+		{"macro M { () : }", "1:17: Expected [LPAREN LBRACE LBRACK] got EOF"},
+		{"macro M { () : ($a) } fn main() { M!() }", "1:38: Could not find macro argument for metavariable $a"},
+		{"macro M { () : ($a) } fn main() { M! }", "1:38: Could not find macro argument for metavariable $a"},
+		{"macro M { ($(foo)+) : () } fn main() { M!(bar) }", "1:43: No rules expected token IDENT(bar)"},
 		{"fn main() { M!(foo) }", "1:13: No macro with name M"},
 		{"macro M { (", "1:12: Expected token but got eof"},
 		{"macro M { ($()", "1:15: Expected macro repetition delimeter or operand (+, * or ?) got EOF()"},
