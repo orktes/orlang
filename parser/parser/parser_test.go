@@ -1133,6 +1133,9 @@ func TestParseFailures(t *testing.T) {
 		// Macros
 		{"macro M { ($(foo),,*) : () }", "1:19: Macro repetition can only have one token as a delimiter"},
 		{"macro M { () : () } fn main() { M!(foo) }", "1:36: No rules expected token IDENT(foo)"},
+		{"fn main() { M!(foo) }", "1:13: No macro with name M"},
+		{"macro M { (", "1:12: Expected token but got eof"},
+		{"macro M { ($()", "1:15: Expected macro repetition delimeter or operand (+, * or ?) got EOF()"},
 	}
 	for _, test := range tests {
 		_, err := Parse(strings.NewReader(test.src))

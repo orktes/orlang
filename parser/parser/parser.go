@@ -88,7 +88,7 @@ loop:
 		case check(p.parseMacro()):
 			if node != nil {
 				macro, isMacro := node.(*ast.Macro)
-				if isMacro {
+				if isMacro && macro != nil {
 					p.macros[macro.Name.Text] = macro
 				}
 			}
@@ -390,7 +390,7 @@ readToken:
 	}
 
 	if expandMacros && token.Type == scanner.TokenTypeMacroCallIdent {
-		if pattrn, ok := p.parseMacroCall(token); pattrn != nil && ok {
+		if p.parseMacroCall(token) {
 			goto readToken
 		} else {
 			// TODO throw error or something here

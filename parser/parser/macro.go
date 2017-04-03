@@ -261,16 +261,17 @@ func (p *Parser) parseMacroPattern() (macroPattern *ast.MacroPattern, ok bool) {
 	return
 }
 
-func (p *Parser) parseMacroCall(nameToken scanner.Token) (matchingPattern *ast.MacroPattern, ok bool) {
+func (p *Parser) parseMacroCall(nameToken scanner.Token) (ok bool) {
 	macroName := nameToken.Value.(string)
 	macro, macroOk := p.macros[macroName]
-	macroMatcher := newMacroMatcher(macro)
 	endToken := nameToken
 
-	if !macroOk {
+	if !macroOk || macro == nil {
 		p.error(fmt.Sprintf("No macro with name %s", macroName))
 		return
 	}
+
+	macroMatcher := newMacroMatcher(macro)
 
 	lparen, lparenOk := p.expectToken(
 		scanner.TokenTypeLPAREN,
