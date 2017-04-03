@@ -1,9 +1,9 @@
-extern printf(format: string, args:...) : int
+extern printf(format: *const c_string, args:...) : c_int
 
 fn main() {
   var a : i64 = 1
   var b : i64 = 2
   var c : i64 = a + b
 
-  printf("%d + %d = %d", a, b, c)
+  printf("%lld + %lld = %lld", a, b, c)
 }

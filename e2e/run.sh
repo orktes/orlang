@@ -2,12 +2,10 @@
 
 set -e
 
-buildcmd="orlang build main.or -o main"
-
 for dir in */; do
   echo "Running test $dir"
   pushd $dir
-    eval $buildcmd
+    orlang build main.or -o main
     if [ -f args.txt ]; then
       output="$(./main \"$(< args.txt)\")"
     else
