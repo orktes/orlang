@@ -1,0 +1,9 @@
+extern printf(format: string, args:...) : int
+
+fn main() {
+  var a : i64 = 1
+  var b : i64 = 2
+  var c : i64 = a + b
+
+  printf("%d + %d = %d", a, b, c)
+}
