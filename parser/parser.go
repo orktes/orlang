@@ -40,7 +40,7 @@ func Parse(reader io.Reader) (file *ast.File, err error) {
 	return NewParser(scanner.NewScanner(reader)).Parse()
 }
 
-// Parse source code but consuming io.Parser
+// Parse source code
 func (p *Parser) Parse() (file *ast.File, err error) {
 	file = &ast.File{}
 	p.s.Error = p.error
