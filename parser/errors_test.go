@@ -52,7 +52,7 @@ func TestParseFailures(t *testing.T) {
 		{"fn foobar() {  fn foobar(i:int;) {} }", "1:31: Expected [RPAREN COMMA] got SEMICOLON"},
 		// Member expressions
 		{"fn foobar() {  foobar.false }", "1:23: Expected property name got BOOL(false)"},
-		// Reserved Keyword
+		// Reservedkeyword
 		{"fn return() {  }", "1:4: return is a reserved keyword"},
 		{"fn foobar() { var fn = 1 }", "1:19: fn is a reserved keyword"},
 		{"fn foobar() { foo.return }", "1:19: return is a reserved keyword"},

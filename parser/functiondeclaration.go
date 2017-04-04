@@ -7,7 +7,7 @@ import (
 
 func (p *Parser) parseFuncDecl() (node *ast.FunctionDeclaration, ok bool) {
 	token := p.read()
-	if token.Type == scanner.TokenTypeIdent && (token.Text == KeywordFunction || token.Text == KeywordExtern) {
+	if token.Type == scanner.TokenTypeIdent && (token.Text ==keywordFunction || token.Text ==keywordExtern) {
 		ok = true
 		node = &ast.FunctionDeclaration{}
 		node.Start = ast.StartPositionFromToken(token)
@@ -42,7 +42,7 @@ func (p *Parser) parseFuncDecl() (node *ast.FunctionDeclaration, ok bool) {
 			p.unread()
 		}
 
-		if token.Text != KeywordExtern {
+		if token.Text !=keywordExtern {
 			blk, blockOk := p.parseBlock()
 			if !blockOk {
 				p.error(unexpected(p.read().StringValue(), "code block"))

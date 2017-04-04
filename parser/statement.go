@@ -28,7 +28,7 @@ func (p *Parser) parseStatement(block bool) (node ast.Statement, ok bool) {
 
 func (p *Parser) parseForLoop() (node *ast.ForLoop, nodeOk bool) {
 	token := p.read()
-	if token.Type == scanner.TokenTypeIdent && token.Text == KeywordFor {
+	if token.Type == scanner.TokenTypeIdent && token.Text ==keywordFor {
 		nodeOk = true
 		node = &ast.ForLoop{
 			Start: ast.StartPositionFromToken(token),
@@ -94,7 +94,7 @@ func (p *Parser) parseForLoop() (node *ast.ForLoop, nodeOk bool) {
 
 func (p *Parser) parseIfStatement() (node *ast.IfStatement, nodeOk bool) {
 	token := p.read()
-	if token.Type == scanner.TokenTypeIdent && token.Text == KeywordIf {
+	if token.Type == scanner.TokenTypeIdent && token.Text ==keywordIf {
 		nodeOk = true
 		node = &ast.IfStatement{
 			Start: ast.StartPositionFromToken(token),
@@ -118,7 +118,7 @@ func (p *Parser) parseIfStatement() (node *ast.IfStatement, nodeOk bool) {
 		node.Block = block
 
 		token = p.read()
-		if token.Type == scanner.TokenTypeIdent && token.Text == KeywordElse {
+		if token.Type == scanner.TokenTypeIdent && token.Text ==keywordElse {
 			var elblock *ast.Block
 
 			elif, elseOk := p.parseIfStatement()
@@ -161,10 +161,10 @@ func (p *Parser) parseAssigment(left ast.Expression) (node ast.Expression, ok bo
 
 func (p *Parser) parseVarDecl() (node ast.Statement, ok bool) {
 	token := p.read()
-	if token.Type == scanner.TokenTypeIdent && (token.Text == KeywordVar || token.Text == KeywordConst) {
+	if token.Type == scanner.TokenTypeIdent && (token.Text ==keywordVar || token.Text ==keywordConst) {
 		ok = true
 
-		isConstant := token.Text == KeywordConst
+		isConstant := token.Text ==keywordConst
 		startPos := ast.StartPositionFromToken(token)
 
 		token = p.peek()

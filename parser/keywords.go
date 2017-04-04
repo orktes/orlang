@@ -3,15 +3,15 @@ package parser
 var keywords = []string{}
 
 var (
-	KeywordFunction = registerKeyword("fn")
-	KeywordReturn   = registerKeyword("return")
-	KeywordIf       = registerKeyword("if")
-	KeywordElse     = registerKeyword("else")
-	KeywordFor      = registerKeyword("for")
-	KeywordVar      = registerKeyword("var")
-	KeywordConst    = registerKeyword("const")
-	KeywordExtern   = registerKeyword("extern")
-	KeywordMacro    = registerKeyword("macro")
+	keywordFunction = registerKeyword("fn")
+	keywordReturn   = registerKeyword("return")
+	keywordIf       = registerKeyword("if")
+	keywordElse     = registerKeyword("else")
+	keywordFor      = registerKeyword("for")
+	keywordVar      = registerKeyword("var")
+	keywordConst    = registerKeyword("const")
+	keywordExtern   = registerKeyword("extern")
+	keywordMacro    = registerKeyword("macro")
 )
 
 func registerKeyword(kw string) string {
