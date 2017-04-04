@@ -5,6 +5,26 @@ import (
 	"github.com/orktes/orlang/scanner"
 )
 
+var valueTypes = []scanner.TokenType{
+	scanner.TokenTypeBoolean,
+	scanner.TokenTypeNumber,
+	scanner.TokenTypeFloat,
+	scanner.TokenTypeString,
+}
+
+var unaryPrefix = []scanner.TokenType{
+	scanner.TokenTypeADD,
+	scanner.TokenTypeSUB,
+	scanner.TokenTypeIncrement,
+	scanner.TokenTypeDecrement,
+	scanner.TokenTypeEXCL,
+}
+
+var unarySuffix = []scanner.TokenType{
+	scanner.TokenTypeIncrement,
+	scanner.TokenTypeDecrement,
+}
+
 func (p *Parser) parseMemberExpression(target ast.Expression) (node *ast.MemberExpression, ok bool) {
 	_, ok = p.expectToken(scanner.TokenTypePERIOD)
 	if !ok {
