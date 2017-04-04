@@ -3,14 +3,14 @@ package ast
 import "github.com/orktes/orlang/parser/scanner"
 
 type VariableDeclaration struct {
-	Name         scanner.Token
+	Name         *Identifier
 	Type         scanner.Token
 	DefaultValue Expression
 	Constant     bool
 }
 
 func (vd *VariableDeclaration) StartPos() Position {
-	return StartPositionFromToken(vd.Name)
+	return vd.Name.StartPos()
 }
 
 func (vd *VariableDeclaration) EndPos() Position {

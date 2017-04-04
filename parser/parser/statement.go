@@ -238,23 +238,14 @@ func (p *Parser) parseVariableDeclarations(isConstant bool) (varDecls []*ast.Var
 }
 
 func (p *Parser) parseVariableDeclaration(isConstant bool) (varDecl *ast.VariableDeclaration, ok bool) {
-	var token scanner.Token
-	// name : Type = DefaultValue
-
-	token, ok = p.expectToken(scanner.TokenTypeIdent)
+	ident, ok := p.parseIdentfier()
 	if !ok {
-		p.unread()
-		return
-	}
-
-	if isKeyword(token.Text) {
-		p.error(reservedKeywordError(token))
 		return
 	}
 
 	varDecl = &ast.VariableDeclaration{}
 	varDecl.Constant = isConstant
-	varDecl.Name = token
+	varDecl.Name = ident
 	defer p.checkCommentForNode(varDecl, true)
 
 	token, assignOk := p.expectToken(scanner.TokenTypeCOLON, scanner.TokenTypeASSIGN)
