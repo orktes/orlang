@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/orktes/orlang/parser/ast"
-	"github.com/orktes/orlang/parser/linter"
+	"github.com/orktes/orlang/ast"
+	"github.com/orktes/orlang/linter"
 	"github.com/spf13/cobra"
 )
 
