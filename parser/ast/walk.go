@@ -10,6 +10,8 @@ func Walk(v Visitor, node Node) {
 	}
 
 	switch n := node.(type) {
+	case *Argument:
+		Walk(v, n.Name)
 	case *Assigment:
 		Walk(v, n.Left)
 		Walk(v, n.Right)

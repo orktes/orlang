@@ -3,14 +3,14 @@ package ast
 import "github.com/orktes/orlang/parser/scanner"
 
 type Argument struct {
-	Name         scanner.Token
+	Name         *Identifier
 	Type         *scanner.Token
 	DefaultValue Expression
 	Variadic     bool
 }
 
 func (a *Argument) StartPos() Position {
-	return StartPositionFromToken(a.Name)
+	return a.Name.StartPos()
 }
 
 func (a *Argument) EndPos() Position {
@@ -21,5 +21,5 @@ func (a *Argument) EndPos() Position {
 		return EndPositionFromToken(*a.Type)
 	}
 
-	return EndPositionFromToken(a.Name)
+	return a.EndPos()
 }

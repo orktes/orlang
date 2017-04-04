@@ -13,7 +13,7 @@ func (p *Parser) parseFuncDecl() (node *ast.FunctionDeclaration, ok bool) {
 		node.Start = ast.StartPositionFromToken(token)
 
 		if identifier, parseIdent := p.parseIdentfier(); parseIdent {
-			node.Identifier = identifier.(*ast.Identifier)
+			node.Identifier = identifier
 		}
 
 		arguments, argumentsOk := p.parseArguments()
@@ -100,21 +100,14 @@ func (p *Parser) parseArguments() (args []*ast.Argument, ok bool) {
 }
 
 func (p *Parser) parseArgument() (arg *ast.Argument, ok bool) {
-	var token scanner.Token
 	// name : Type = DefaultValue
-	token, ok = p.expectToken(scanner.TokenTypeIdent)
+	identifier, ok := p.parseIdentfier()
 	if !ok {
-		p.unread()
-		return
-	}
-
-	if isKeyword(token.Text) {
-		p.error(reservedKeywordError(token))
 		return
 	}
 
 	arg = &ast.Argument{}
-	arg.Name = token
+	arg.Name = identifier
 	defer p.checkCommentForNode(arg, true)
 
 	token, colonOK := p.expectToken(scanner.TokenTypeCOLON, scanner.TokenTypeASSIGN)

@@ -115,7 +115,7 @@ func (p *Parser) parseValueExpression() (expression ast.Expression, ok bool) {
 	return &ast.ValueExpression{Token: token}, true
 }
 
-func (p *Parser) parseIdentfier() (expression ast.Expression, ok bool) {
+func (p *Parser) parseIdentfier() (expression *ast.Identifier, ok bool) {
 	var token scanner.Token
 	if token, ok = p.expectToken(scanner.TokenTypeIdent); !ok {
 		p.unread()
