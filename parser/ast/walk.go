@@ -5,6 +5,9 @@ type Visitor interface {
 }
 
 func Walk(v Visitor, node Node) {
+	if node == nil {
+		return
+	}
 	if v = v.Visit(node); v == nil {
 		return
 	}
@@ -12,6 +15,8 @@ func Walk(v Visitor, node Node) {
 	switch n := node.(type) {
 	case *Argument:
 		Walk(v, n.Name)
+		// TODO walk type
+		Walk(v, n.DefaultValue)
 	case *Assigment:
 		Walk(v, n.Left)
 		Walk(v, n.Right)
@@ -71,6 +76,8 @@ func Walk(v Visitor, node Node) {
 	case *UnaryExpression:
 		Walk(v, n.Expression)
 	case *VariableDeclaration:
+		Walk(v, n.Name)
+		// TODO walk type
 		Walk(v, n.DefaultValue)
 	case *ValueExpression:
 	default:
