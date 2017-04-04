@@ -9,7 +9,6 @@ import (
 )
 
 var valueTypes = []scanner.TokenType{
-	scanner.TokenTypeIdent,
 	scanner.TokenTypeBoolean,
 	scanner.TokenTypeNumber,
 	scanner.TokenTypeFloat,

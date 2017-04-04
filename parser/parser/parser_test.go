@@ -525,7 +525,7 @@ func TestParseFunctionCall(t *testing.T) {
 		t.Error("Wrong type")
 	}
 
-	callee, ok := functionCall.Callee.(*ast.ValueExpression)
+	callee, ok := functionCall.Callee.(*ast.Identifier)
 	if !ok {
 		t.Error("Wrong type")
 	}
@@ -539,7 +539,7 @@ func TestParseFunctionCall(t *testing.T) {
 		t.Error("Wrong type")
 	}
 
-	callee = functionCall.Callee.(*ast.FunctionCall).Callee.(*ast.ValueExpression)
+	callee = functionCall.Callee.(*ast.FunctionCall).Callee.(*ast.Identifier)
 	if callee.Text != "foobar" {
 		t.Error("Wrong callee")
 	}
@@ -549,7 +549,7 @@ func TestParseFunctionCall(t *testing.T) {
 		t.Error("Wrong type")
 	}
 
-	callee = functionCall.Callee.(*ast.FunctionCall).Callee.(*ast.FunctionCall).Callee.(*ast.ValueExpression)
+	callee = functionCall.Callee.(*ast.FunctionCall).Callee.(*ast.FunctionCall).Callee.(*ast.Identifier)
 	if callee.Text != "foobar" {
 		t.Error("Wrong callee")
 	}
@@ -564,7 +564,7 @@ func TestParseFunctionCall(t *testing.T) {
 		t.Error("Wrong callee")
 	}
 
-	if memberExpression.Target.(*ast.ValueExpression).Text != "someObj" {
+	if memberExpression.Target.(*ast.Identifier).Text != "someObj" {
 		t.Error("Member expression was parsed incorrectly")
 	}
 
@@ -573,7 +573,7 @@ func TestParseFunctionCall(t *testing.T) {
 		t.Error("Wrong type")
 	}
 
-	callee, ok = functionCall.Callee.(*ast.ValueExpression)
+	callee, ok = functionCall.Callee.(*ast.Identifier)
 	if !ok {
 		t.Error("Wrong type")
 	}
@@ -591,7 +591,7 @@ func TestParseFunctionCall(t *testing.T) {
 		t.Error("Wrong type")
 	}
 
-	callee, ok = functionCall.Callee.(*ast.ValueExpression)
+	callee, ok = functionCall.Callee.(*ast.Identifier)
 	if !ok {
 		t.Error("Wrong type")
 	}

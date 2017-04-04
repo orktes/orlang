@@ -121,6 +121,21 @@ func (p *Parser) parseValueExpression() (expression ast.Expression, ok bool) {
 	return &ast.ValueExpression{Token: token}, true
 }
 
+func (p *Parser) parseIdentfier() (expression ast.Expression, ok bool) {
+	var token scanner.Token
+	if token, ok = p.expectToken(scanner.TokenTypeIdent); !ok {
+		p.unread()
+		return
+	}
+
+	if isKeyword(token.Text) {
+		p.error(reservedKeywordError(token))
+		return
+	}
+
+	return &ast.Identifier{Token: token}, true
+}
+
 func (p *Parser) parseUnaryExpression() (expression ast.Expression, ok bool) {
 	token, prefixOk := p.expectToken(unaryPrefix...)
 	if prefixOk {
@@ -150,6 +165,7 @@ func (p *Parser) parseUnaryExpression() (expression ast.Expression, ok bool) {
 
 	switch {
 	case check(p.parseFuncDecl()):
+	case check(p.parseIdentfier()):
 	case check(p.parseValueExpression()):
 	case check(p.parseMacroSubstitutionExpression()):
 	default:
