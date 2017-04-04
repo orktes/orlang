@@ -12,23 +12,17 @@ func (p *Parser) parseFuncDecl() (node *ast.FunctionDeclaration, ok bool) {
 		node = &ast.FunctionDeclaration{}
 		node.Start = ast.StartPositionFromToken(token)
 
-		funcNameTokenOrLeftParen := p.read()
-		if funcNameTokenOrLeftParen.Type == scanner.TokenTypeIdent {
-			if isKeyword(funcNameTokenOrLeftParen.Text) {
-				p.error(reservedKeywordError(funcNameTokenOrLeftParen))
-				return
-			}
-			node.Name = funcNameTokenOrLeftParen
-		} else if funcNameTokenOrLeftParen.Type == scanner.TokenTypeLPAREN {
-			p.unread()
-		} else {
-			p.error(unexpectedToken(funcNameTokenOrLeftParen, scanner.TokenTypeIdent, scanner.TokenTypeLPAREN))
-			return
+		if identifier, parseIdent := p.parseIdentfier(); parseIdent {
+			node.Identifier = identifier.(*ast.Identifier)
 		}
 
 		arguments, argumentsOk := p.parseArguments()
 		if !argumentsOk {
-			p.error(unexpectedToken(p.read(), scanner.TokenTypeLPAREN))
+			if node.Identifier == nil {
+				p.error(unexpected(p.read().StringValue(), "function name or argument list"))
+			} else {
+				p.error(unexpectedToken(p.read(), scanner.TokenTypeLPAREN))
+			}
 			return
 		}
 

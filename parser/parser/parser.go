@@ -76,7 +76,8 @@ loop:
 		}
 		switch {
 		case check(p.parseFuncDecl()):
-			if node.(*ast.FunctionDeclaration).Name.Text == "" {
+			ident := node.(*ast.FunctionDeclaration).Identifier
+			if ident == nil || ident.Text == "" {
 				p.error("Root level functions can't be anonymous")
 			}
 		case check(p.parseVarDecl()):

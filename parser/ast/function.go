@@ -1,10 +1,8 @@
 package ast
 
-import "github.com/orktes/orlang/parser/scanner"
-
 type FunctionDeclaration struct {
 	Start       Position
-	Name        scanner.Token
+	Identifier  *Identifier
 	Arguments   []*Argument
 	ReturnTypes []*Argument
 	Block       *Block

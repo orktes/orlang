@@ -112,12 +112,6 @@ func (p *Parser) parseValueExpression() (expression ast.Expression, ok bool) {
 		p.unread()
 		return
 	}
-
-	if isKeyword(token.Text) {
-		p.error(reservedKeywordError(token))
-		return
-	}
-
 	return &ast.ValueExpression{Token: token}, true
 }
 
@@ -128,12 +122,14 @@ func (p *Parser) parseIdentfier() (expression ast.Expression, ok bool) {
 		return
 	}
 
+	expression = &ast.Identifier{Token: token}
+
 	if isKeyword(token.Text) {
 		p.error(reservedKeywordError(token))
 		return
 	}
 
-	return &ast.Identifier{Token: token}, true
+	return
 }
 
 func (p *Parser) parseUnaryExpression() (expression ast.Expression, ok bool) {
