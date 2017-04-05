@@ -112,8 +112,8 @@ func (p *Parser) parseCallArgument() (arg *ast.CallArgument, ok bool) {
 	return
 }
 
-func (p *Parser) parseType() (token scanner.Token, ok bool) {
-	token, ok = p.expectToken(scanner.TokenTypeIdent)
+func (p *Parser) parseType() (typ ast.Type, ok bool) {
+	token, ok := p.expectToken(scanner.TokenTypeIdent)
 	if !ok {
 		p.unread()
 		return
@@ -122,6 +122,8 @@ func (p *Parser) parseType() (token scanner.Token, ok bool) {
 	if isKeyword(token.Text) {
 		p.error(reservedKeywordError(token))
 	}
+
+	typ = &ast.PrimitiveType{Token: token}
 
 	return
 }

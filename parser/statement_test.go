@@ -22,7 +22,7 @@ func TestParseVariableDeclaration(t *testing.T) {
 		t.Error("Wrong type")
 	}
 
-	if val.Name.Text != "foo" || val.Type.Text != "Bar" {
+	if val.Name.Text != "foo" || val.Type.(*ast.PrimitiveType).Token.Text != "Bar" {
 		t.Error("Type could not be parsed")
 	}
 
@@ -55,15 +55,15 @@ func TestParseMultipleVariableDeclarations(t *testing.T) {
 		t.Error("Wrong type")
 	}
 
-	if val.Declarations[0].Name.Text != "foo" || val.Declarations[0].Type.Text != "Bar" {
+	if val.Declarations[0].Name.Text != "foo" || val.Declarations[0].Type.(*ast.PrimitiveType).Token.Text != "Bar" {
 		t.Error("Type could not be parsed")
 	}
 
-	if val.Declarations[1].Name.Text != "bar" || val.Declarations[1].Type.Text != "int" {
+	if val.Declarations[1].Name.Text != "bar" || val.Declarations[1].Type.(*ast.PrimitiveType).Token.Text != "int" {
 		t.Error("Type could not be parsed")
 	}
 
-	if val.Declarations[2].Name.Text != "biz" || val.Declarations[2].Type.Text != "float" {
+	if val.Declarations[2].Name.Text != "biz" || val.Declarations[2].Type.(*ast.PrimitiveType).Token.Text != "float" {
 		t.Error("Type could not be parsed")
 	}
 
@@ -199,27 +199,27 @@ func TestFuncParse(t *testing.T) {
 		t.Error("Wrong type")
 	}
 
-	if len(val.Arguments) != 2 {
+	if len(val.Signature.Arguments) != 2 {
 		t.Error("Wrong number of arguments")
 	}
 
-	if val.Arguments[0].Name.Text != "bar" {
+	if val.Signature.Arguments[0].Name.Text != "bar" {
 		t.Error("Wrong argument name")
 	}
 
-	if val.Arguments[0].Type.Text != "int" {
+	if val.Signature.Arguments[0].Type.(*ast.PrimitiveType).Token.Text != "int" {
 		t.Error("Wrong argument name")
 	}
 
-	if val.Arguments[1].Name.Text != "foo" {
+	if val.Signature.Arguments[1].Name.Text != "foo" {
 		t.Error("Wrong argument name")
 	}
 
-	if val.Arguments[1].Type.Text != "float" {
+	if val.Signature.Arguments[1].Type.(*ast.PrimitiveType).Token.Text != "float" {
 		t.Error("Wrong argument name")
 	}
 
-	if val.Arguments[1].DefaultValue.(*ast.ValueExpression).Value != 0.2 {
+	if val.Signature.Arguments[1].DefaultValue.(*ast.ValueExpression).Value != 0.2 {
 		t.Error("Wrong argument default value")
 	}
 
@@ -227,7 +227,7 @@ func TestFuncParse(t *testing.T) {
 	if !ok {
 		t.Error("Wrong type")
 	}
-	if len(val.Arguments) != 0 {
+	if len(val.Signature.Arguments) != 0 {
 		t.Error("Wrong number of arguments")
 	}
 }
@@ -248,7 +248,7 @@ func TestParseFunctionAsDefaultValue(t *testing.T) {
 		t.Error("Wrong type")
 	}
 
-	_, ok = val.Arguments[0].DefaultValue.(*ast.FunctionDeclaration)
+	_, ok = val.Signature.Arguments[0].DefaultValue.(*ast.FunctionDeclaration)
 	if !ok {
 		t.Error("Wrong type")
 	}
@@ -276,7 +276,7 @@ func TestParseFunctionInsideFunction(t *testing.T) {
 		t.Error("Wrong type")
 	}
 
-	if nestedFunction.Identifier.Text != "barfoo" {
+	if nestedFunction.Signature.Identifier.Text != "barfoo" {
 		t.Error("Nested function name is wrong")
 	}
 }

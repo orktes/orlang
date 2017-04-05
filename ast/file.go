@@ -1,6 +1,7 @@
 package ast
 
 type File struct {
+	Filename     string
 	Body         []Node
 	NodeComments map[Node][]Comment
 	Comments     []Comment

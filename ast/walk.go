@@ -15,7 +15,7 @@ func Walk(v Visitor, node Node) {
 	switch n := node.(type) {
 	case *Argument:
 		Walk(v, n.Name)
-		// TODO walk type
+		Walk(v, n.Type)
 		Walk(v, n.DefaultValue)
 	case *Assigment:
 		Walk(v, n.Left)
@@ -48,10 +48,16 @@ func Walk(v Visitor, node Node) {
 		for _, nb := range n.Arguments {
 			Walk(v, nb)
 		}
-	case *FunctionDeclaration:
+	case *FunctionSignature:
+		Walk(v, n.Identifier)
 		for _, nb := range n.Arguments {
 			Walk(v, nb)
 		}
+		for _, nb := range n.ReturnTypes {
+			Walk(v, nb)
+		}
+	case *FunctionDeclaration:
+		Walk(v, n.Signature)
 		if n.Block != nil {
 			Walk(v, n.Block)
 		}
@@ -73,11 +79,13 @@ func Walk(v Visitor, node Node) {
 		for _, d := range n.Declarations {
 			Walk(v, d)
 		}
+	case *PrimitiveType:
+		// Nothing to do
 	case *UnaryExpression:
 		Walk(v, n.Expression)
 	case *VariableDeclaration:
 		Walk(v, n.Name)
-		// TODO walk type
+		Walk(v, n.Type)
 		Walk(v, n.DefaultValue)
 	case *ValueExpression:
 	default:

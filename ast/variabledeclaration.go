@@ -1,10 +1,8 @@
 package ast
 
-import "github.com/orktes/orlang/scanner"
-
 type VariableDeclaration struct {
 	Name         *Identifier
-	Type         scanner.Token
+	Type         Type
 	DefaultValue Expression
 	Constant     bool
 }
@@ -17,7 +15,7 @@ func (vd *VariableDeclaration) EndPos() Position {
 	if vd.DefaultValue != nil {
 		return vd.DefaultValue.EndPos()
 	}
-	return StartPositionFromToken(vd.Type)
+	return vd.Type.EndPos()
 }
 
 func (_ *VariableDeclaration) stmtNode() {}

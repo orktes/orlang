@@ -56,12 +56,12 @@ func TestParseComments(t *testing.T) {
 
 	}
 
-	argComments := file.NodeComments[file.Body[1].(*ast.FunctionDeclaration).Arguments[0]]
+	argComments := file.NodeComments[file.Body[1].(*ast.FunctionDeclaration).Signature.Arguments[0]]
 	if len(argComments) != 2 {
 		t.Error("Wrong number of comments")
 	}
 
-	argComments = file.NodeComments[file.Body[1].(*ast.FunctionDeclaration).Arguments[1]]
+	argComments = file.NodeComments[file.Body[1].(*ast.FunctionDeclaration).Signature.Arguments[1]]
 	if len(argComments) != 2 {
 		t.Error("Wrong number of comments")
 	}

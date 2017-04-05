@@ -5,20 +5,22 @@ import (
 	"github.com/orktes/orlang/scanner"
 )
 
-func (p *Parser) parseFuncDecl() (node *ast.FunctionDeclaration, ok bool) {
+func (p *Parser) parseFuncSignature() (signature *ast.FunctionSignature, ok bool) {
 	token := p.read()
-	if token.Type == scanner.TokenTypeIdent && (token.Text ==keywordFunction || token.Text ==keywordExtern) {
+	if token.Type == scanner.TokenTypeIdent && (token.Text == keywordFunction || token.Text == keywordExtern) {
 		ok = true
-		node = &ast.FunctionDeclaration{}
-		node.Start = ast.StartPositionFromToken(token)
 
+		signature = &ast.FunctionSignature{
+			Extern: token.Text == keywordExtern,
+		}
+		signature.Start = ast.StartPositionFromToken(token)
 		if identifier, parseIdent := p.parseIdentfier(); parseIdent {
-			node.Identifier = identifier
+			signature.Identifier = identifier
 		}
 
 		arguments, argumentsOk := p.parseArguments()
 		if !argumentsOk {
-			if node.Identifier == nil {
+			if signature.Identifier == nil {
 				p.error(unexpected(p.read().StringValue(), "function name or argument list"))
 			} else {
 				p.error(unexpectedToken(p.read(), scanner.TokenTypeLPAREN))
@@ -26,14 +28,14 @@ func (p *Parser) parseFuncDecl() (node *ast.FunctionDeclaration, ok bool) {
 			return
 		}
 
-		node.Arguments = arguments
+		signature.Arguments = arguments
 
 		_, returnTypeColonOk := p.expectToken(scanner.TokenTypeCOLON)
 		if returnTypeColonOk {
 			if returnArgs, returnArgsOk := p.parseArguments(); returnArgsOk {
-				node.ReturnTypes = returnArgs
+				signature.ReturnTypes = returnArgs
 			} else if returnArg, returnArgsOk := p.parseArgument(); returnArgsOk {
-				node.ReturnTypes = []*ast.Argument{returnArg}
+				signature.ReturnTypes = []*ast.Argument{returnArg}
 			} else {
 				p.error(unexpected(p.read().StringValue(), "function return type"))
 				return
@@ -42,20 +44,32 @@ func (p *Parser) parseFuncDecl() (node *ast.FunctionDeclaration, ok bool) {
 			p.unread()
 		}
 
-		if token.Text !=keywordExtern {
-			blk, blockOk := p.parseBlock()
-			if !blockOk {
-				p.error(unexpected(p.read().StringValue(), "code block"))
-				return
-			}
-
-			node.Block = blk
-		}
-
-		p.checkCommentForNode(node, false)
+		signature.End = ast.EndPositionFromToken(p.lastToken())
 	} else {
 		p.unread()
 	}
+
+	return
+}
+
+func (p *Parser) parseFuncDecl() (node *ast.FunctionDeclaration, ok bool) {
+	signature, ok := p.parseFuncSignature()
+	if !ok {
+		return
+	}
+
+	node = &ast.FunctionDeclaration{Signature: signature}
+	if !signature.Extern {
+		blk, blockOk := p.parseBlock()
+		if !blockOk {
+			p.error(unexpected(p.read().StringValue(), "code block"))
+			return
+		}
+
+		node.Block = blk
+	}
+
+	p.checkCommentForNode(node, false)
 	return
 }
 
@@ -123,7 +137,7 @@ func (p *Parser) parseArgument() (arg *ast.Argument, ok bool) {
 			p.unread()
 		}
 
-		token, typeOk := p.parseType()
+		typ, typeOk := p.parseType()
 		if !typeOk {
 			if !arg.Variadic {
 				p.error(unexpectedToken(p.read(), scanner.TokenTypeIdent))
@@ -131,7 +145,7 @@ func (p *Parser) parseArgument() (arg *ast.Argument, ok bool) {
 			}
 		}
 
-		arg.Type = &token
+		arg.Type = typ
 
 		if _, defaultAssOk := p.expectToken(scanner.TokenTypeASSIGN); !defaultAssOk {
 			p.unread()

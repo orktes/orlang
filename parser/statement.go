@@ -28,7 +28,7 @@ func (p *Parser) parseStatement(block bool) (node ast.Statement, ok bool) {
 
 func (p *Parser) parseForLoop() (node *ast.ForLoop, nodeOk bool) {
 	token := p.read()
-	if token.Type == scanner.TokenTypeIdent && token.Text ==keywordFor {
+	if token.Type == scanner.TokenTypeIdent && token.Text == keywordFor {
 		nodeOk = true
 		node = &ast.ForLoop{
 			Start: ast.StartPositionFromToken(token),
@@ -94,7 +94,7 @@ func (p *Parser) parseForLoop() (node *ast.ForLoop, nodeOk bool) {
 
 func (p *Parser) parseIfStatement() (node *ast.IfStatement, nodeOk bool) {
 	token := p.read()
-	if token.Type == scanner.TokenTypeIdent && token.Text ==keywordIf {
+	if token.Type == scanner.TokenTypeIdent && token.Text == keywordIf {
 		nodeOk = true
 		node = &ast.IfStatement{
 			Start: ast.StartPositionFromToken(token),
@@ -118,7 +118,7 @@ func (p *Parser) parseIfStatement() (node *ast.IfStatement, nodeOk bool) {
 		node.Block = block
 
 		token = p.read()
-		if token.Type == scanner.TokenTypeIdent && token.Text ==keywordElse {
+		if token.Type == scanner.TokenTypeIdent && token.Text == keywordElse {
 			var elblock *ast.Block
 
 			elif, elseOk := p.parseIfStatement()
@@ -161,10 +161,10 @@ func (p *Parser) parseAssigment(left ast.Expression) (node ast.Expression, ok bo
 
 func (p *Parser) parseVarDecl() (node ast.Statement, ok bool) {
 	token := p.read()
-	if token.Type == scanner.TokenTypeIdent && (token.Text ==keywordVar || token.Text ==keywordConst) {
+	if token.Type == scanner.TokenTypeIdent && (token.Text == keywordVar || token.Text == keywordConst) {
 		ok = true
 
-		isConstant := token.Text ==keywordConst
+		isConstant := token.Text == keywordConst
 		startPos := ast.StartPositionFromToken(token)
 
 		token = p.peek()
@@ -255,13 +255,13 @@ func (p *Parser) parseVariableDeclaration(isConstant bool) (varDecl *ast.Variabl
 	}
 
 	if token.Type == scanner.TokenTypeCOLON {
-		token, colonOk := p.parseType()
-		if !colonOk {
+		typ, typOk := p.parseType()
+		if !typOk {
 			p.error(unexpectedToken(p.read(), scanner.TokenTypeIdent))
 			return
 		}
 
-		varDecl.Type = token
+		varDecl.Type = typ
 
 		if _, defaultAssOk := p.expectToken(scanner.TokenTypeASSIGN); !defaultAssOk {
 			p.unread()

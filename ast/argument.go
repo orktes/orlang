@@ -1,10 +1,8 @@
 package ast
 
-import "github.com/orktes/orlang/scanner"
-
 type Argument struct {
 	Name         *Identifier
-	Type         *scanner.Token
+	Type         Type
 	DefaultValue Expression
 	Variadic     bool
 }
@@ -18,7 +16,7 @@ func (a *Argument) EndPos() Position {
 		return a.DefaultValue.EndPos()
 	}
 	if a.Type != nil {
-		return EndPositionFromToken(*a.Type)
+		return a.Type.EndPos()
 	}
 
 	return a.EndPos()

@@ -1,23 +1,36 @@
 package ast
 
-type FunctionDeclaration struct {
+type FunctionSignature struct {
 	Start       Position
+	End         Position
 	Identifier  *Identifier
 	Arguments   []*Argument
 	ReturnTypes []*Argument
-	Block       *Block
 	Extern      bool
 }
 
+func (fs *FunctionSignature) StartPos() Position {
+	return fs.Start
+}
+
+func (fs *FunctionSignature) EndPos() Position {
+	return fs.End
+}
+
+func (_ *FunctionDeclaration) typeNode() {
+}
+
+type FunctionDeclaration struct {
+	Signature *FunctionSignature
+	Block     *Block
+}
+
 func (fd *FunctionDeclaration) StartPos() Position {
-	return fd.Start
+	return fd.Signature.StartPos()
 }
 
 func (fd *FunctionDeclaration) EndPos() Position {
-	if fd.Block == nil {
-		return fd.Start
-	}
-	return fd.Block.End
+	return fd.Block.EndPos()
 }
 
 func (_ *FunctionDeclaration) exprNode() {
