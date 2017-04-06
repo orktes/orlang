@@ -8,7 +8,7 @@ type MemberExpression struct {
 }
 
 func (me *MemberExpression) StartPos() Position {
-	return me.StartPos()
+	return me.Target.StartPos()
 }
 
 func (me *MemberExpression) EndPos() Position {
