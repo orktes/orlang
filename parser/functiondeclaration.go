@@ -32,10 +32,8 @@ func (p *Parser) parseFuncSignature() (signature *ast.FunctionSignature, ok bool
 
 		_, returnTypeColonOk := p.expectToken(scanner.TokenTypeCOLON)
 		if returnTypeColonOk {
-			if returnArgs, returnArgsOk := p.parseArguments(); returnArgsOk {
-				signature.ReturnTypes = returnArgs
-			} else if returnArg, returnArgsOk := p.parseArgument(); returnArgsOk {
-				signature.ReturnTypes = []*ast.Argument{returnArg}
+			if returnType, returnTypeOk := p.parseType(); returnTypeOk {
+				signature.ReturnType = returnType
 			} else {
 				p.error(unexpected(p.read().StringValue(), "function return type"))
 				return

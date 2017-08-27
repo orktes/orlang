@@ -21,6 +21,29 @@ func TestParseUnaryExpression(t *testing.T) {
 	}
 }
 
+func TestParseParenExpression(t *testing.T) {
+	_, err := Parse(strings.NewReader(`
+		fn main() {
+			var foo = (1 + 2)
+		}
+	`))
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestParseTuppleExpression(t *testing.T) {
+	_, err := Parse(strings.NewReader(`
+		fn main() {
+			var foo = (1, 2)
+			var bar : (int, int) = (1, 2)
+		}
+	`))
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 func TestParseBinaryExpression(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
 		fn main() {
@@ -58,7 +81,7 @@ func TestParseBinaryExpression(t *testing.T) {
 
 func TestParseFunctionCall(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
-		fn foobar(x : int = 0, y: int = 0) : (int, float) {
+		fn foobar(x : int = 0, y: int = 0) : int {
 			foobar()
 			foobar()()
 			foobar()()()

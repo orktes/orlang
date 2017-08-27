@@ -1,7 +1,18 @@
 package ast
 
+import (
+	"fmt"
+	"reflect"
+)
+
 type Visitor interface {
 	Visit(node Node) (w Visitor)
+}
+
+type VisitorFunc func(node Node) (w Visitor)
+
+func (vf VisitorFunc) Visit(node Node) (w Visitor) {
+	return vf(node)
 }
 
 func Walk(v Visitor, node Node) {
@@ -28,6 +39,7 @@ func Walk(v Visitor, node Node) {
 			Walk(v, nb)
 		}
 	case *CallArgument:
+		Walk(v, n.Name)
 		Walk(v, n.Expression)
 	case *ComparisonExpression:
 		Walk(v, n.Left)
@@ -53,8 +65,8 @@ func Walk(v Visitor, node Node) {
 		for _, nb := range n.Arguments {
 			Walk(v, nb)
 		}
-		for _, nb := range n.ReturnTypes {
-			Walk(v, nb)
+		if n.ReturnType != nil {
+			Walk(v, n.ReturnType)
 		}
 	case *FunctionDeclaration:
 		Walk(v, n.Signature)
@@ -79,7 +91,7 @@ func Walk(v Visitor, node Node) {
 		for _, d := range n.Declarations {
 			Walk(v, d)
 		}
-	case *PrimitiveType:
+	case *TypeReference:
 		// Nothing to do
 	case *UnaryExpression:
 		Walk(v, n.Expression)
@@ -87,8 +99,17 @@ func Walk(v Visitor, node Node) {
 		Walk(v, n.Name)
 		Walk(v, n.Type)
 		Walk(v, n.DefaultValue)
+	case *ParenExpression:
+		Walk(v, n.Expression)
 	case *ValueExpression:
+	case *Identifier:
+	case *ReturnStatement:
+		Walk(v, n.Expression)
+	case *TuppleExpression:
+		for _, e := range n.Expressions {
+			Walk(v, e)
+		}
 	default:
-		panic("Unknown node type")
+		panic(fmt.Errorf("Unknown node type: %s", reflect.TypeOf(n)))
 	}
 }

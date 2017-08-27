@@ -3,6 +3,7 @@ package linter
 import (
 	"io"
 
+	"github.com/orktes/orlang/analyser"
 	"github.com/orktes/orlang/ast"
 	"github.com/orktes/orlang/parser"
 	"github.com/orktes/orlang/scanner"
@@ -33,6 +34,27 @@ func Lint(r io.Reader) (issues []LintIssue, err error) {
 		}
 		lastTokenErrorIndex = tokenIndx
 	}
-	_, err = p.Parse()
+
+	file, err := p.Parse()
+	if err != nil {
+		return
+	}
+
+	analyser, err := analyser.New(file)
+	if err != nil {
+		return
+	}
+
+	analyser.Error = func(node ast.Node, message string, fatal bool) {
+		issues = append(issues, LintIssue{
+			Position: node.StartPos(),
+			Message:  message,
+			CodeLine: "", // TODO get line from file
+			Warning:  !fatal,
+		})
+	}
+
+	analyser.Analyse()
+
 	return
 }

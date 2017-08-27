@@ -7,6 +7,12 @@ type VariableDeclaration struct {
 	Constant     bool
 }
 
+func (*VariableDeclaration) declarationNode() {}
+
+func (vd *VariableDeclaration) GetIdentifier() *Identifier {
+	return vd.Name
+}
+
 func (vd *VariableDeclaration) StartPos() Position {
 	return vd.Name.StartPos()
 }

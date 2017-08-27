@@ -15,6 +15,7 @@ func (p *Parser) parseStatement(block bool) (node ast.Statement, ok bool) {
 	}
 
 	switch {
+	case block && check(p.parseReturnStatement()):
 	case block && check(p.parseForLoop()):
 	case block && check(p.parseIfStatement()):
 	case check(p.parseMacroSubstitutionStatement()):
@@ -277,6 +278,31 @@ func (p *Parser) parseVariableDeclaration(isConstant bool) (varDecl *ast.Variabl
 	}
 
 	varDecl.DefaultValue = expr
+
+	return
+}
+
+func (p *Parser) parseReturnStatement() (rtrnStmt *ast.ReturnStatement, ok bool) {
+	token, tokOk := p.expectToken(scanner.TokenTypeIdent)
+
+	if !tokOk {
+		p.unread()
+		return
+	}
+
+	if token.Text != keywordReturn {
+		p.unread()
+		return
+	}
+
+	expression, _ := p.parseExpression()
+
+	rtrnStmt = &ast.ReturnStatement{
+		Token:      token,
+		Expression: expression,
+	}
+
+	ok = true
 
 	return
 }

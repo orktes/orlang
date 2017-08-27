@@ -1,15 +1,13 @@
 package ast
 
-import "github.com/orktes/orlang/scanner"
-
 type CallArgument struct {
-	Name       *scanner.Token
+	Name       *Identifier
 	Expression Expression
 }
 
 func (ca *CallArgument) StartPos() Position {
 	if ca.Name != nil {
-		return StartPositionFromToken(*ca.Name)
+		return ca.Name.StartPos()
 	}
 	return ca.Expression.StartPos()
 }

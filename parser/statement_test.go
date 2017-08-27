@@ -22,7 +22,7 @@ func TestParseVariableDeclaration(t *testing.T) {
 		t.Error("Wrong type")
 	}
 
-	if val.Name.Text != "foo" || val.Type.(*ast.PrimitiveType).Token.Text != "Bar" {
+	if val.Name.Text != "foo" || val.Type.(*ast.TypeReference).Token.Text != "Bar" {
 		t.Error("Type could not be parsed")
 	}
 
@@ -55,15 +55,15 @@ func TestParseMultipleVariableDeclarations(t *testing.T) {
 		t.Error("Wrong type")
 	}
 
-	if val.Declarations[0].Name.Text != "foo" || val.Declarations[0].Type.(*ast.PrimitiveType).Token.Text != "Bar" {
+	if val.Declarations[0].Name.Text != "foo" || val.Declarations[0].Type.(*ast.TypeReference).Token.Text != "Bar" {
 		t.Error("Type could not be parsed")
 	}
 
-	if val.Declarations[1].Name.Text != "bar" || val.Declarations[1].Type.(*ast.PrimitiveType).Token.Text != "int" {
+	if val.Declarations[1].Name.Text != "bar" || val.Declarations[1].Type.(*ast.TypeReference).Token.Text != "int" {
 		t.Error("Type could not be parsed")
 	}
 
-	if val.Declarations[2].Name.Text != "biz" || val.Declarations[2].Type.(*ast.PrimitiveType).Token.Text != "float" {
+	if val.Declarations[2].Name.Text != "biz" || val.Declarations[2].Type.(*ast.TypeReference).Token.Text != "float" {
 		t.Error("Type could not be parsed")
 	}
 
@@ -187,7 +187,7 @@ func TestParseAssignment(t *testing.T) {
 func TestFuncParse(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
 		fn test(bar : int, foo : float = 0.2) {}
-		fn withoutArguments() {}
+		fn withoutArguments() { return }
   `))
 
 	if err != nil {
@@ -207,7 +207,7 @@ func TestFuncParse(t *testing.T) {
 		t.Error("Wrong argument name")
 	}
 
-	if val.Signature.Arguments[0].Type.(*ast.PrimitiveType).Token.Text != "int" {
+	if val.Signature.Arguments[0].Type.(*ast.TypeReference).Token.Text != "int" {
 		t.Error("Wrong argument name")
 	}
 
@@ -215,7 +215,7 @@ func TestFuncParse(t *testing.T) {
 		t.Error("Wrong argument name")
 	}
 
-	if val.Signature.Arguments[1].Type.(*ast.PrimitiveType).Token.Text != "float" {
+	if val.Signature.Arguments[1].Type.(*ast.TypeReference).Token.Text != "float" {
 		t.Error("Wrong argument name")
 	}
 
@@ -229,6 +229,10 @@ func TestFuncParse(t *testing.T) {
 	}
 	if len(val.Signature.Arguments) != 0 {
 		t.Error("Wrong number of arguments")
+	}
+
+	if _, ok := val.Block.Body[0].(*ast.ReturnStatement); !ok {
+		t.Error("Could not find return statement")
 	}
 }
 
@@ -278,5 +282,31 @@ func TestParseFunctionInsideFunction(t *testing.T) {
 
 	if nestedFunction.Signature.Identifier.Text != "barfoo" {
 		t.Error("Nested function name is wrong")
+	}
+}
+
+func TestParseFunctionReturnStatement(t *testing.T) {
+	file, err := Parse(strings.NewReader(`
+		fn foobar() {
+			return foo
+		}
+	`))
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	val, ok := file.Body[0].(*ast.FunctionDeclaration)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	returnStmt, ok := val.Block.Body[0].(*ast.ReturnStatement)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	if returnStmt.Expression.(*ast.Identifier).Text != "foo" {
+		t.Error("Wrong expression found")
 	}
 }

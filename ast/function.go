@@ -1,12 +1,12 @@
 package ast
 
 type FunctionSignature struct {
-	Start       Position
-	End         Position
-	Identifier  *Identifier
-	Arguments   []*Argument
-	ReturnTypes []*Argument
-	Extern      bool
+	Start      Position
+	End        Position
+	Identifier *Identifier
+	Arguments  []*Argument
+	ReturnType Type
+	Extern     bool
 }
 
 func (fs *FunctionSignature) StartPos() Position {
@@ -25,6 +25,10 @@ type FunctionDeclaration struct {
 	Block     *Block
 }
 
+func (vd *FunctionDeclaration) GetIdentifier() *Identifier {
+	return vd.Signature.Identifier
+}
+
 func (fd *FunctionDeclaration) StartPos() Position {
 	return fd.Signature.StartPos()
 }
@@ -33,5 +37,7 @@ func (fd *FunctionDeclaration) EndPos() Position {
 	return fd.Block.EndPos()
 }
 
-func (_ *FunctionDeclaration) exprNode() {
+func (*FunctionDeclaration) exprNode() {
 }
+
+func (*FunctionDeclaration) declarationNode() {}

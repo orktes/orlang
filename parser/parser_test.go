@@ -323,3 +323,91 @@ func BenchmarkParser(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkWalker(b *testing.B) {
+	file, err := Parse(strings.NewReader(`
+		fn foobar(x : int = 0, y: int = 0) {
+			foobar()
+			foobar()()
+			foobar()()()
+			someObj.foo()
+			foobar(10, 20)
+			foobar(x: 10, y: 20)
+			fn barfoo() {
+				var i : int = 10
+				i = 20
+				for barfoo(i: i) {
+					fn barfoo() {
+						var i : int = 10
+						i = 20
+						for barfoo(i: i) {
+							fn barfoo() {
+								var i : int = 10
+								i = 20
+								for barfoo(i: i) {
+									fn barfoo() {
+										var i : int = 10
+										i = 20
+										for barfoo(i: i) {
+											fn barfoo() {
+												var i : int = 10
+												i = 20
+												for barfoo(i: i) {
+													fn barfoo() {
+														var i : int = 10
+														i = 20
+														for barfoo(i: i) {
+															fn barfoo() {
+																var i : int = 10
+																i = 20
+																for barfoo(i: i) {
+																	fn barfoo() {
+																		var i : int = 10
+																		i = 20
+																		for barfoo(i: i) {
+																			fn barfoo() {
+																				var i : int = 10
+																				i = 20
+																				for barfoo(i: i) {
+
+																				}
+																			}
+																		}
+																	}
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	`))
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		count := 0
+		var visitor ast.Visitor
+		visitor = ast.VisitorFunc(func(ast.Node) ast.Visitor {
+			count++
+			return visitor
+		})
+		ast.Walk(visitor, file)
+
+		if count != 226 {
+			b.Error("Invalid node count")
+		}
+	}
+}

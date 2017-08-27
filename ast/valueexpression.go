@@ -17,3 +17,7 @@ func (v *ValueExpression) EndPos() Position {
 
 func (_ *ValueExpression) exprNode() {
 }
+
+func (v *ValueExpression) String() string {
+	return v.Text
+}

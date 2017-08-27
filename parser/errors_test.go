@@ -34,6 +34,12 @@ func TestParseFailures(t *testing.T) {
 		{"var (foo : bar = )", "1:18: Expected expression got RPAREN())"},
 		{"var (foo ", "1:10: Expected [COLON ASSIGN] got EOF"},
 		{"var (", "1:6: Expected [IDENT RPAREN] got EOF"},
+		{"var foo = (1", "1:13: Expected [RPAREN] got EOF"},
+		{"var foo = ()", "1:12: Expected expression got RPAREN())"},
+		{"var foo = (1,)", "1:14: Expected expression got RPAREN())"},
+		{"var foo : (int, int", "1:20: Expected [RPAREN] got EOF"},
+		{"var foo : ()", "1:12: Expected type got RPAREN())"},
+		{"var foo : (int,)", "1:16: Expected type got RPAREN())"},
 		// For loops
 		{"fn foobar() { for var i = 0; i; [] }", "1:33: Expected code block got LBRACK([)"},
 		{"fn foobar() { for var i = 0; {}}", "1:30: Expected expression got LBRACE({)"},

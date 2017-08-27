@@ -1,4 +1,4 @@
-package analyzer
+package analyser
 
 import "github.com/orktes/orlang/ast"
 

@@ -39,3 +39,32 @@ func TestLinter(t *testing.T) {
 		t.Errorf("Output didnt match expected output %+v", lintErrors)
 	}
 }
+
+func TestLinterAnalyzeErrors(t *testing.T) {
+	lintErrors, err := Lint(strings.NewReader(`
+    fn main() {
+			var foo = 0
+			foo = 0.0
+			foo = "foo"
+    }
+  `))
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	if !reflect.DeepEqual(lintErrors, []LintIssue{
+		LintIssue{
+			Position: ast.Position{Line: 3, Column: 9},
+			Message:  "cannot use 0.0 (type float32) as type int32 in assigment expression",
+			CodeLine: "",
+		},
+		LintIssue{
+			Position: ast.Position{Line: 4, Column: 9},
+			Message:  "cannot use \"foo\" (type string) as type int32 in assigment expression",
+			CodeLine: "",
+		},
+	}) {
+		t.Errorf("Output didnt match expected output %+v", lintErrors)
+	}
+}

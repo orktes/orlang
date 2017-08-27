@@ -98,7 +98,7 @@ func (p *Parser) parseCallArgument() (arg *ast.CallArgument, ok bool) {
 			p.error(reservedKeywordError(tokens[0]))
 			return
 		}
-		arg.Name = &tokens[0]
+		arg.Name = &ast.Identifier{Token: tokens[0]}
 	} else {
 		p.restore()
 	}
@@ -108,22 +108,6 @@ func (p *Parser) parseCallArgument() (arg *ast.CallArgument, ok bool) {
 		arg.Expression = expr
 		p.checkCommentForNode(arg, true)
 	}
-
-	return
-}
-
-func (p *Parser) parseType() (typ ast.Type, ok bool) {
-	token, ok := p.expectToken(scanner.TokenTypeIdent)
-	if !ok {
-		p.unread()
-		return
-	}
-
-	if isKeyword(token.Text) {
-		p.error(reservedKeywordError(token))
-	}
-
-	typ = &ast.PrimitiveType{Token: token}
 
 	return
 }
@@ -182,6 +166,7 @@ func (p *Parser) parseUnaryExpression() (expression ast.Expression, ok bool) {
 	}
 
 	switch {
+	case check(p.parseParenExpressionOrTupple()):
 	case check(p.parseFuncDecl()):
 	case check(p.parseIdentfier()):
 	case check(p.parseValueExpression()):
@@ -293,6 +278,69 @@ func (p *Parser) parseComparisonExpression(left ast.Expression) (node ast.Expres
 		Left:     left,
 		Right:    right,
 		Operator: token,
+	}
+
+	return
+}
+
+func (p *Parser) parseExpressionList() (expressions []ast.Expression, ok bool) {
+
+	for {
+		if expr, exprOk := p.parseExpression(); exprOk {
+			ok = true
+			expressions = append(expressions, expr)
+		} else {
+			if len(expressions) > 0 {
+				ok = false
+				token := p.read()
+				p.error(unexpected(token.StringValue(), "expression"))
+			}
+			break
+		}
+
+		_, commaOK := p.expectToken(scanner.TokenTypeCOMMA)
+		if !commaOK {
+			p.unread()
+			break
+		}
+	}
+
+	return
+}
+
+func (p *Parser) parseParenExpressionOrTupple() (node ast.Expression, ok bool) {
+	leftToken, leftTokenOk := p.expectToken(scanner.TokenTypeLPAREN)
+	if !leftTokenOk {
+		p.unread()
+		return
+	}
+
+	exprList, exprListOk := p.parseExpressionList()
+	if !exprListOk {
+		p.error(unexpected(p.read().StringValue(), "expression"))
+		return
+	}
+
+	rightToken, rightTokenOk := p.expectToken(scanner.TokenTypeRPAREN)
+	if !rightTokenOk {
+		p.error(unexpectedToken(rightToken, scanner.TokenTypeRPAREN))
+		return
+	}
+
+	if len(exprList) == 1 {
+		ok = true
+		node = &ast.ParenExpression{
+			LeftParen:  leftToken,
+			RightParen: rightToken,
+			Expression: exprList[0],
+		}
+	} else {
+		ok = true
+		node = &ast.TuppleExpression{
+			LeftParen:   leftToken,
+			RightParen:  rightToken,
+			Expressions: exprList,
+		}
 	}
 
 	return
