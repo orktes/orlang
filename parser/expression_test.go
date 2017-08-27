@@ -37,6 +37,7 @@ func TestParseTuppleExpression(t *testing.T) {
 		fn main() {
 			var foo = (1, 2)
 			var bar : (int, int) = (1, 2)
+			//var (bar, foo) = (1, 2)
 		}
 	`))
 	if err != nil {

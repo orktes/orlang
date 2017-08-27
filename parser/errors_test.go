@@ -28,12 +28,6 @@ func TestParseFailures(t *testing.T) {
 		{"fn ( {}", "1:6: Expected [IDENT RPAREN] got LBRACE"},
 		// Variable declarations
 		{"var [", "1:5: Expected variable declaration got LBRACK([)"},
-		{"var (bar , int, foo : float = 0.2)", "1:10: Expected [COLON ASSIGN] got COMMA"},
-		{"var (foo : float foo)", "1:18: Expected [RPAREN COMMA] got foo"},
-		{"var (foo : )", "1:12: Expected [IDENT] got RPAREN"},
-		{"var (foo : bar = )", "1:18: Expected expression got RPAREN())"},
-		{"var (foo ", "1:10: Expected [COLON ASSIGN] got EOF"},
-		{"var (", "1:6: Expected [IDENT RPAREN] got EOF"},
 		{"var foo = (1", "1:13: Expected [RPAREN] got EOF"},
 		{"var foo = ()", "1:12: Expected expression got RPAREN())"},
 		{"var foo = (1,)", "1:14: Expected expression got RPAREN())"},
@@ -66,8 +60,6 @@ func TestParseFailures(t *testing.T) {
 		{"fn foobar(int: fn) {  }", "1:16: fn is a reserved keyword"},
 		{"fn foobar() { foobar(int:return) }", "1:26: return is a reserved keyword"},
 		{"fn foobar() { foobar(return:0) }", "1:28: return is a reserved keyword"},
-		{"var (return:foo)", "1:6: return is a reserved keyword"},
-		{"var (foo:return)", "1:10: return is a reserved keyword"},
 		// BinaryExpression
 		{"fn foobar() { var foo = 1 + }", "1:29: Expected expression got RBRACE(})"},
 		// UnaryExpression

@@ -37,49 +37,6 @@ func TestParseVariableDeclaration(t *testing.T) {
 
 }
 
-func TestParseMultipleVariableDeclarations(t *testing.T) {
-	file, err := Parse(strings.NewReader(`
-		var (
-			foo : Bar,
-			bar : int,
-			biz : float = 123,
-			boz = 123
-		)
-	`))
-	if err != nil {
-		t.Error(err)
-	}
-
-	val, ok := file.Body[0].(*ast.MultiVariableDeclaration)
-	if !ok {
-		t.Error("Wrong type")
-	}
-
-	if val.Declarations[0].Name.Text != "foo" || val.Declarations[0].Type.(*ast.TypeReference).Token.Text != "Bar" {
-		t.Error("Type could not be parsed")
-	}
-
-	if val.Declarations[1].Name.Text != "bar" || val.Declarations[1].Type.(*ast.TypeReference).Token.Text != "int" {
-		t.Error("Type could not be parsed")
-	}
-
-	if val.Declarations[2].Name.Text != "biz" || val.Declarations[2].Type.(*ast.TypeReference).Token.Text != "float" {
-		t.Error("Type could not be parsed")
-	}
-
-	if val.Declarations[2].DefaultValue.(*ast.ValueExpression).Value != int64(123) {
-		t.Error("Wrong default value")
-	}
-
-	if val.Declarations[3].Name.Text != "boz" {
-		t.Error("Type could not be parsed")
-	}
-
-	if val.Declarations[3].DefaultValue.(*ast.ValueExpression).Value != int64(123) {
-		t.Error("Wrong default value")
-	}
-}
-
 func TestParseVariableDeclarationInsideFunction(t *testing.T) {
 	_, err := Parse(strings.NewReader(`
 		fn foobar() {

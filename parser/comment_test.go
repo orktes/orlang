@@ -30,20 +30,12 @@ func TestParseComments(t *testing.T) {
 			var foo : bar = 1
 
 		}
-
-		var (
-			foo : Foo, // attched to var foo
-			// attached to var bar
-			bar : Bar,
-			baz: Baz,
-			// not attched to anything
-		)
   `))
 	if err != nil {
 		t.Error(err)
 	}
 
-	if len(file.Comments) != 3 {
+	if len(file.Comments) != 2 {
 		t.Error("Wrong number of comment attached", file.Comments)
 	}
 

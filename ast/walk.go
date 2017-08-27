@@ -87,10 +87,6 @@ func Walk(v Visitor, node Node) {
 		// TODO macro
 	case *MemberExpression:
 		Walk(v, n.Target)
-	case *MultiVariableDeclaration:
-		for _, d := range n.Declarations {
-			Walk(v, d)
-		}
 	case *TypeReference:
 		// Nothing to do
 	case *UnaryExpression:

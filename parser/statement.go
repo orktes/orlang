@@ -166,31 +166,16 @@ func (p *Parser) parseVarDecl() (node ast.Statement, ok bool) {
 		ok = true
 
 		isConstant := token.Text == keywordConst
-		startPos := ast.StartPositionFromToken(token)
-
-		token = p.peek()
-		if token.Type == scanner.TokenTypeLPAREN {
-			// Multiple argument definitions
-			declarations, declOk := p.parseVariableDeclarations(isConstant)
-			if !declOk {
-				return
-			}
-
-			node = &ast.MultiVariableDeclaration{
-				Start:        startPos,
-				End:          ast.EndPositionFromToken(p.lastToken()),
-				Declarations: declarations,
-			}
-		} else {
-			// Single argument def
-			declaration, declOk := p.parseVariableDeclaration(isConstant)
-			if !declOk {
-				p.error(unexpected(p.read().StringValue(), "variable declaration"))
-				return
-			}
-
-			node = declaration
+		//startPos := ast.StartPositionFromToken(token)
+		// TODO set startPos based on const token
+		// Single argument def
+		declaration, declOk := p.parseVariableDeclaration(isConstant)
+		if !declOk {
+			p.error(unexpected(p.read().StringValue(), "variable declaration"))
+			return
 		}
+
+		node = declaration
 	} else {
 		p.unread()
 	}
