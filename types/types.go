@@ -1,5 +1,7 @@
 package types
 
+import "fmt"
+
 var (
 	Float64Type = PrimitiveType{"float64"}
 	Int64Type   = PrimitiveType{"int64"}
@@ -15,6 +17,16 @@ type Type interface {
 
 type EntendedType interface {
 	Entends(t Type) bool
+}
+
+type UnknownType string
+
+func (ut UnknownType) GetName() string {
+	return fmt.Sprintf("unknown (%s)", ut)
+}
+
+func (ut UnknownType) IsEqual(t Type) bool {
+	return false
 }
 
 type PrimitiveType struct {

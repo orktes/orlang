@@ -43,7 +43,6 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 			return v.getTypeForNode(n.Type)
 		}
 	case *ast.TypeReference:
-
 		switch n.Token.Text {
 		case "int32":
 			return types.Int32Type
@@ -53,6 +52,8 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 			return types.Int64Type
 		case "float64":
 			return types.Float64Type
+		default:
+			return types.UnknownType(n.Token.Text)
 		}
 	case *ast.ValueExpression:
 		switch n.Token.Type {
@@ -89,13 +90,12 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 				}
 			}
 			tp = v.getTypeForNode(info.Initialization)
-
 		})
 		return tp
 	default:
 		panic(fmt.Errorf("Could not resolve type for %s", reflect.TypeOf(node)))
 	}
-	return nil
+	return types.UnknownType("undefined")
 }
 
 func (v *visitor) isEqualType(a ast.Node, b ast.Node) (bool, types.Type, types.Type) {
@@ -118,10 +118,14 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 	case *ast.VariableDeclaration:
 		if n.DefaultValue != nil {
 			if n.Type != nil {
-				equal, _, _ := v.isEqualType(n, n.DefaultValue)
-
+				equal, aType, bType := v.isEqualType(n, n.DefaultValue)
 				if !equal {
-					v.emitError(n.DefaultValue, "TODO assigment type error", true)
+					v.emitError(n.DefaultValue, fmt.Sprintf(
+						"cannot use %s (type %s) as type %s in assigment",
+						n.DefaultValue,
+						bType.GetName(),
+						aType.GetName(),
+					), true)
 					break
 				}
 			}

@@ -14,7 +14,7 @@ macro curly {
   (}) : (})
 }
 
-var foo : int = fooMacro!(1)
+var foo : int32 = fooMacro!(1)
 
 fn main() {
   var foo = fooMacro!(1, 2) // equals 3

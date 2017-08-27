@@ -1,6 +1,10 @@
 package ast
 
-import "github.com/orktes/orlang/scanner"
+import (
+	"fmt"
+
+	"github.com/orktes/orlang/scanner"
+)
 
 type BinaryExpression struct {
 	Left     Expression
@@ -17,3 +21,7 @@ func (b *BinaryExpression) EndPos() Position {
 }
 
 func (_ *BinaryExpression) exprNode() {}
+
+func (b *BinaryExpression) String() string {
+	return fmt.Sprintf("(%s %s %s)", b.Left, b.Operator.Text, b.Right)
+}

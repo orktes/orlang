@@ -86,7 +86,7 @@ func formatParseError(filePath string, pos ast.Position, line string, err string
 %s
 ----------------------------------------------------------`, filePath, pos.Line+1, pos.Column+1, strings.Replace(line, "\t", " ", -1), pointer(pos.Column), pad(pos.Column-int(len(err)/2), err))
 	}
-	return fmt.Sprintf("%s %#v %s", filePath, pos, err)
+	return fmt.Sprintf("%s:%d:%d %s", filePath, pos.Line+1, pos.Column+1, err)
 }
 
 func pad(padding int, str string) (res string) {
