@@ -14,7 +14,7 @@ type Parser struct {
 	lastTokens       []scanner.Token
 	parserError      string
 	errorToken       scanner.Token
-	Error            func(tokenIndx int, pos ast.Position, msg string)
+	Error            func(tokenIndx int, pos ast.Position, endPos ast.Position, msg string)
 	ContinueOnErrors bool
 	snapshots        [][]scanner.Token
 	readTokens       int
@@ -260,6 +260,6 @@ func (p *Parser) error(err string) {
 		p.errorToken = p.lastToken()
 	}
 	if p.Error != nil {
-		p.Error(p.readTokens-len(p.tokenBuffer), ast.StartPositionFromToken(p.lastToken()), err)
+		p.Error(p.readTokens-len(p.tokenBuffer), ast.StartPositionFromToken(p.lastToken()), ast.EndPositionFromToken(p.lastToken()), err)
 	}
 }

@@ -30,8 +30,14 @@ const lint = (editor, command) => {
       const resp = JSON.parse(output.stdout);
       if (resp[0] && resp[0].Errors) {
         errors = resp[0].Errors.map((err)=> {
+          let pos;
+          if (err.EndPosition) {
+            pos = [[err.Position.Line, err.Position.Column], [err.EndPosition.Line, err.EndPosition.Column]];
+          } else {
+            pos = helpers.generateRange(editor, err.Position.Line, err.Position.Column);
+          }
           return {
-            range: helpers.generateRange(editor, err.Position.Line, err.Position.Column),
+            range: pos,
             type: err.Warning ? 'Warning' : 'Error',
             text: err.Message,
             filePath: file,

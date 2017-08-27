@@ -11,10 +11,11 @@ import (
 )
 
 type LintIssue struct {
-	Position ast.Position
-	Message  string
-	CodeLine string
-	Warning  bool
+	Position    ast.Position
+	EndPosition ast.Position
+	Message     string
+	CodeLine    string
+	Warning     bool
 }
 
 func Lint(r io.Reader) (issues []LintIssue, err error) {
@@ -22,14 +23,15 @@ func Lint(r io.Reader) (issues []LintIssue, err error) {
 	p := parser.NewParser(scanner.NewScanner(hr))
 	p.ContinueOnErrors = true
 	lastTokenErrorIndex := -2
-	p.Error = func(tokenIndx int, pos ast.Position, message string) {
+	p.Error = func(tokenIndx int, pos ast.Position, endPosition ast.Position, message string) {
 		if tokenIndx != lastTokenErrorIndex+1 {
 			line := hr.FindLineForPosition(pos)
 			issues = append(issues, LintIssue{
-				Position: pos,
-				Message:  message,
-				CodeLine: line,
-				Warning:  false,
+				Position:    pos,
+				EndPosition: endPosition,
+				Message:     message,
+				CodeLine:    line,
+				Warning:     false,
 			})
 		}
 		lastTokenErrorIndex = tokenIndx
@@ -47,10 +49,11 @@ func Lint(r io.Reader) (issues []LintIssue, err error) {
 
 	analyser.Error = func(node ast.Node, message string, fatal bool) {
 		issues = append(issues, LintIssue{
-			Position: node.StartPos(),
-			Message:  message,
-			CodeLine: "", // TODO get line from file
-			Warning:  !fatal,
+			Position:    node.StartPos(),
+			EndPosition: node.EndPos(),
+			Message:     message,
+			CodeLine:    "", // TODO get line from file
+			Warning:     !fatal,
 		})
 	}
 

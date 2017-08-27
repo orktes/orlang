@@ -28,7 +28,7 @@ func TestParserOnError(t *testing.T) {
 	p := NewParser(nil)
 	p.lastTokens = []scanner.Token{scanner.Token{}}
 
-	p.Error = func(indx int, pos ast.Position, msg string) {
+	p.Error = func(indx int, pos ast.Position, endPos ast.Position, msg string) {
 		if indx != 0 {
 			t.Error("Wrong index")
 		}

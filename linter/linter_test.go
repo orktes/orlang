@@ -26,14 +26,16 @@ func TestLinter(t *testing.T) {
 
 	if !reflect.DeepEqual(lintErrors, []LintIssue{
 		LintIssue{
-			Position: ast.Position{Line: 2, Column: 23},
-			Message:  "Expected expression got SEMICOLON(;)",
-			CodeLine: "      for var i = 1; i<; 1 {",
+			Position:    ast.Position{Line: 2, Column: 23},
+			EndPosition: ast.Position{Line: 2, Column: 24},
+			Message:     "Expected expression got SEMICOLON(;)",
+			CodeLine:    "      for var i = 1; i<; 1 {",
 		},
 		LintIssue{
-			Position: ast.Position{Line: 4, Column: 31},
-			Message:  "Expected code block got NUMBER(1)",
-			CodeLine: "          for var i = 0; i; i++1 {",
+			Position:    ast.Position{Line: 4, Column: 31},
+			EndPosition: ast.Position{Line: 4, Column: 32},
+			Message:     "Expected code block got NUMBER(1)",
+			CodeLine:    "          for var i = 0; i; i++1 {",
 		},
 	}) {
 		t.Errorf("Output didnt match expected output %+v", lintErrors)
@@ -55,14 +57,16 @@ func TestLinterAnalyzeErrors(t *testing.T) {
 
 	if !reflect.DeepEqual(lintErrors, []LintIssue{
 		LintIssue{
-			Position: ast.Position{Line: 3, Column: 9},
-			Message:  "cannot use 0.0 (type float32) as type int32 in assigment expression",
-			CodeLine: "",
+			Position:    ast.Position{Line: 3, Column: 9},
+			EndPosition: lintErrors[0].EndPosition,
+			Message:     "cannot use 0.0 (type float32) as type int32 in assigment expression",
+			CodeLine:    "",
 		},
 		LintIssue{
-			Position: ast.Position{Line: 4, Column: 9},
-			Message:  "cannot use \"foo\" (type string) as type int32 in assigment expression",
-			CodeLine: "",
+			Position:    ast.Position{Line: 4, Column: 9},
+			EndPosition: lintErrors[1].EndPosition,
+			Message:     "cannot use \"foo\" (type string) as type int32 in assigment expression",
+			CodeLine:    "",
 		},
 	}) {
 		t.Errorf("Output didnt match expected output %+v", lintErrors)
