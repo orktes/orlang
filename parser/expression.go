@@ -166,7 +166,7 @@ func (p *Parser) parseUnaryExpression() (expression ast.Expression, ok bool) {
 	}
 
 	switch {
-	case check(p.parseParenExpressionOrTupple()):
+	case check(p.parseParenExpressionOrTuple()):
 	case check(p.parseFuncDecl()):
 	case check(p.parseIdentfier()):
 	case check(p.parseValueExpression()):
@@ -308,7 +308,7 @@ func (p *Parser) parseExpressionList() (expressions []ast.Expression, ok bool) {
 	return
 }
 
-func (p *Parser) parseParenExpressionOrTupple() (node ast.Expression, ok bool) {
+func (p *Parser) parseParenExpressionOrTuple() (node ast.Expression, ok bool) {
 	leftToken, leftTokenOk := p.expectToken(scanner.TokenTypeLPAREN)
 	if !leftTokenOk {
 		p.unread()
@@ -336,7 +336,7 @@ func (p *Parser) parseParenExpressionOrTupple() (node ast.Expression, ok bool) {
 		}
 	} else {
 		ok = true
-		node = &ast.TuppleExpression{
+		node = &ast.TupleExpression{
 			LeftParen:   leftToken,
 			RightParen:  rightToken,
 			Expressions: exprList,

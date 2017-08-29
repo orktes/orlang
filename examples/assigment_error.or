@@ -1,4 +1,8 @@
 fn main() {
-  var foo = 1
-  foo = 0.1
+  var foo : int32 = 2147483646
+  foo = 2147483648
+
+  var complex : ((int32, int32), ((int32, int32), int32)) = ((1,1),((1,1),1))
+  var ((foo1, foo2), foo3) : ((int32, float64), int32) = complex
+
 }

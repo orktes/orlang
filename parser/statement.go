@@ -169,57 +169,21 @@ func (p *Parser) parseVarDecl() (node ast.Statement, ok bool) {
 		//startPos := ast.StartPositionFromToken(token)
 		// TODO set startPos based on const token
 		// Single argument def
-		declaration, declOk := p.parseVariableDeclaration(isConstant)
+		var declaration ast.Statement
+		var declOk bool
+		declaration, declOk = p.parseVariableDeclaration(isConstant)
 		if !declOk {
-			p.error(unexpected(p.read().StringValue(), "variable declaration"))
-			return
+			declaration, declOk = p.parseTupleDeclaration(isConstant)
+			if !declOk {
+				p.error(unexpected(p.read().StringValue(), "variable or tuple declaration"))
+				return
+			}
 		}
 
 		node = declaration
 	} else {
 		p.unread()
 	}
-	return
-}
-
-func (p *Parser) parseVariableDeclarations(isConstant bool) (varDecls []*ast.VariableDeclaration, ok bool) {
-	if t, lparenOk := p.expectToken(scanner.TokenTypeLPAREN); !lparenOk {
-		p.error(unexpectedToken(t, scanner.TokenTypeLPAREN))
-		return
-	}
-
-	for {
-		var foundVarDecl = false
-		var varDecl *ast.VariableDeclaration
-		varDecl, ok = p.parseVariableDeclaration(isConstant)
-		if ok {
-			foundVarDecl = true
-			varDecls = append(varDecls, varDecl)
-		}
-
-		var token scanner.Token
-
-		var foundVarDeclEnd bool
-		if foundVarDecl {
-			token, foundVarDeclEnd = p.expectToken(scanner.TokenTypeRPAREN, scanner.TokenTypeCOMMA)
-		} else {
-			token, foundVarDeclEnd = p.expectToken(scanner.TokenTypeRPAREN)
-		}
-
-		if !foundVarDeclEnd {
-			if foundVarDecl {
-				p.error(unexpectedToken(token, scanner.TokenTypeRPAREN, scanner.TokenTypeCOMMA))
-			} else {
-				p.error(unexpectedToken(token, scanner.TokenTypeIdent, scanner.TokenTypeRPAREN))
-			}
-			return
-		}
-
-		if token.Type == scanner.TokenTypeRPAREN {
-			break
-		}
-	}
-
 	return
 }
 
@@ -243,7 +207,7 @@ func (p *Parser) parseVariableDeclaration(isConstant bool) (varDecl *ast.Variabl
 	if token.Type == scanner.TokenTypeCOLON {
 		typ, typOk := p.parseType()
 		if !typOk {
-			p.error(unexpectedToken(p.read(), scanner.TokenTypeIdent))
+			p.error(unexpected(p.read().StringValue(), "type"))
 			return
 		}
 
@@ -263,6 +227,50 @@ func (p *Parser) parseVariableDeclaration(isConstant bool) (varDecl *ast.Variabl
 	}
 
 	varDecl.DefaultValue = expr
+
+	return
+}
+
+func (p *Parser) parseTupleDeclaration(isConstant bool) (tupleDecl *ast.TupleDeclaration, ok bool) {
+	pattern, ok := p.parseTuplePattern()
+	if !ok {
+		return
+	}
+
+	tupleDecl = &ast.TupleDeclaration{}
+	tupleDecl.Constant = isConstant
+	tupleDecl.Pattern = pattern
+	defer p.checkCommentForNode(tupleDecl, true)
+
+	token, assignOk := p.expectToken(scanner.TokenTypeCOLON, scanner.TokenTypeASSIGN)
+	if !assignOk {
+		p.error(unexpectedToken(token, scanner.TokenTypeCOLON, scanner.TokenTypeASSIGN))
+		return
+	}
+
+	if token.Type == scanner.TokenTypeCOLON {
+		typ, typOk := p.parseType()
+		if !typOk {
+			p.error(unexpected(p.read().StringValue(), "type"))
+			return
+		}
+
+		tupleDecl.Type = typ
+
+		if _, defaultAssOk := p.expectToken(scanner.TokenTypeASSIGN); !defaultAssOk {
+			p.unread()
+			return
+		}
+
+	}
+
+	expr, expressionOk := p.parseExpression()
+	if !expressionOk {
+		p.error(unexpected(p.read().StringValue(), "expression"))
+		return
+	}
+
+	tupleDecl.DefaultValue = expr
 
 	return
 }

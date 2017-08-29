@@ -8,7 +8,7 @@ import (
 func (p *Parser) parseType() (typ ast.Type, ok bool) {
 	if typ, ok = p.parseTypeReference(); ok {
 		return
-	} else if typ, ok = p.parseTuppleType(); ok {
+	} else if typ, ok = p.parseTupleType(); ok {
 		return
 	}
 	return
@@ -56,7 +56,7 @@ func (p *Parser) parseTypeList() (types []ast.Type, ok bool) {
 	return
 }
 
-func (p *Parser) parseTuppleType() (node ast.Type, ok bool) {
+func (p *Parser) parseTupleType() (node ast.Type, ok bool) {
 	leftToken, leftTokenOk := p.expectToken(scanner.TokenTypeLPAREN)
 	if !leftTokenOk {
 		p.unread()
@@ -76,7 +76,7 @@ func (p *Parser) parseTuppleType() (node ast.Type, ok bool) {
 	}
 
 	ok = true
-	node = &ast.TuppleType{
+	node = &ast.TupleType{
 		LeftParen:  leftToken,
 		RightParen: rightToken,
 		Types:      typeList,

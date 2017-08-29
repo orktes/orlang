@@ -108,14 +108,6 @@ func TestParserSkip(t *testing.T) {
 	}
 }
 
-func TestParseVariableDeclarationsFailure(t *testing.T) {
-	p := NewParser(testScanner("foo:bar)"))
-	_, ok := p.parseVariableDeclarations(true)
-	if ok {
-		t.Error("Should not be able to parse")
-	}
-}
-
 func TestExpectPattern(t *testing.T) {
 	p := NewParser(testScanner("foobar;barfoo;"))
 	tokens, ok := p.expectPattern(

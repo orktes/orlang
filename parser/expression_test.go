@@ -32,12 +32,12 @@ func TestParseParenExpression(t *testing.T) {
 	}
 }
 
-func TestParseTuppleExpression(t *testing.T) {
+func TestParseTupleExpression(t *testing.T) {
 	_, err := Parse(strings.NewReader(`
 		fn main() {
 			var foo = (1, 2)
 			var bar : (int, int) = (1, 2)
-			//var (bar, foo) = (1, 2)
+			var (bar, foo) = (1, 2)
 		}
 	`))
 	if err != nil {
@@ -59,8 +59,6 @@ func TestParseBinaryExpression(t *testing.T) {
 	if !ok {
 		t.Error("Wrong type")
 	}
-
-	//fmt.Printf("%#v", binaryExpr)
 
 	if binaryExpr.Left.(*ast.ValueExpression).Value != int64(1) {
 		t.Error("Wrong value on the left most side")

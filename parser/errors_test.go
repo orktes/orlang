@@ -15,7 +15,7 @@ func TestParseFailures(t *testing.T) {
 		{"bar () {}", "1:1: Unexpected token IDENT(bar)"},
 		// Invalid functions
 		{"fn test{}", "1:8: Expected [LPAREN] got LBRACE"},
-		{"fn test()", "1:10: Expected code block got EOF()"},
+		{"fn test()", "1:10: Expected code block got EOF"},
 		{"fn test(,) {}", "1:9: Expected [IDENT RPAREN] got COMMA"},
 		{"fn test(bar i = 1) {}", "1:13: Expected [RPAREN COMMA] got i"},
 		{"fn test(int) : {}", "1:16: Expected function return type got LBRACE({)"},
@@ -23,17 +23,20 @@ func TestParseFailures(t *testing.T) {
 		{"fn test(foo : ) {}", "1:15: Expected [IDENT] got RPAREN"},
 		{"fn test(foo : bar = ) {}", "1:21: Expected expression got RPAREN())"},
 		{"fn test(foo : int) {]", "1:21: Expected code block got RBRACK(])"},
-		{"fn", "1:3: Expected function name or argument list got EOF()"},
+		{"fn", "1:3: Expected function name or argument list got EOF"},
 		{"fn (foo : int) {}", "1:17: Root level functions can't be anonymous"},
 		{"fn ( {}", "1:6: Expected [IDENT RPAREN] got LBRACE"},
 		// Variable declarations
-		{"var [", "1:5: Expected variable declaration got LBRACK([)"},
+		{"var [", "1:5: Expected variable or tuple declaration got LBRACK([)"},
 		{"var foo = (1", "1:13: Expected [RPAREN] got EOF"},
 		{"var foo = ()", "1:12: Expected expression got RPAREN())"},
 		{"var foo = (1,)", "1:14: Expected expression got RPAREN())"},
 		{"var foo : (int, int", "1:20: Expected [RPAREN] got EOF"},
 		{"var foo : ()", "1:12: Expected type got RPAREN())"},
 		{"var foo : (int,)", "1:16: Expected type got RPAREN())"},
+		{"var (foo) :", "1:12: Expected type got EOF"},
+		{"var foo :", "1:10: Expected type got EOF"},
+		{"var (", "1:6: Expected [RPAREN] got EOF"},
 		// For loops
 		{"fn foobar() { for var i = 0; i; [] }", "1:33: Expected code block got LBRACK([)"},
 		{"fn foobar() { for var i = 0; {}}", "1:30: Expected expression got LBRACE({)"},
@@ -87,7 +90,7 @@ func TestParseFailures(t *testing.T) {
 		{"macro M { ($(foo)+) : () } fn main() { M!(bar) }", "1:43: No rules expected token IDENT(bar)"},
 		{"fn main() { M!(foo) }", "1:13: No macro with name M"},
 		{"macro M { (", "1:12: Expected token but got eof"},
-		{"macro M { ($()", "1:15: Expected macro repetition delimeter or operand (+, * or ?) got EOF()"},
+		{"macro M { ($()", "1:15: Expected macro repetition delimeter or operand (+, * or ?) got EOF"},
 	}
 	for _, test := range tests {
 		_, err := Parse(strings.NewReader(test.src))

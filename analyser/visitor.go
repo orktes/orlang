@@ -36,25 +36,29 @@ func (v *visitor) scopeMustGet(identifier *ast.Identifier, cb func(info *ScopeIn
 	}
 }
 
+func (v *visitor) getTypesForNodeList(nodes ...ast.Node) []types.Type {
+	types := make([]types.Type, len(nodes))
+
+	for i, node := range nodes {
+		types[i] = v.getTypeForNode(node)
+	}
+
+	return types
+}
+
 func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 	switch n := node.(type) {
 	case *ast.VariableDeclaration:
 		if n.Type != nil {
 			return v.getTypeForNode(n.Type)
 		}
+		return v.getTypeForNode(n.DefaultValue)
 	case *ast.TypeReference:
-		switch n.Token.Text {
-		case "int32":
-			return types.Int32Type
-		case "float32":
-			return types.Float32Type
-		case "int64":
-			return types.Int64Type
-		case "float64":
-			return types.Float64Type
-		default:
+		typ := types.Types[n.Token.Text]
+		if typ == nil {
 			return types.UnknownType(n.Token.Text)
 		}
+		return typ
 	case *ast.ValueExpression:
 		switch n.Token.Type {
 		case scanner.TokenTypeNumber:
@@ -80,6 +84,17 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 		return v.getTypeForNode(n.Signature.ReturnType)
 	case *ast.Argument:
 		return v.getTypeForNode(n.Type)
+	case *ast.ParenExpression:
+		return v.getTypeForNode(n.Expression)
+	case *ast.TupleDeclaration:
+		if n.Type != nil {
+			return v.getTypeForNode(n.Type)
+		}
+		return v.getTypeForNode(n.DefaultValue)
+	case *ast.TupleExpression:
+		return &types.TupleType{Types: v.getTypesForNodeList(convertExpressionsToNodes(n.Expressions...)...)}
+	case *ast.TupleType:
+		return &types.TupleType{Types: v.getTypesForNodeList(convertTypesToNodes(n.Types...)...)}
 	case *ast.Identifier:
 		var tp types.Type
 		v.scopeMustGet(n, func(info *ScopeInfo) {
@@ -95,6 +110,7 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 	default:
 		panic(fmt.Errorf("Could not resolve type for %s", reflect.TypeOf(node)))
 	}
+
 	return types.UnknownType("undefined")
 }
 
@@ -115,10 +131,29 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 		if err := v.scope.Declaration(n); err != nil {
 			v.emitError(node, err.Error(), true) // TODO process scope erro
 		}
+	case *ast.TupleDeclaration:
+		if n.DefaultValue != nil {
+			if n.Type != nil {
+				equal, aType, bType := v.isEqualType(n, n.DefaultValue)
+
+				if !equal {
+					v.emitError(n.DefaultValue, fmt.Sprintf(
+						"cannot use %s (type %s) as type %s in assigment",
+						n.DefaultValue,
+						bType.GetName(),
+						aType.GetName(),
+					), true)
+					break
+				}
+			}
+		}
+		// TODO add to scope
+		println("TODO")
 	case *ast.VariableDeclaration:
 		if n.DefaultValue != nil {
 			if n.Type != nil {
 				equal, aType, bType := v.isEqualType(n, n.DefaultValue)
+
 				if !equal {
 					v.emitError(n.DefaultValue, fmt.Sprintf(
 						"cannot use %s (type %s) as type %s in assigment",
@@ -150,7 +185,19 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 						return
 					}
 				} else {
-					info.Initialization = identifier
+					equal, aType, bType := v.isEqualType(info.Declaration, n.Right)
+
+					if !equal {
+						v.emitError(n.Right, fmt.Sprintf(
+							"cannot use %s (type %s) as type %s in assigment expression",
+							n.Right,
+							bType.GetName(),
+							aType.GetName(),
+						), true)
+						return
+					}
+
+					info.Initialization = n.Right
 				}
 
 			})

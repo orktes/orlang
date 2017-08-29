@@ -15,5 +15,9 @@ func (i *Identifier) EndPos() Position {
 	return EndPositionFromToken(i.Token)
 }
 
-func (_ *Identifier) exprNode() {
+func (Identifier) exprNode()    {}
+func (Identifier) patternNode() {}
+
+func (i *Identifier) String() string {
+	return i.Text
 }

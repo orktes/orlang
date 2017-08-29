@@ -405,5 +405,5 @@ func ExampleNewScanner() {
 	// 11:20 COMMENT(// 11)
 	// 12:4 RBRACE(})
 	// 12:6 COMMENT(// 12)
-	// 13:2 EOF()
+	// 13:2 EOF
 }

@@ -11,12 +11,22 @@ import (
 
 func TestVisitor(t *testing.T) {
 	file, err := parser.Parse(strings.NewReader(`
-    fn foobar(x : int32, y : float32) : float32 {
-      return x + y
+    fn foobar(x : int32, y : float32) : (float32, int32) {
+      return (y, x)
     }
 
     fn main() {
-      var foo = foobar(1, 0.32)
+			var bar = 1
+			var biz = (bar, 2.0)
+			biz = (1, 3.0)
+			var fuz : (int32, float32) = biz
+			var fiz = foobar(10, 2.0)
+			fiz = (0.5,11)
+
+			var complex : ((int32, int32), int32)
+			complex = ((1,1), 1)
+
+			var ((foo1, foo2), foo3) : ((int32, int32), int32) = complex
     }
   `))
 	if err != nil {
@@ -27,6 +37,9 @@ func TestVisitor(t *testing.T) {
 		scope: NewScope(),
 		node:  file,
 		info:  &FileInfo{},
+		errorCb: func(node ast.Node, msg string, bool bool) {
+			t.Fatal(msg)
+		},
 	}
 
 	ast.Walk(visitor, file)

@@ -2,18 +2,18 @@ package ast
 
 import "github.com/orktes/orlang/scanner"
 
-type TuppleType struct {
+type TupleType struct {
 	LeftParen  scanner.Token
 	Types      []Type
 	RightParen scanner.Token
 }
 
-func (TuppleType) typeNode() {}
+func (TupleType) typeNode() {}
 
-func (tt *TuppleType) StartPos() Position {
+func (tt *TupleType) StartPos() Position {
 	return StartPositionFromToken(tt.LeftParen)
 }
 
-func (tt *TuppleType) EndPos() Position {
+func (tt *TupleType) EndPos() Position {
 	return EndPositionFromToken(tt.RightParen)
 }

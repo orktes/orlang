@@ -167,6 +167,10 @@ func (t Token) StringValue() string {
 		return t.Text
 	}
 
+	if t.Text == "" {
+		return t.Type.String()
+	}
+
 	if t.Value == nil || t.Type == TokenTypeUnknown || t.Type == TokenTypeIdent {
 		return fmt.Sprintf("%s(%s)", t.Type.String(), t.Text)
 	}

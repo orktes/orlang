@@ -101,10 +101,22 @@ func Walk(v Visitor, node Node) {
 	case *Identifier:
 	case *ReturnStatement:
 		Walk(v, n.Expression)
-	case *TuppleExpression:
+	case *TuplePattern:
+		for _, e := range n.Patterns {
+			Walk(v, e)
+		}
+	case *TupleExpression:
 		for _, e := range n.Expressions {
 			Walk(v, e)
 		}
+	case *TupleType:
+		for _, t := range n.Types {
+			Walk(v, t)
+		}
+	case *TupleDeclaration:
+		Walk(v, n.Pattern)
+		Walk(v, n.Type)
+		Walk(v, n.DefaultValue)
 	default:
 		panic(fmt.Errorf("Unknown node type: %s", reflect.TypeOf(n)))
 	}
