@@ -11,8 +11,8 @@ import (
 )
 
 type visitor struct {
-	scope   *Scope
 	node    ast.Node
+	scope   *Scope
 	info    *FileInfo
 	parent  *visitor
 	errorCb func(node ast.Node, msg string, fatal bool)
@@ -28,11 +28,11 @@ func (v *visitor) emitError(node ast.Node, err string, fatal bool) {
 	}
 }
 
-func (v *visitor) scopeMustGet(identifier *ast.Identifier, cb func(info *ScopeInfo)) {
-	if scopeInfo, err := v.scope.Get(identifier.Text); err != nil {
-		v.emitError(identifier, err.Error(), true) // TODO process scope error
+func (v *visitor) scopeMustGet(identifier *ast.Identifier, cb func(ScopeItem)) {
+	if node := v.scope.Get(identifier.Text, true); node == nil {
+		v.emitError(identifier, fmt.Sprintf("%s not initialized", identifier), true) // TODO process scope error
 	} else {
-		cb(scopeInfo)
+		cb(node)
 	}
 }
 
@@ -77,11 +77,17 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 			panic(fmt.Errorf("Could not resolve type for token %s", n.Token.String()))
 		}
 	case *ast.FunctionCall:
+		// TODO check type and return ReturnType
 		return v.getTypeForNode(n.Callee)
 	case *ast.BinaryExpression:
 		return v.getTypeForNode(n.Left)
 	case *ast.FunctionDeclaration:
+		// TODO create function type
+		if n.Signature.ReturnType == nil {
+			return nil
+		}
 		return v.getTypeForNode(n.Signature.ReturnType)
+
 	case *ast.Argument:
 		return v.getTypeForNode(n.Type)
 	case *ast.ParenExpression:
@@ -97,14 +103,17 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 		return &types.TupleType{Types: v.getTypesForNodeList(convertTypesToNodes(n.Types...)...)}
 	case *ast.Identifier:
 		var tp types.Type
-		v.scopeMustGet(n, func(info *ScopeInfo) {
-			if dec, ok := info.Declaration.(*ast.VariableDeclaration); ok {
-				if dec.Type != nil {
-					tp = v.getTypeForNode(dec)
-					return
+		v.scopeMustGet(n, func(node ScopeItem) {
+			switch n := node.(type) {
+			case *ast.VariableDeclaration:
+				if n.Type != nil {
+					tp = v.getTypeForNode(n.Type)
+				} else {
+					tp = v.getTypeForNode(n.DefaultValue)
 				}
+			case *ast.FunctionDeclaration:
+				tp = v.getTypeForNode(n)
 			}
-			tp = v.getTypeForNode(info.Initialization)
 		})
 		return tp
 	default:
@@ -128,9 +137,16 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 	case *ast.Block:
 		return v.subVisitor(node, v.scope.SubScope())
 	case *ast.FunctionDeclaration:
-		if err := v.scope.Declaration(n); err != nil {
-			v.emitError(node, err.Error(), true) // TODO process scope erro
+		if n.Signature.Identifier != nil {
+			scopeItem := v.scope.Get(n.Signature.Identifier.Text, false)
+			if scopeItem != nil {
+				v.emitError(n, fmt.Sprintf("%s already declared", n.Signature.Identifier), true)
+				break
+			}
+
+			v.scope.Set(n.Signature.Identifier.Text, n)
 		}
+
 	case *ast.TupleDeclaration:
 		if n.DefaultValue != nil {
 			if n.Type != nil {
@@ -147,8 +163,9 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 				}
 			}
 		}
+
 		// TODO add to scope
-		println("TODO")
+
 	case *ast.VariableDeclaration:
 		if n.DefaultValue != nil {
 			if n.Type != nil {
@@ -166,40 +183,27 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 			}
 		}
 
-		if err := v.scope.Declaration(n); err != nil {
-			v.emitError(node, err.Error(), true) // TODO process scope error
+		scopeItem := v.scope.Get(n.Name.Text, false)
+		if scopeItem != nil {
+			v.emitError(n, fmt.Sprintf("%s already declared", n.Name), true)
+			break
 		}
+
+		v.scope.Set(n.Name.Text, n)
+
 	case *ast.Assigment:
 		if identifier, ok := n.Left.(*ast.Identifier); ok {
-			v.scopeMustGet(identifier, func(info *ScopeInfo) {
-				if info.Initialization != nil {
-					equal, aType, bType := v.isEqualType(info.Initialization, n.Right)
-
-					if !equal {
-						v.emitError(n.Right, fmt.Sprintf(
-							"cannot use %s (type %s) as type %s in assigment expression",
-							n.Right,
-							bType.GetName(),
-							aType.GetName(),
-						), true)
-						return
-					}
-				} else {
-					equal, aType, bType := v.isEqualType(info.Declaration, n.Right)
-
-					if !equal {
-						v.emitError(n.Right, fmt.Sprintf(
-							"cannot use %s (type %s) as type %s in assigment expression",
-							n.Right,
-							bType.GetName(),
-							aType.GetName(),
-						), true)
-						return
-					}
-
-					info.Initialization = n.Right
+			v.scopeMustGet(identifier, func(leftNode ScopeItem) {
+				equal, leftType, rightType := v.isEqualType(leftNode, n.Right)
+				if !equal {
+					v.emitError(n.Right, fmt.Sprintf(
+						"cannot use %s (type %s) as type %s in assigment expression",
+						n.Right,
+						rightType.GetName(),
+						leftType.GetName(),
+					), true)
+					return
 				}
-
 			})
 		} else {
 			panic("TODO")

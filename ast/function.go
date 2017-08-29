@@ -25,10 +25,6 @@ type FunctionDeclaration struct {
 	Block     *Block
 }
 
-func (vd *FunctionDeclaration) GetIdentifier() *Identifier {
-	return vd.Signature.Identifier
-}
-
 func (fd *FunctionDeclaration) StartPos() Position {
 	return fd.Signature.StartPos()
 }

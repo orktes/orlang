@@ -10,10 +10,6 @@ type TupleDeclaration struct {
 func (*TupleDeclaration) declarationNode() {}
 func (*TupleDeclaration) stmtNode()        {}
 
-func (vd *TupleDeclaration) GetIdentifier() *Identifier {
-	return nil
-}
-
 func (vd *TupleDeclaration) StartPos() Position {
 	return vd.Pattern.StartPos()
 }

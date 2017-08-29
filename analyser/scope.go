@@ -1,32 +1,19 @@
 package analyser
 
-import (
-	"errors"
+import "github.com/orktes/orlang/ast"
 
-	"github.com/orktes/orlang/ast"
-)
-
-var (
-	ErrAlreadyDeclared = errors.New("Identifier declared in scope")
-	ErrNotDeclared     = errors.New("Identifier not declared in scope")
-)
-
-type ScopeInfo struct {
-	Declaration    ast.Declaration
-	Initialization ast.Expression
-	Constant       bool
-	Scope          *Scope
+type ScopeItem interface {
+	ast.Node
 }
 
 type Scope struct {
 	parent *Scope
-	items  map[string]*ScopeInfo
-	block  *ast.Block
+	items  map[string]ScopeItem
 }
 
 func NewScope() *Scope {
 	return &Scope{
-		items: map[string]*ScopeInfo{},
+		items: map[string]ScopeItem{},
 	}
 }
 
@@ -36,40 +23,16 @@ func (s *Scope) SubScope() *Scope {
 	return scope
 }
 
-func (s *Scope) Get(indentifier string) (*ScopeInfo, error) {
+func (s *Scope) Get(indentifier string, parent bool) ast.Node {
 	if info, ok := s.items[indentifier]; ok {
-		return info, nil
+		return info
 	}
-	if s.parent != nil {
-		return s.parent.Get(indentifier)
+	if s.parent != nil && parent {
+		return s.parent.Get(indentifier, parent)
 	}
-	return nil, ErrNotDeclared
+	return nil
 }
 
-func (s *Scope) Declaration(d ast.Declaration) error {
-	name := d.GetIdentifier().Text
-	if _, ok := s.items[name]; ok {
-		return ErrAlreadyDeclared
-	}
-
-	// TODO figure out type
-
-	switch t := d.(type) {
-	case *ast.VariableDeclaration:
-		s.items[name] = &ScopeInfo{
-			Declaration:    d,
-			Initialization: t.DefaultValue,
-			Constant:       t.Constant,
-			Scope:          s,
-		}
-	case *ast.FunctionDeclaration:
-		s.items[name] = &ScopeInfo{
-			Declaration:    t,
-			Initialization: t,
-			Constant:       true,
-			Scope:          s,
-		}
-	}
-
-	return nil
+func (s *Scope) Set(identifier string, node ast.Node) {
+	s.items[identifier] = node
 }

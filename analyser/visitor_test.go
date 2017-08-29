@@ -38,7 +38,7 @@ func TestVisitor(t *testing.T) {
 		node:  file,
 		info:  &FileInfo{},
 		errorCb: func(node ast.Node, msg string, bool bool) {
-			t.Fatal(msg)
+			t.Fatalf("%s %#v", msg, node)
 		},
 	}
 
