@@ -1,6 +1,10 @@
 package analyser
 
-import "github.com/orktes/orlang/ast"
+import (
+	"github.com/orktes/orlang/types"
+
+	"github.com/orktes/orlang/ast"
+)
 
 type ScopeItem interface {
 	ast.Node
@@ -35,4 +39,17 @@ func (s *Scope) Get(indentifier string, parent bool) ast.Node {
 
 func (s *Scope) Set(identifier string, node ast.Node) {
 	s.items[identifier] = node
+}
+
+type CustomTypeResolvingScopeItem struct {
+	Node     ast.Node
+	Resolver func() types.Type
+}
+
+func (c *CustomTypeResolvingScopeItem) StartPos() ast.Position {
+	return c.Node.StartPos()
+}
+
+func (c *CustomTypeResolvingScopeItem) EndPos() ast.Position {
+	return c.Node.EndPos()
 }

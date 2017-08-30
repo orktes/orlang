@@ -27,6 +27,9 @@ func TestVisitor(t *testing.T) {
 			complex = ((1,1), 1)
 
 			var ((foo1, foo2), foo3) : ((int32, int32), int32) = complex
+
+			foo3 = 1.0
+
     }
   `))
 	if err != nil {

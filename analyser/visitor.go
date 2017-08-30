@@ -116,6 +116,8 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 			}
 		})
 		return tp
+	case *CustomTypeResolvingScopeItem:
+		return n.Resolver()
 	default:
 		panic(fmt.Errorf("Could not resolve type for %s", reflect.TypeOf(node)))
 	}
@@ -136,6 +138,7 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 	switch n := node.(type) {
 	case *ast.Block:
 		return v.subVisitor(node, v.scope.SubScope())
+
 	case *ast.FunctionDeclaration:
 		if n.Signature.Identifier != nil {
 			scopeItem := v.scope.Get(n.Signature.Identifier.Text, false)
@@ -164,7 +167,23 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 			}
 		}
 
-		// TODO add to scope
+		var decl func(patrn *ast.TuplePattern, typ *types.TupleType)
+		decl = func(patrn *ast.TuplePattern, typ *types.TupleType) {
+			for i, pat := range patrn.Patterns {
+				switch p := pat.(type) {
+				case *ast.Identifier:
+					v.scope.Set(p.Text, &CustomTypeResolvingScopeItem{
+						Node: n,
+						Resolver: func() types.Type {
+							return typ.Types[i]
+						},
+					})
+				case *ast.TuplePattern:
+					decl(p, typ.Types[i].(*types.TupleType))
+				}
+			}
+		}
+		decl(n.Pattern, v.getTypeForNode(n).(*types.TupleType))
 
 	case *ast.VariableDeclaration:
 		if n.DefaultValue != nil {
@@ -205,6 +224,7 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 					return
 				}
 			})
+
 		} else {
 			panic("TODO")
 		}
