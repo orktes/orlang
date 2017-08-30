@@ -40,7 +40,7 @@ func TestVisitor(t *testing.T) {
 		scope: NewScope(),
 		node:  file,
 		info:  &FileInfo{},
-		errorCb: func(node ast.Node, msg string, bool bool) {
+		errorCb: func(node ast.Node, msg string, _ bool) {
 			t.Fatalf("%s %#v", msg, node)
 		},
 	}
