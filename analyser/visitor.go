@@ -117,7 +117,7 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 		})
 		return tp
 	case *CustomTypeResolvingScopeItem:
-		return n.Resolver()
+		return n.ResolvedType
 	default:
 		panic(fmt.Errorf("Could not resolve type for %s", reflect.TypeOf(node)))
 	}
@@ -173,10 +173,8 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 				switch p := pat.(type) {
 				case *ast.Identifier:
 					v.scope.Set(p.Text, &CustomTypeResolvingScopeItem{
-						Node: n,
-						Resolver: func() types.Type {
-							return typ.Types[i]
-						},
+						Node:         n,
+						ResolvedType: typ.Types[i],
 					})
 				case *ast.TuplePattern:
 					decl(p, typ.Types[i].(*types.TupleType))

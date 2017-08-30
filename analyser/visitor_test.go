@@ -28,7 +28,7 @@ func TestVisitor(t *testing.T) {
 
 			var ((foo1, foo2), foo3) : ((int32, int32), int32) = complex
 
-			foo3 = 1.0
+			foo3 = 1
 
     }
   `))

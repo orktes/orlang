@@ -42,8 +42,8 @@ func (s *Scope) Set(identifier string, node ast.Node) {
 }
 
 type CustomTypeResolvingScopeItem struct {
-	Node     ast.Node
-	Resolver func() types.Type
+	Node         ast.Node
+	ResolvedType types.Type
 }
 
 func (c *CustomTypeResolvingScopeItem) StartPos() ast.Position {
