@@ -23,5 +23,5 @@ func (b *BinaryExpression) EndPos() Position {
 func (_ *BinaryExpression) exprNode() {}
 
 func (b *BinaryExpression) String() string {
-	return fmt.Sprintf("(%s %s %s)", b.Left, b.Operator.Text, b.Right)
+	return fmt.Sprintf("%s %s %s", b.Left, b.Operator.Text, b.Right)
 }

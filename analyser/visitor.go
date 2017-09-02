@@ -168,9 +168,10 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 			// TODO figure out why we come here
 			break
 		}
+
 		scopeItem := v.scope.Get(n.Text, true)
 		if scopeItem == nil {
-			v.emitError(n, fmt.Sprintf("%s not declared", n), true)
+			v.emitError(n, fmt.Sprintf("undefined: %s", n), true)
 			break
 		}
 
@@ -191,6 +192,19 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 				n.Expression,
 				returnType.GetName(),
 				funcDeclType.ReturnType.GetName(),
+			), true)
+			break
+		}
+
+	case *ast.BinaryExpression:
+		equal, aType, bType := v.isEqualType(n.Left, n.Right)
+
+		if !equal {
+			v.emitError(n, fmt.Sprintf(
+				"invalid operation: %s (mismatched types %s and %s)",
+				n,
+				aType.GetName(),
+				bType.GetName(),
 			), true)
 			break
 		}
