@@ -100,6 +100,8 @@ func TestParseFailures(t *testing.T) {
 		{"fn main() { M!(foo) }", "1:13: No macro with name M"},
 		{"macro M { (", "1:12: Expected token but got eof"},
 		{"macro M { ($()", "1:15: Expected macro repetition delimeter or operand (+, * or ?) got EOF"},
+		// fuzz test results
+		//{"var r=foo(0(//", ""},
 	}
 	for _, test := range tests {
 		_, err := Parse(strings.NewReader(test.src))
