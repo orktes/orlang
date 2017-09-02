@@ -10,6 +10,8 @@ func (p *Parser) parseType() (typ ast.Type, ok bool) {
 		return
 	} else if typ, ok = p.parseTupleOrSignatureType(); ok {
 		return
+	} else if typ, ok = p.parseArrayType(); ok {
+		return
 	}
 	return
 }
@@ -104,6 +106,50 @@ func (p *Parser) parseTupleOrSignatureType() (node ast.Type, ok bool) {
 		}
 	} else {
 		p.unread()
+	}
+
+	return
+}
+
+func (p *Parser) parseArrayType() (node ast.Type, ok bool) {
+	var lengthExpression ast.Expression
+	leftToken, leftTokenOk := p.expectToken(scanner.TokenTypeLBRACK)
+	if !leftTokenOk {
+		p.unread()
+		return
+	}
+
+	rightToken, rightTokenOk := p.expectToken(scanner.TokenTypeRBRACK)
+	if rightTokenOk {
+		goto parseType
+	} else {
+		p.unread()
+	}
+
+	lengthExpression, ok = p.parseExpression()
+	if !ok {
+		p.error(unexpected(p.read().StringValue(), "length expression"))
+		return
+	}
+
+	if rightToken, ok = p.expectToken(scanner.TokenTypeRBRACK); !ok {
+		p.error(unexpectedToken(rightToken, scanner.TokenTypeRBRACK))
+		return
+	}
+
+parseType:
+	typ, typOk := p.parseType()
+
+	if !typOk {
+		return
+	}
+
+	ok = true
+	node = &ast.ArrayType{
+		LeftPracket:  leftToken,
+		RightPracket: rightToken,
+		Length:       lengthExpression,
+		Type:         typ,
 	}
 
 	return

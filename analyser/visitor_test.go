@@ -32,6 +32,10 @@ func TestVisitor(t *testing.T) {
 
 			var fnVar : (int32, float32) : (float32, int32)
 			fnVar = foobar
+
+			var arrVar : []int32
+			var anotherArrVar : []int32 = arrVar
+			var anotherArrVarWithLength : [2]int32 = arrVar // TODO Will this be PITA in the runtime ?
     }
   `))
 	if err != nil {

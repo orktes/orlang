@@ -145,6 +145,38 @@ func (st *SignatureType) IsEqual(aType Type) bool {
 	return false
 }
 
+type ArrayType struct {
+	Type   Type
+	Length int64
+}
+
+func (at *ArrayType) GetName() string {
+	if at.Length > -1 {
+		return fmt.Sprintf("[%d]%s", at.Length, at.Type.GetName())
+	}
+	return fmt.Sprintf("[]%s", at.Type.GetName())
+}
+
+func (at *ArrayType) IsEqual(aType Type) bool {
+	if at == aType {
+		return true
+	}
+
+	if arrayType, ok := aType.(*ArrayType); ok {
+		if !at.Type.IsEqual(arrayType.Type) {
+			return false
+		}
+
+		if at.Length > -1 && arrayType.Length > -1 {
+			return at.Length == arrayType.Length
+		}
+
+		return true
+	}
+
+	return false
+}
+
 func registerType(typ Type) Type {
 	Types[typ.GetName()] = typ
 	return typ

@@ -48,6 +48,21 @@ func (v *visitor) getTypesForNodeList(nodes ...ast.Node) []types.Type {
 
 func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 	switch n := node.(type) {
+	case *ast.ArrayType:
+		arrLength := int64(-1)
+		if valExpr, ok := n.Length.(*ast.ValueExpression); ok {
+			if valExpr.Token.Type != scanner.TokenTypeNumber {
+				v.emitError(valExpr, "array length must be an integer", true)
+				break
+			}
+
+			arrLength = valExpr.Token.Value.(int64)
+		}
+
+		return &types.ArrayType{
+			Type:   v.getTypeForNode(n.Type),
+			Length: arrLength,
+		}
 	case *ast.VariableDeclaration:
 		if n.Type != nil {
 			return v.getTypeForNode(n.Type)

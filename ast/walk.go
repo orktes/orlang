@@ -117,6 +117,11 @@ func Walk(v Visitor, node Node) {
 		Walk(v, n.Pattern)
 		Walk(v, n.Type)
 		Walk(v, n.DefaultValue)
+	case *ArrayType:
+		if n.Length != nil {
+			Walk(v, n.Length)
+		}
+		Walk(v, n.Type)
 	default:
 		panic(fmt.Errorf("Unknown node type: %s", reflect.TypeOf(n)))
 	}

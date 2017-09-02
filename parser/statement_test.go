@@ -12,6 +12,8 @@ func TestParseVariableDeclaration(t *testing.T) {
 		var foo : Bar
 		const bar = 123
 		const biz : (int32, float32) : int32
+		const arr : []int32
+		const arrWithLength : [1]int32
 	`))
 
 	if err != nil {
