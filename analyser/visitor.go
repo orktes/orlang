@@ -102,18 +102,18 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 		typ := v.getTypeForNode(n.Callee)
 		if fnDeclType, ok := typ.(*types.SignatureType); ok {
 			return fnDeclType.ReturnType
-		} else {
-			panic("TODO")
-			// TODO what to do here
 		}
-		//return typ
 	case *ast.UnaryExpression:
 		return v.getTypeForNode(n.Expression)
 	case *ast.BinaryExpression:
 		return v.getTypeForNode(n.Left)
 	case *ast.FunctionSignature:
+		returnType := types.VoidType
+		if n.ReturnType != nil {
+			returnType = v.getTypeForNode(n.ReturnType)
+		}
 		return &types.SignatureType{
-			ReturnType:     v.getTypeForNode(n.ReturnType),
+			ReturnType:     returnType,
 			ArgugmentTypes: v.getTypesForNodeList(convertArgumentsToNodes(n.Arguments...)...),
 		}
 	case *ast.FunctionDeclaration:
@@ -293,22 +293,30 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 			}
 		}
 
-		var decl func(patrn *ast.TuplePattern, typ *types.TupleType)
-		decl = func(patrn *ast.TuplePattern, typ *types.TupleType) {
-			for i, pat := range patrn.Patterns {
-				switch p := pat.(type) {
-				case *ast.Identifier:
-					v.scope.Set(p.Text, &CustomTypeResolvingScopeItem{
-						Node:         n,
-						ResolvedType: typ.Types[i],
-					})
-				case *ast.TuplePattern:
-					decl(p, typ.Types[i].(*types.TupleType))
+		defaultValueType := v.getTypeForNode(n.DefaultValue)
+		if defaultValueTupleType, ok := defaultValueType.(*types.TupleType); ok {
+			var decl func(patrn *ast.TuplePattern, typ *types.TupleType)
+			decl = func(patrn *ast.TuplePattern, typ *types.TupleType) {
+				for i, pat := range patrn.Patterns {
+					switch p := pat.(type) {
+					case *ast.Identifier:
+						v.scope.Set(p.Text, &CustomTypeResolvingScopeItem{
+							Node:         n,
+							ResolvedType: typ.Types[i],
+						})
+					case *ast.TuplePattern:
+						decl(p, typ.Types[i].(*types.TupleType))
+					}
 				}
 			}
+			decl(n.Pattern, defaultValueTupleType)
+		} else {
+			v.emitError(n.DefaultValue, fmt.Sprintf(
+				"cannot use %s (type %s) as tuple",
+				n.DefaultValue,
+				defaultValueType.GetName(),
+			), true)
 		}
-		decl(n.Pattern, v.getTypeForNode(n).(*types.TupleType))
-
 	case *ast.VariableDeclaration:
 		if n.DefaultValue != nil {
 			if n.Type != nil {
@@ -333,25 +341,17 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 		}
 
 		v.scope.Set(n.Name.Text, n)
-
 	case *ast.Assigment:
-		if identifier, ok := n.Left.(*ast.Identifier); ok {
-			v.scopeMustGet(identifier, func(leftNode ScopeItem) {
-				equal, leftType, rightType := v.isEqualType(leftNode, n.Right)
-				if !equal {
-					v.emitError(n.Right, fmt.Sprintf(
-						"cannot use %s (type %s) as type %s in assigment expression",
-						n.Right,
-						rightType.GetName(),
-						leftType.GetName(),
-					), true)
-					return
-				}
-			})
-
-		} else {
-			panic("TODO")
+		equal, leftType, rightType := v.isEqualType(n.Left, n.Right)
+		if !equal {
+			v.emitError(n.Right, fmt.Sprintf(
+				"cannot use %s (type %s) as type %s in assigment expression",
+				n.Right,
+				rightType.GetName(),
+				leftType.GetName(),
+			), true)
 		}
 	}
+
 	return v.subVisitor(node, v.scope)
 }

@@ -15,6 +15,7 @@ var (
 	Int32Type   = registerType(PrimitiveType{"int32"})
 	StringType  = registerType(PrimitiveType{"string"})
 	BoolType    = registerType(PrimitiveType{"bool"})
+	VoidType    = registerType(PrimitiveType{"void"})
 )
 
 type Type interface {
