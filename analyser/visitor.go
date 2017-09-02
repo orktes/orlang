@@ -175,6 +175,19 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 			break
 		}
 
+	case *ast.FunctionCall:
+		funcType := v.getTypeForNode(n.Callee)
+		if _, ok := funcType.(*types.SignatureType); !ok {
+			v.emitError(
+				n,
+				fmt.Sprintf("%s (type %s) is not a function", n.Callee, funcType.GetName()),
+				true)
+			break
+		} else {
+			println("todo")
+			// Validate that arguments match and default values are set for missing once
+		}
+
 	case *ast.ReturnStatement:
 		funcDecl := v.getParentFuncDecl()
 		funcDeclType := v.getTypeForNode(funcDecl).(*types.SignatureType)
