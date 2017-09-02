@@ -123,16 +123,10 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 	case *ast.TupleType:
 		return &types.TupleType{Types: v.getTypesForNodeList(convertTypesToNodes(n.Types...)...)}
 	case *ast.Identifier:
-		var tp types.Type
+		var tp types.Type = types.UnknownType("undefined")
 		v.scopeMustGet(n, func(node ScopeItem) {
 			switch n := node.(type) {
-			case *ast.VariableDeclaration:
-				if n.Type != nil {
-					tp = v.getTypeForNode(n.Type)
-				} else {
-					tp = v.getTypeForNode(n.DefaultValue)
-				}
-			case *ast.FunctionDeclaration:
+			case ast.Node:
 				tp = v.getTypeForNode(n)
 			}
 		})
@@ -144,6 +138,17 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 	}
 
 	return types.UnknownType("undefined")
+}
+
+func (v *visitor) getParentFuncDecl() *ast.FunctionDeclaration {
+	parent := v.parent
+	for parent != nil {
+		if funDecl, ok := parent.node.(*ast.FunctionDeclaration); ok {
+			return funDecl
+		}
+	}
+
+	return nil
 }
 
 func (v *visitor) isEqualType(a ast.Node, b ast.Node) (bool, types.Type, types.Type) {
@@ -158,9 +163,71 @@ func (v *visitor) isEqualType(a ast.Node, b ast.Node) (bool, types.Type, types.T
 
 func (v *visitor) Visit(node ast.Node) ast.Visitor {
 	switch n := node.(type) {
-	case *ast.Block:
-		return v.subVisitor(node, v.scope.SubScope())
+	case *ast.Identifier:
+		if n == nil {
+			// TODO figure out why we come here
+			break
+		}
+		scopeItem := v.scope.Get(n.Text, true)
+		if scopeItem == nil {
+			v.emitError(n, fmt.Sprintf("%s not declared", n), true)
+			break
+		}
 
+	case *ast.ReturnStatement:
+		funcDecl := v.getParentFuncDecl()
+		funcDeclType := v.getTypeForNode(funcDecl).(*types.SignatureType)
+
+		if n.Expression == nil && funcDeclType.ReturnType == nil {
+			break
+		}
+
+		returnType := v.getTypeForNode(n.Expression)
+		equal := funcDeclType.ReturnType.IsEqual(returnType)
+
+		if !equal {
+			v.emitError(n.Expression, fmt.Sprintf(
+				"cannot use %s (type %s) as type %s in return statement",
+				n.Expression,
+				returnType.GetName(),
+				funcDeclType.ReturnType.GetName(),
+			), true)
+			break
+		}
+	case *ast.Argument:
+		if n.DefaultValue != nil {
+			if n.Type != nil {
+				equal, aType, bType := v.isEqualType(n, n.DefaultValue)
+
+				if !equal {
+					v.emitError(n.DefaultValue, fmt.Sprintf(
+						"cannot use %s (type %s) as type %s in assigment",
+						n.DefaultValue,
+						bType.GetName(),
+						aType.GetName(),
+					), true)
+					break
+				}
+			}
+		}
+		if n.Name == nil {
+			// TODO figure out why we arrive here
+			break
+		}
+		scopeItem := v.scope.Get(n.Name.Text, false)
+		if scopeItem != nil {
+			v.emitError(n, fmt.Sprintf("%s already declared", n.Name), true)
+			break
+		}
+
+		v.scope.Set(n.Name.Text, n)
+	case *ast.Block:
+		if v.parent != nil {
+			if _, fundeclOk := v.parent.node.(*ast.FunctionDeclaration); fundeclOk {
+				break
+			}
+		}
+		return v.subVisitor(node, v.scope.SubScope())
 	case *ast.FunctionDeclaration:
 		if n.Signature.Identifier != nil {
 			scopeItem := v.scope.Get(n.Signature.Identifier.Text, false)
@@ -172,6 +239,7 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 			v.scope.Set(n.Signature.Identifier.Text, n)
 		}
 
+		return v.subVisitor(node, v.scope.SubScope())
 	case *ast.TupleDeclaration:
 		if n.DefaultValue != nil {
 			if n.Type != nil {

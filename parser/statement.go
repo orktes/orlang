@@ -291,7 +291,8 @@ func (p *Parser) parseReturnStatement() (rtrnStmt *ast.ReturnStatement, ok bool)
 	expression, _ := p.parseExpression()
 
 	rtrnStmt = &ast.ReturnStatement{
-		Token:      token,
+		Start:      ast.StartPositionFromToken(token),
+		ReturnEnd:  ast.EndPositionFromToken(token),
 		Expression: expression,
 	}
 

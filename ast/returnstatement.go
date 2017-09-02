@@ -1,19 +1,18 @@
 package ast
 
-import "github.com/orktes/orlang/scanner"
-
 type ReturnStatement struct {
-	scanner.Token
+	Start      Position
+	ReturnEnd  Position
 	Expression Expression
 }
 
 func (rtrn *ReturnStatement) StartPos() Position {
-	return StartPositionFromToken(rtrn.Token)
+	return rtrn.Start
 }
 
 func (rtrn *ReturnStatement) EndPos() Position {
 	if rtrn.Expression == nil {
-		return EndPositionFromToken(rtrn.Token)
+		return rtrn.ReturnEnd
 	}
 	return rtrn.Expression.EndPos()
 }
