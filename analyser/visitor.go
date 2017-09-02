@@ -93,6 +93,8 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 			return types.Float32Type
 		case scanner.TokenTypeString:
 			return types.StringType
+		case scanner.TokenTypeBoolean:
+			return types.BoolType
 		default:
 			panic(fmt.Errorf("Could not resolve type for token %s", n.Token.String()))
 		}
@@ -105,6 +107,8 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 			// TODO what to do here
 		}
 		//return typ
+	case *ast.UnaryExpression:
+		return v.getTypeForNode(n.Expression)
 	case *ast.BinaryExpression:
 		return v.getTypeForNode(n.Left)
 	case *ast.FunctionSignature:
