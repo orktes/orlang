@@ -44,6 +44,7 @@ var lintCmd = &cobra.Command{
 					fmt.Println(formatParseError(
 						filePath,
 						lintError.Position,
+						lintError.EndPosition,
 						lintError.CodeLine,
 						lintError.Message,
 					))
@@ -76,15 +77,21 @@ var lintCmd = &cobra.Command{
 	},
 }
 
-func formatParseError(filePath string, pos ast.Position, line string, err string) string {
+func formatParseError(filePath string, pos ast.Position, endPos ast.Position, line string, err string) string {
 	if line != "" {
+		pointerPos := pos.Column
+
+		if endPos.Line == pos.Line {
+			pointerPos = int((pointerPos + endPos.Column) / 2)
+		}
+
 		return fmt.Sprintf(
 			`%s:%d:%d
 ----------------------------------------------------------
 %s
 %s
 %s
-----------------------------------------------------------`, filePath, pos.Line+1, pos.Column+1, strings.Replace(line, "\t", " ", -1), pointer(pos.Column), pad(pos.Column-int(len(err)/2), err))
+----------------------------------------------------------`, filePath, pos.Line+1, pos.Column+1, strings.Replace(line, "\t", " ", -1), pointer(pointerPos), pad(pos.Column-int(len(err)/2), err))
 	}
 	return fmt.Sprintf("%s:%d:%d %s", filePath, pos.Line+1, pos.Column+1, err)
 }
