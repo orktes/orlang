@@ -63,6 +63,11 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 			Type:   v.getTypeForNode(n.Type),
 			Length: arrLength,
 		}
+	case *ast.ArrayExpression:
+		return &types.ArrayType{
+			Type:   v.getTypeForNode(n.Type.Type),
+			Length: int64(len(n.Expressions)),
+		}
 	case *ast.VariableDeclaration:
 		if n.Type != nil {
 			return v.getTypeForNode(n.Type)

@@ -113,11 +113,14 @@ func (p *Parser) parseTupleOrSignatureType() (node ast.Type, ok bool) {
 
 func (p *Parser) parseArrayType() (node ast.Type, ok bool) {
 	var lengthExpression ast.Expression
+	var lengthExpressionOk bool
 	leftToken, leftTokenOk := p.expectToken(scanner.TokenTypeLBRACK)
 	if !leftTokenOk {
 		p.unread()
 		return
 	}
+
+	ok = true
 
 	rightToken, rightTokenOk := p.expectToken(scanner.TokenTypeRBRACK)
 	if rightTokenOk {
@@ -126,13 +129,13 @@ func (p *Parser) parseArrayType() (node ast.Type, ok bool) {
 		p.unread()
 	}
 
-	lengthExpression, ok = p.parseExpression()
-	if !ok {
+	lengthExpression, lengthExpressionOk = p.parseExpression()
+	if !lengthExpressionOk {
 		p.error(unexpected(p.read().StringValue(), "length expression"))
 		return
 	}
 
-	if rightToken, ok = p.expectToken(scanner.TokenTypeRBRACK); !ok {
+	if rightToken, rightTokenOk = p.expectToken(scanner.TokenTypeRBRACK); !rightTokenOk {
 		p.error(unexpectedToken(rightToken, scanner.TokenTypeRBRACK))
 		return
 	}
@@ -141,6 +144,7 @@ parseType:
 	typ, typOk := p.parseType()
 
 	if !typOk {
+		p.error(unexpected(p.read().StringValue(), "array type"))
 		return
 	}
 

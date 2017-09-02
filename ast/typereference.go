@@ -14,4 +14,8 @@ func (pt *TypeReference) EndPos() Position {
 	return EndPositionFromToken(pt.Token)
 }
 
+func (pt *TypeReference) String() string {
+	return pt.Token.Text
+}
+
 func (_ *TypeReference) typeNode() {}

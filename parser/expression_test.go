@@ -38,6 +38,7 @@ func TestParseTupleExpression(t *testing.T) {
 			var foo = (1, 2)
 			var bar : (int, int) = (1, 2)
 			var (bar, foo) = (1, 2)
+			var arr : []int32 = []int32{1}
 		}
 	`))
 	if err != nil {

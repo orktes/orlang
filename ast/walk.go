@@ -117,6 +117,11 @@ func Walk(v Visitor, node Node) {
 		Walk(v, n.Pattern)
 		Walk(v, n.Type)
 		Walk(v, n.DefaultValue)
+	case *ArrayExpression:
+		Walk(v, n.Type)
+		for _, e := range n.Expressions {
+			Walk(v, e)
+		}
 	case *ArrayType:
 		if n.Length != nil {
 			Walk(v, n.Length)

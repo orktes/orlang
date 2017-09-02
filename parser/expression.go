@@ -168,6 +168,7 @@ func (p *Parser) parseUnaryExpression() (expression ast.Expression, ok bool) {
 	switch {
 	case check(p.parseParenExpressionOrTuple()):
 	case check(p.parseFuncDecl()):
+	case check(p.parseArrayExpression()):
 	case check(p.parseIdentfier()):
 	case check(p.parseValueExpression()):
 	case check(p.parseMacroSubstitutionExpression()):
@@ -341,6 +342,41 @@ func (p *Parser) parseParenExpressionOrTuple() (node ast.Expression, ok bool) {
 			RightParen:  rightToken,
 			Expressions: exprList,
 		}
+	}
+
+	return
+}
+
+func (p *Parser) parseArrayExpression() (node ast.Expression, ok bool) {
+	typ, typOk := p.parseArrayType()
+	if !typOk {
+		return
+	}
+
+	lBrace, lBraceOk := p.expectToken(scanner.TokenTypeLBRACE)
+	if !lBraceOk {
+		p.error(unexpectedToken(lBrace, scanner.TokenTypeLBRACE))
+		return
+	}
+
+	expresList, exprListOk := p.parseExpressionList()
+
+	rBrace, rBraceOk := p.expectToken(scanner.TokenTypeRBRACE)
+	if !rBraceOk {
+		if !exprListOk {
+			p.error(unexpected(rBrace.StringValue(), "expression list or left brace"))
+			return
+		}
+		p.error(unexpectedToken(rBrace, scanner.TokenTypeRBRACE))
+		return
+	}
+
+	ok = true
+	node = &ast.ArrayExpression{
+		RightBrace:  rBrace,
+		LeftBrace:   lBrace,
+		Expressions: expresList,
+		Type:        typ.(*ast.ArrayType),
 	}
 
 	return

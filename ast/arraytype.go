@@ -1,6 +1,10 @@
 package ast
 
-import "github.com/orktes/orlang/scanner"
+import (
+	"fmt"
+
+	"github.com/orktes/orlang/scanner"
+)
 
 type ArrayType struct {
 	LeftPracket  scanner.Token
@@ -17,4 +21,8 @@ func (at *ArrayType) StartPos() Position {
 
 func (at *ArrayType) EndPos() Position {
 	return at.Type.EndPos()
+}
+
+func (at *ArrayType) String() string {
+	return fmt.Sprintf("[]%s", at.Type)
 }

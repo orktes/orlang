@@ -37,7 +37,11 @@ func TestVisitor(t *testing.T) {
 			var arrVar : []int32
 			var anotherArrVar : []int32 = arrVar
 			var anotherArrVarWithLength : [2]int32 = arrVar // TODO Will this be PITA in the runtime ?
-    }
+			anotherArrVarWithLength = []int32{1, 2}
+			var initArrVar = []int32{1, 2}
+			arrVar = initArrVar
+			//var value : int32 = initArrVar[0]
+		}
   `))
 	if err != nil {
 		t.Error(err)

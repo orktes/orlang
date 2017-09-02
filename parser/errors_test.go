@@ -41,12 +41,18 @@ func TestParseFailures(t *testing.T) {
 		{"var foo : [int32", "1:17: Expected [RBRACK] got EOF"},
 		{"var foo : [", "1:12: Expected length expression got EOF"},
 		// For loops
-		{"fn foobar() { for var i = 0; i; [] }", "1:33: Expected code block got LBRACK([)"},
+		{"fn foobar() { for var i = 0; i; [] }", "1:36: Expected array type got RBRACE(})"},
 		{"fn foobar() { for var i = 0; {}}", "1:30: Expected expression got LBRACE({)"},
 		{"fn foobar() { for var i = 0; true {}}", "1:35: Expected ; got LBRACE({)"},
 		{"fn foobar() { for }", "1:19: Expected statement, ; or code block got RBRACE(})"},
 		{"fn foobar() { for true true {} }", "1:24: Expected ; or code block got BOOL(true)"},
 		{"fn foobar() { foo = , }", "1:21: Expected expression got COMMA(,)"},
+		// Arrays
+		{"var foo : []", "1:13: Expected array type got EOF"},
+		{"var foo : []int32 = []", "1:23: Expected array type got EOF"},
+		{"var foo : []int32 = []int32", "1:28: Expected [LBRACE] got EOF"},
+		{"var foo : []int32 = []int32{", "1:29: Expected expression list or left brace got EOF"},
+		{"var foo : []int32 = []int32{1", "1:30: Expected [RBRACE] got EOF"},
 		// If statemts
 		{"fn foobar() {  if }", "1:19: Expected expression got RBRACE(})"},
 		{"fn foobar() {  if 1 < {} }", "1:23: Expected expression got LBRACE({)"},
