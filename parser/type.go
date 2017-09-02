@@ -8,7 +8,7 @@ import (
 func (p *Parser) parseType() (typ ast.Type, ok bool) {
 	if typ, ok = p.parseTypeReference(); ok {
 		return
-	} else if typ, ok = p.parseTupleType(); ok {
+	} else if typ, ok = p.parseTupleOrSignatureType(); ok {
 		return
 	}
 	return
@@ -56,7 +56,7 @@ func (p *Parser) parseTypeList() (types []ast.Type, ok bool) {
 	return
 }
 
-func (p *Parser) parseTupleType() (node ast.Type, ok bool) {
+func (p *Parser) parseTupleOrSignatureType() (node ast.Type, ok bool) {
 	leftToken, leftTokenOk := p.expectToken(scanner.TokenTypeLPAREN)
 	if !leftTokenOk {
 		p.unread()
@@ -80,6 +80,30 @@ func (p *Parser) parseTupleType() (node ast.Type, ok bool) {
 		LeftParen:  leftToken,
 		RightParen: rightToken,
 		Types:      typeList,
+	}
+
+	_, returnTypeColonOk := p.expectToken(scanner.TokenTypeCOLON)
+	if returnTypeColonOk {
+		// It is actually a signature type
+		if returnType, returnTypeOk := p.parseType(); returnTypeOk {
+			signature := &ast.FunctionSignature{}
+			signature.Start = node.StartPos()
+			signature.End = node.EndPos()
+			signature.ReturnType = returnType
+			args := make([]*ast.Argument, len(typeList))
+			for i, typ := range typeList {
+				args[i] = &ast.Argument{
+					Type: typ,
+				}
+			}
+			signature.Arguments = args
+			node = signature
+		} else {
+			p.error(unexpected(p.read().StringValue(), "function return type"))
+			return
+		}
+	} else {
+		p.unread()
 	}
 
 	return

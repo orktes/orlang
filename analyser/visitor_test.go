@@ -30,6 +30,8 @@ func TestVisitor(t *testing.T) {
 
 			foo3 = 1
 
+			var fnVar : (int32, float32) : (float32, int32)
+			fnVar = foobar
     }
   `))
 	if err != nil {

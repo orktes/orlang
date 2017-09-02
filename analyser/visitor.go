@@ -77,17 +77,23 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 			panic(fmt.Errorf("Could not resolve type for token %s", n.Token.String()))
 		}
 	case *ast.FunctionCall:
-		// TODO check type and return ReturnType
-		return v.getTypeForNode(n.Callee)
+		typ := v.getTypeForNode(n.Callee)
+		if fnDeclType, ok := typ.(*types.SignatureType); ok {
+			return fnDeclType.ReturnType
+		} else {
+			panic("TODO")
+			// TODO what to do here
+		}
+		//return typ
 	case *ast.BinaryExpression:
 		return v.getTypeForNode(n.Left)
-	case *ast.FunctionDeclaration:
-		// TODO create function type
-		if n.Signature.ReturnType == nil {
-			return nil
+	case *ast.FunctionSignature:
+		return &types.SignatureType{
+			ReturnType:     v.getTypeForNode(n.ReturnType),
+			ArgugmentTypes: v.getTypesForNodeList(convertArgumentsToNodes(n.Arguments...)...),
 		}
-		return v.getTypeForNode(n.Signature.ReturnType)
-
+	case *ast.FunctionDeclaration:
+		return v.getTypeForNode(n.Signature)
 	case *ast.Argument:
 		return v.getTypeForNode(n.Type)
 	case *ast.ParenExpression:
@@ -131,6 +137,7 @@ func (v *visitor) isEqualType(a ast.Node, b ast.Node) (bool, types.Type, types.T
 	if aType == nil || bType == nil {
 		return false, aType, bType
 	}
+
 	return aType.IsEqual(bType), aType, bType
 }
 

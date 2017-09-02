@@ -37,6 +37,7 @@ func TestParseFailures(t *testing.T) {
 		{"var (foo) :", "1:12: Expected type got EOF"},
 		{"var foo :", "1:10: Expected type got EOF"},
 		{"var (", "1:6: Expected [RPAREN] got EOF"},
+		{"var foo : (int32, float32) :", "1:29: Expected function return type got EOF"},
 		// For loops
 		{"fn foobar() { for var i = 0; i; [] }", "1:33: Expected code block got LBRACK([)"},
 		{"fn foobar() { for var i = 0; {}}", "1:30: Expected expression got LBRACE({)"},

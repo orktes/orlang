@@ -91,6 +91,60 @@ func (tt *TupleType) IsEqual(aType Type) bool {
 	return false
 }
 
+type SignatureType struct {
+	ArgugmentTypes []Type
+	ReturnType     Type
+}
+
+func (st *SignatureType) GetName() string {
+	names := []string{}
+
+	for _, arg := range st.ArgugmentTypes {
+		names = append(names, arg.GetName())
+	}
+
+	returnTypeStr := "void"
+
+	if st.ReturnType != nil {
+		returnTypeStr = st.ReturnType.GetName()
+	}
+
+	return fmt.Sprintf("(%s) -> %s", strings.Join(names, ", "), returnTypeStr)
+}
+
+func (st *SignatureType) IsEqual(aType Type) bool {
+	if st == aType {
+		return true
+	}
+
+	if signType, ok := aType.(*SignatureType); ok {
+		if st.ReturnType != nil {
+			if signType.ReturnType == nil || !st.ReturnType.IsEqual(signType.ReturnType) {
+				return false
+			}
+		} else if signType.ReturnType != nil {
+			return false
+		}
+
+		thisTypes := st.ArgugmentTypes
+		aTypes := signType.ArgugmentTypes
+
+		if len(aTypes) != len(thisTypes) {
+			return false
+		}
+
+		for i, typ := range thisTypes {
+			if !typ.IsEqual(aTypes[i]) {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	return false
+}
+
 func registerType(typ Type) Type {
 	Types[typ.GetName()] = typ
 	return typ

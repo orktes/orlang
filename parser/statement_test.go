@@ -11,6 +11,7 @@ func TestParseVariableDeclaration(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
 		var foo : Bar
 		const bar = 123
+		const biz : (int32, float32) : int32
 	`))
 
 	if err != nil {

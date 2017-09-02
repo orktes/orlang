@@ -12,6 +12,16 @@ func convertExpressionsToNodes(exprs ...ast.Expression) []ast.Node {
 	return nodes
 }
 
+func convertArgumentsToNodes(args ...*ast.Argument) []ast.Node {
+	nodes := make([]ast.Node, len(args))
+
+	for i, arg := range args {
+		nodes[i] = arg
+	}
+
+	return nodes
+}
+
 func convertTypesToNodes(types ...ast.Type) []ast.Node {
 	nodes := make([]ast.Node, len(types))
 
