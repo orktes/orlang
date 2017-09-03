@@ -1,3 +1,7 @@
+fn fobar() {
+
+}
+
 fn main() {
   var foo : int32 = 2147483646
   foo = 2147483648

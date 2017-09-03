@@ -62,7 +62,7 @@ func TestVisitor(t *testing.T) {
 	visitor := &visitor{
 		scope: NewScope(file),
 		node:  file,
-		info:  &FileInfo{},
+		info:  NewFileInfo(),
 		errorCb: func(node ast.Node, msg string, fatal bool) {
 			if !fatal {
 				return
@@ -215,7 +215,7 @@ func TestVisitorErrors(t *testing.T) {
 		visitor := &visitor{
 			scope: NewScope(file),
 			node:  file,
-			info:  &FileInfo{},
+			info:  NewFileInfo(),
 			errorCb: func(node ast.Node, msg string, _ bool) {
 				if errStr != "" {
 					// TODO handle multiple errors
@@ -236,5 +236,75 @@ func TestVisitorErrors(t *testing.T) {
 		if errStr != test.err {
 			t.Errorf("Expected %s to return error %s, but got %s", test.src, test.err, errStr)
 		}
+	}
+}
+
+func BenchmarkVisitor(b *testing.B) {
+	file, err := parser.Parse(strings.NewReader(`
+    fn foobar(x : int32, y : float32) : (float32, int32) {
+      return (y, x)
+    }
+
+    fn main() {
+			var bar = 1
+			var biz = (bar, 2.0)
+			biz = (1, 3.0)
+			var fuz : (int32, float32) = biz
+			var fiz = foobar(10, 2.0)
+			fiz = (0.5,11)
+
+			var namedArgs = foobar(y: 2.0, x: 1)
+
+			var tupleVar = (1,1)
+			tupleVar = (5, 5)
+
+			var complex : ((int32, int32), int32)
+			complex = ((1,1), 1)
+
+			var ((foo1, foo2), foo3) : ((int32, int32), int32) = complex
+			var (dsadas, dadsa) = (1, 2)
+
+			foo3 = 1
+			foo3 = foo3 + foo3
+
+			var fnVar : (int32, float32) : (float32, int32)
+			fnVar = foobar
+
+			var arrVar : []int32
+			var anotherArrVar : []int32 = arrVar
+			var anotherArrVarWithLength : [2]int32 = arrVar // TODO Will this be PITA in the runtime ?
+			anotherArrVarWithLength = []int32{1, 2}
+			var initArrVar = []int32{1, 2}
+			arrVar = initArrVar
+			//var value : int32 = initArrVar[0]
+
+			var boolValue : bool = true
+			boolValue = false
+
+			var strVal = ""
+		}
+  `))
+	if err != nil {
+		b.Error(err)
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	visitor := &visitor{
+		scope: NewScope(file),
+		node:  file,
+		info:  NewFileInfo(),
+		errorCb: func(node ast.Node, msg string, fatal bool) {
+			if !fatal {
+				return
+			}
+			b.Fatalf("%s %#v", msg, node)
+		},
+	}
+
+	for i := 0; i < b.N; i++ {
+		visitor.scope = NewScope(file)
+		ast.Walk(visitor, file)
 	}
 }

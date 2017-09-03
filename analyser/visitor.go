@@ -44,7 +44,7 @@ func (v *visitor) getTypesForNodeList(nodes ...ast.Node) []types.Type {
 	return types
 }
 
-func (v *visitor) getTypeForNode(node ast.Node) types.Type {
+func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 	switch n := node.(type) {
 	case *ast.ArrayType:
 		arrLength := int64(-1)
@@ -156,12 +156,26 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 	return types.UnknownType("undefined")
 }
 
+func (v *visitor) getTypeForNode(node ast.Node) types.Type {
+	if nodeInfo, ok := v.info.nodeInfo[node]; ok {
+		return nodeInfo.Type
+	}
+
+	typ := v.resolveTypeForNode(node)
+	v.info.nodeInfo[node] = &NodeInfo{
+		Type: typ,
+	}
+
+	return typ
+}
+
 func (v *visitor) getParentFuncDecl() *ast.FunctionDeclaration {
 	parent := v.parent
 	for parent != nil {
 		if funDecl, ok := parent.node.(*ast.FunctionDeclaration); ok {
 			return funDecl
 		}
+		return parent.getParentFuncDecl()
 	}
 
 	return nil
@@ -436,15 +450,29 @@ typeCheck:
 	return v.subVisitor(node, v.scope)
 }
 
-func (v *visitor) Leave(node ast.Node) {
+func (v *visitor) isMainFuncion(info ScopeItem) bool {
+	if _, ok := v.node.(*ast.File); ok {
+		if funcDecl, ok := info.(*ast.FunctionDeclaration); ok {
+			if funcDecl.Signature.Identifier != nil {
+				return funcDecl.Signature.Identifier.Text == "main"
+			}
+		}
+	}
+	return false
+}
 
+func (v *visitor) Leave(node ast.Node) {
 	switch node.(type) {
-	case *ast.Block, *ast.FunctionDeclaration:
+	case *ast.Block, *ast.File:
 		unusedScopeItems := v.scope.UnusedScopeItems()
 		for _, scopeItemInfo := range unusedScopeItems {
+			if v.isMainFuncion(scopeItemInfo.ScopeItem) {
+				break
+			}
 			v.emitError(scopeItemInfo.DefineIdentifier,
 				fmt.Sprintf("%s declared but not used", scopeItemInfo.DefineIdentifier.Text),
 				false)
+
 		}
 	}
 }
