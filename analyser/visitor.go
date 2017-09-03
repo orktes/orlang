@@ -167,9 +167,9 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 }
 
 func (v *visitor) getNodeInfo(node ast.Node) *NodeInfo {
-	if nodeInfo, ok := v.info.nodeInfo[node]; !ok {
+	if nodeInfo, ok := v.info.NodeInfo[node]; !ok {
 		nodeInfo = &NodeInfo{}
-		v.info.nodeInfo[node] = nodeInfo
+		v.info.NodeInfo[node] = nodeInfo
 		return nodeInfo
 	} else {
 		return nodeInfo
@@ -311,6 +311,7 @@ typeCheck:
 			typ := v.getType(ident.Text)
 			if typ != nil {
 				v.validateTypeConversion(n)
+				nodeInfo.TypeCast = true
 				break
 			}
 		}

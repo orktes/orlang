@@ -92,9 +92,15 @@ type CustomTypeResolvingScopeItem struct {
 }
 
 func (c *CustomTypeResolvingScopeItem) StartPos() ast.Position {
+	if c.Node == nil {
+		return ast.Position{}
+	}
 	return c.Node.StartPos()
 }
 
 func (c *CustomTypeResolvingScopeItem) EndPos() ast.Position {
+	if c.Node == nil {
+		return ast.Position{}
+	}
 	return c.Node.EndPos()
 }

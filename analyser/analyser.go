@@ -1,6 +1,10 @@
 package analyser
 
-import "github.com/orktes/orlang/ast"
+import (
+	"github.com/orktes/orlang/ast"
+	"github.com/orktes/orlang/scanner"
+	"github.com/orktes/orlang/types"
+)
 
 type Analyser struct {
 	main  *ast.File
@@ -16,14 +20,21 @@ func New(file *ast.File) (analyser *Analyser, err error) {
 	return
 }
 
+func (analyser *Analyser) AddExternalFunc(name string, typ types.Type) {
+	ident := &ast.Identifier{Token: scanner.Token{Text: name}}
+	analyser.scope.Set(ident, &CustomTypeResolvingScopeItem{
+		ResolvedType: typ,
+	})
+}
+
 func (analyser *Analyser) Analyse() (info *Info, err error) {
 	fileInfo := NewFileInfo()
 
 	info = &Info{
-		fileInfo: map[*ast.File]*FileInfo{},
+		FileInfo: map[*ast.File]*FileInfo{},
 	}
 
-	info.fileInfo[analyser.main] = fileInfo
+	info.FileInfo[analyser.main] = fileInfo
 
 	visitor := &visitor{
 		scope: analyser.scope,

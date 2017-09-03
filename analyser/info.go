@@ -7,21 +7,22 @@ import (
 )
 
 type NodeInfo struct {
-	Type   types.Type
-	Parent ast.Node
-	Scope  *Scope
+	Type     types.Type
+	Parent   ast.Node
+	Scope    *Scope
+	TypeCast bool
 }
 
 type FileInfo struct {
-	nodeInfo map[ast.Node]*NodeInfo
+	NodeInfo map[ast.Node]*NodeInfo
 }
 
 func NewFileInfo() *FileInfo {
 	return &FileInfo{
-		nodeInfo: map[ast.Node]*NodeInfo{},
+		NodeInfo: map[ast.Node]*NodeInfo{},
 	}
 }
 
 type Info struct {
-	fileInfo map[*ast.File]*FileInfo
+	FileInfo map[*ast.File]*FileInfo
 }
