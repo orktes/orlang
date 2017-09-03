@@ -93,14 +93,15 @@ func (tt *TupleType) IsEqual(aType Type) bool {
 }
 
 type SignatureType struct {
-	ArgugmentTypes []Type
-	ReturnType     Type
+	ArgumentTypes []Type
+	ReturnType    Type
+	ArgumentNames []string
 }
 
 func (st *SignatureType) GetName() string {
 	names := []string{}
 
-	for _, arg := range st.ArgugmentTypes {
+	for _, arg := range st.ArgumentTypes {
 		names = append(names, arg.GetName())
 	}
 
@@ -127,8 +128,8 @@ func (st *SignatureType) IsEqual(aType Type) bool {
 			return false
 		}
 
-		thisTypes := st.ArgugmentTypes
-		aTypes := signType.ArgugmentTypes
+		thisTypes := st.ArgumentTypes
+		aTypes := signType.ArgumentTypes
 
 		if len(aTypes) != len(thisTypes) {
 			return false

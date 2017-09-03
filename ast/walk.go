@@ -9,6 +9,10 @@ type Visitor interface {
 	Visit(node Node) (w Visitor)
 }
 
+type Leaver interface {
+	Leave(node Node)
+}
+
 type VisitorFunc func(node Node) (w Visitor)
 
 func (vf VisitorFunc) Visit(node Node) (w Visitor) {
@@ -18,6 +22,9 @@ func (vf VisitorFunc) Visit(node Node) (w Visitor) {
 func Walk(v Visitor, node Node) {
 	if node == nil {
 		return
+	}
+	if leaver, ok := v.(Leaver); ok {
+		defer leaver.Leave(node)
 	}
 	if v = v.Visit(node); v == nil {
 		return

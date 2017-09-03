@@ -112,9 +112,18 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 		if n.ReturnType != nil {
 			returnType = v.getTypeForNode(n.ReturnType)
 		}
+
+		argumentsVariables := make([]string, len(n.Arguments))
+		for i, arg := range n.Arguments {
+			if arg.Name != nil {
+				argumentsVariables[i] = arg.Name.Text
+			}
+		}
+
 		return &types.SignatureType{
-			ReturnType:     returnType,
-			ArgugmentTypes: v.getTypesForNodeList(convertArgumentsToNodes(n.Arguments...)...),
+			ReturnType:    returnType,
+			ArgumentTypes: v.getTypesForNodeList(convertArgumentsToNodes(n.Arguments...)...),
+			ArgumentNames: argumentsVariables,
 		}
 	case *ast.FunctionDeclaration:
 		return v.getTypeForNode(n.Signature)
@@ -171,11 +180,22 @@ func (v *visitor) isEqualType(a ast.Node, b ast.Node) (bool, types.Type, types.T
 }
 
 func (v *visitor) Visit(node ast.Node) ast.Visitor {
+typeCheck:
 	switch n := node.(type) {
 	case *ast.Identifier:
 		if n == nil {
 			// TODO figure out why we come here
 			break
+		}
+
+		if v.parent != nil {
+			switch v.parent.node.(type) {
+			case *ast.FunctionCall,
+				*ast.VariableDeclaration,
+				*ast.TuplePattern,
+				*ast.Argument:
+				break typeCheck
+			}
 		}
 
 		scopeItem := v.scope.Get(n.Text, true)
@@ -184,17 +204,84 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 			break
 		}
 
+		v.scope.MarkUsage(scopeItem, n)
+
 	case *ast.FunctionCall:
 		funcType := v.getTypeForNode(n.Callee)
-		if _, ok := funcType.(*types.SignatureType); !ok {
+		if signType, ok := funcType.(*types.SignatureType); !ok {
 			v.emitError(
 				n,
 				fmt.Sprintf("%s (type %s) is not a function", n.Callee, funcType.GetName()),
 				true)
 			break
 		} else {
-			println("todo")
-			// Validate that arguments match and default values are set for missing once
+			usedArgs := map[string]bool{}
+			namedArgs := false
+			for i, callArg := range n.Arguments {
+				if callArg.Name != nil {
+					namedArgs = true
+					foundArg := false
+					for x, argName := range signType.ArgumentNames {
+						if argName == callArg.Name.Text {
+							i = x
+							foundArg = true
+							break
+						}
+					}
+
+					if !foundArg {
+						v.emitError(
+							callArg,
+							fmt.Sprintf("called function has no argument named %s", callArg.Name.Text),
+							true)
+						continue
+					}
+				} else if namedArgs {
+					v.emitError(
+						n,
+						"named and non-named call arguments cannot be mixed",
+						true)
+				}
+
+				if len(signType.ArgumentNames) > i {
+					argName := signType.ArgumentNames[i]
+					if _, ok := usedArgs[argName]; ok {
+						v.emitError(
+							callArg,
+							fmt.Sprintf("argument %s already defined", argName),
+							true)
+					}
+
+					usedArgs[argName] = true
+
+					fnArgType := signType.ArgumentTypes[i]
+					exprType := v.getTypeForNode(callArg.Expression)
+					equal := fnArgType.IsEqual(exprType)
+
+					if !equal {
+						v.emitError(callArg.Expression, fmt.Sprintf(
+							"cannot use %s (type %s) as type %s in function call",
+							callArg.Expression,
+							exprType.GetName(),
+							fnArgType.GetName(),
+						), true)
+					}
+				}
+			}
+
+			if !namedArgs {
+				if len(n.Arguments) < len(signType.ArgumentTypes) {
+					v.emitError(n, fmt.Sprintf(
+						"too few arguments in call to %s",
+						n.Callee,
+					), true)
+				} else if len(n.Arguments) > len(signType.ArgumentTypes) {
+					v.emitError(n, fmt.Sprintf(
+						"too many arguments in call to %s",
+						n.Callee,
+					), true)
+				}
+			}
 		}
 
 	case *ast.ReturnStatement:
@@ -258,12 +345,11 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 
 		v.scope.Set(n.Name.Text, n)
 	case *ast.Block:
-		if v.parent != nil {
-			if _, fundeclOk := v.parent.node.(*ast.FunctionDeclaration); fundeclOk {
-				break
-			}
+		if _, fundeclOk := v.scope.node.(*ast.FunctionDeclaration); fundeclOk {
+			break
 		}
-		return v.subVisitor(node, v.scope.SubScope())
+
+		return v.subVisitor(node, v.scope.SubScope(node))
 	case *ast.FunctionDeclaration:
 		if n.Signature.Identifier != nil {
 			scopeItem := v.scope.Get(n.Signature.Identifier.Text, false)
@@ -275,7 +361,7 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 			v.scope.Set(n.Signature.Identifier.Text, n)
 		}
 
-		return v.subVisitor(node, v.scope.SubScope())
+		return v.subVisitor(node, v.scope.SubScope(node))
 	case *ast.TupleDeclaration:
 		if n.DefaultValue != nil {
 			if n.Type != nil {
@@ -354,4 +440,20 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 	}
 
 	return v.subVisitor(node, v.scope)
+}
+
+func (v *visitor) Leave(node ast.Node) {
+	switch node.(type) {
+	case *ast.Block, *ast.FunctionDeclaration:
+		unusedScopeItems := v.scope.UnusedScopeItems()
+		for _, scopeItem := range unusedScopeItems {
+			switch n := scopeItem.(type) {
+			case ast.Node:
+				v.emitError(n,
+					"Declared but not used",
+					false)
+			}
+
+		}
+	}
 }

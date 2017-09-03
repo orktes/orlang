@@ -24,6 +24,8 @@ func TestVisitor(t *testing.T) {
 			var fiz = foobar(10, 2.0)
 			fiz = (0.5,11)
 
+			var namedArgs = foobar(y: 2.0, x: 1)
+
 			var tupleVar = (1,1)
 			tupleVar = (5, 5)
 
@@ -58,10 +60,13 @@ func TestVisitor(t *testing.T) {
 	}
 
 	visitor := &visitor{
-		scope: NewScope(),
+		scope: NewScope(file),
 		node:  file,
 		info:  &FileInfo{},
-		errorCb: func(node ast.Node, msg string, _ bool) {
+		errorCb: func(node ast.Node, msg string, fatal bool) {
+			if !fatal {
+				return
+			}
 			t.Fatalf("%s %#v", msg, node)
 		},
 	}
@@ -153,6 +158,36 @@ func TestVisitorErrors(t *testing.T) {
 				var a : [0.5]int32 = []int32{1}
 			}
 		`, "3:14 array length must be an integer"},
+		{`
+			fn foo(x : int32) {
+				foo()
+			}
+		`, "3:5 too few arguments in call to foo"},
+		{`
+			fn foo(x : int32) {
+				foo(1, 2, 3, 4)
+			}
+		`, "3:5 too many arguments in call to foo"},
+		{`
+			fn foo(x : int32) {
+				foo(x: 1.0)
+			}
+		`, "3:12 cannot use 1.0 (type float32) as type int32 in function call"},
+		{`
+			fn foo(x : int32) {
+				foo(y: 1)
+			}
+		`, "3:9 called function has no argument named y"},
+		{`
+			fn foo(x : int32, y: int32) {
+				foo(y: 1, 1)
+			}
+		`, "3:5 named and non-named call arguments cannot be mixed"},
+		{`
+			fn foo() {
+				var bar = 1
+			}
+		`, "2:4 Declared but not used"},
 	}
 
 	for _, test := range tests {
@@ -163,7 +198,7 @@ func TestVisitorErrors(t *testing.T) {
 
 		var errStr string
 		visitor := &visitor{
-			scope: NewScope(),
+			scope: NewScope(file),
 			node:  file,
 			info:  &FileInfo{},
 			errorCb: func(node ast.Node, msg string, _ bool) {
@@ -171,6 +206,7 @@ func TestVisitorErrors(t *testing.T) {
 					// TODO handle multiple errors
 					return
 				}
+
 				errStr = fmt.Sprintf(
 					"%d:%d %s",
 					node.StartPos().Line+1,

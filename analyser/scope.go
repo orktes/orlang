@@ -13,18 +13,53 @@ type ScopeItem interface {
 type Scope struct {
 	parent *Scope
 	items  map[string]ScopeItem
+	usage  map[ScopeItem][]*ast.Identifier
+	node   ast.Node
 }
 
-func NewScope() *Scope {
+func NewScope(node ast.Node) *Scope {
 	return &Scope{
+		node:  node,
 		items: map[string]ScopeItem{},
+		usage: map[ScopeItem][]*ast.Identifier{},
 	}
 }
 
-func (s *Scope) SubScope() *Scope {
-	scope := NewScope()
+func (s *Scope) SubScope(node ast.Node) *Scope {
+	scope := NewScope(node)
 	scope.parent = s
 	return scope
+}
+
+func (s *Scope) MarkUsage(si ScopeItem, ident *ast.Identifier) {
+	scope := s.GetDefiningScope(ident.Text)
+	if scope == nil {
+		return
+	}
+
+	usages := scope.usage[si]
+	usages = append(usages, ident)
+	s.usage[si] = usages
+}
+
+func (s *Scope) UnusedScopeItems() (scopeItems []ScopeItem) {
+	for _, scopeItem := range s.items {
+		if usage, ok := s.usage[scopeItem]; !ok || len(usage) == 0 {
+			scopeItems = append(scopeItems, scopeItem)
+		}
+	}
+
+	return
+}
+
+func (s *Scope) GetDefiningScope(indentifier string) *Scope {
+	if _, ok := s.items[indentifier]; ok {
+		return s
+	}
+	if s.parent != nil {
+		return s.parent.GetDefiningScope(indentifier)
+	}
+	return nil
 }
 
 func (s *Scope) Get(indentifier string, parent bool) ast.Node {

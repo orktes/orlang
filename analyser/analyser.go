@@ -11,7 +11,7 @@ type Analyser struct {
 func New(file *ast.File) (analyser *Analyser, err error) {
 	analyser = &Analyser{
 		main:  file,
-		scope: NewScope(),
+		scope: NewScope(file),
 	}
 	return
 }
