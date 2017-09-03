@@ -7,7 +7,9 @@ import (
 )
 
 type NodeInfo struct {
-	Type types.Type
+	Type   types.Type
+	Parent ast.Node
+	Scope  *Scope
 }
 
 type FileInfo struct {

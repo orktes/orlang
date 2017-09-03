@@ -17,10 +17,18 @@ func New(file *ast.File) (analyser *Analyser, err error) {
 }
 
 func (analyser *Analyser) Analyse() (info *Info, err error) {
+	fileInfo := NewFileInfo()
+
+	info = &Info{
+		fileInfo: map[*ast.File]*FileInfo{},
+	}
+
+	info.fileInfo[analyser.main] = fileInfo
+
 	visitor := &visitor{
 		scope: analyser.scope,
 		node:  analyser.main,
-		info:  NewFileInfo(),
+		info:  fileInfo,
 		errorCb: func(node ast.Node, err string, fatal bool) {
 			if analyser.Error != nil {
 				analyser.Error(node, err, fatal)

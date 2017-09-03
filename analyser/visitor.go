@@ -156,15 +156,24 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 	return types.UnknownType("undefined")
 }
 
+func (v *visitor) getNodeInfo(node ast.Node) *NodeInfo {
+	if nodeInfo, ok := v.info.nodeInfo[node]; !ok {
+		nodeInfo = &NodeInfo{}
+		v.info.nodeInfo[node] = nodeInfo
+		return nodeInfo
+	} else {
+		return nodeInfo
+	}
+}
+
 func (v *visitor) getTypeForNode(node ast.Node) types.Type {
-	if nodeInfo, ok := v.info.nodeInfo[node]; ok {
+	nodeInfo := v.getNodeInfo(node)
+	if nodeInfo.Type != nil {
 		return nodeInfo.Type
 	}
 
 	typ := v.resolveTypeForNode(node)
-	v.info.nodeInfo[node] = &NodeInfo{
-		Type: typ,
-	}
+	nodeInfo.Type = typ
 
 	return typ
 }
@@ -192,6 +201,10 @@ func (v *visitor) isEqualType(a ast.Node, b ast.Node) (bool, types.Type, types.T
 }
 
 func (v *visitor) Visit(node ast.Node) ast.Visitor {
+	nodeInfo := v.getNodeInfo(node)
+	nodeInfo.Scope = v.scope
+	nodeInfo.Parent = v.node
+
 typeCheck:
 	switch n := node.(type) {
 	case *ast.Identifier:
