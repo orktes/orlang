@@ -203,6 +203,10 @@ func TestVisitorErrors(t *testing.T) {
 				var foo = 1
 			}
 		`, "3:9 foo declared but not used"},
+		{`
+			fn foo() {
+			}
+		`, "2:7 foo declared but not used"},
 	}
 
 	for _, test := range tests {

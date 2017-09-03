@@ -45,7 +45,7 @@ func (s *Scope) MarkUsage(si ScopeItem, ident *ast.Identifier) {
 	if scope.items[ident.Text].DefineIdentifier != ident {
 		usages := scope.usage[si]
 		usages = append(usages, ident)
-		s.usage[si] = usages
+		scope.usage[si] = usages
 	}
 }
 
