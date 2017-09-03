@@ -582,6 +582,7 @@ func (v *visitor) Leave(node ast.Node) {
 			if v.isMainFuncion(scopeItemInfo.ScopeItem) {
 				break
 			}
+
 			v.emitError(scopeItemInfo.DefineIdentifier,
 				fmt.Sprintf("%s declared but not used", scopeItemInfo.DefineIdentifier.Text),
 				false)
