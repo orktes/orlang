@@ -16,13 +16,16 @@ import (
 
 func TestSimple(t *testing.T) {
 	res, err := testCodegen(`
+    fn getData() : (int32, int32) {
+      return (1, 2)
+    }
+
     fn sum(a : float64, b : float64) : float64 {
       return a + b
     }
 
     fn main() {
-      var a = 1
-      var b = 2
+      var (a, b) = getData()
 
       var abSum = int32(
         sum(
@@ -90,7 +93,7 @@ func testCodegen(str string) (string, error) {
 	}
 
 	code := New(info).Generate(file)
-	// println(string(code)) // debug
+	println(string(code)) // debug
 
 	var result string
 	vm := otto.New()

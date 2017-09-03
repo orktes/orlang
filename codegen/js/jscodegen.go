@@ -20,10 +20,51 @@ func New(info *analyser.Info) *JSCodeGen {
 	return &JSCodeGen{analyserInfo: info}
 }
 
+func (jscg *JSCodeGen) getTempVar() string {
+	return "_temp"
+}
+
 func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 	nodeInfo := jscg.analyserInfo.FileInfo[jscg.currentFile].NodeInfo[node]
 	switch n := node.(type) {
 	case *ast.File, *ast.CallArgument:
+	case *ast.TupleDeclaration:
+		tempVar := jscg.getTempVar()
+		jscg.buffer.WriteString(fmt.Sprintf(
+			`var %s`,
+			tempVar,
+		))
+
+		if n.DefaultValue != nil {
+			jscg.buffer.WriteString("=")
+		}
+
+		ast.Walk(jscg, n.DefaultValue)
+
+		jscg.buffer.WriteString(";")
+
+		var ptrnPrint func(pattern *ast.TuplePattern, prefix string)
+		ptrnPrint = func(pattern *ast.TuplePattern, prefix string) {
+			for i, ptrrn := range pattern.Patterns {
+				switch pt := ptrrn.(type) {
+				case *ast.TuplePattern:
+					ptrnPrint(pt, fmt.Sprintf("%s[%d];", prefix, i))
+				case *ast.Identifier:
+					jscg.buffer.WriteString(
+						fmt.Sprintf(
+							"var %s = %s[%d];",
+							pt.Text,
+							prefix,
+							i,
+						))
+				}
+
+			}
+		}
+
+		ptrnPrint(n.Pattern, tempVar)
+
+		return nil
 	case *ast.VariableDeclaration:
 		jscg.buffer.WriteString(fmt.Sprintf(
 			`var %s`,
@@ -34,6 +75,19 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 		}
 
 		ast.Walk(jscg, n.DefaultValue)
+		return nil
+	case *ast.TupleExpression:
+		jscg.buffer.WriteString(`[`)
+
+		// TODO set named args into the right order
+		for i, expr := range n.Expressions {
+			ast.Walk(jscg, expr)
+			if i < len(n.Expressions)-1 {
+				jscg.buffer.WriteString(`,`)
+			}
+		}
+
+		jscg.buffer.WriteString(`]`)
 		return nil
 	case *ast.UnaryExpression:
 		jscg.buffer.WriteString(n.Operator.Text)
@@ -108,6 +162,8 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 
 func (jscg *JSCodeGen) Leave(node ast.Node) {
 	switch node.(type) {
+	case *ast.TupleDeclaration:
+		// DO nothing
 	case *ast.File:
 		jscg.buffer.WriteString("main && main();")
 	case *ast.Block:
