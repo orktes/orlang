@@ -16,11 +16,22 @@ import (
 
 func TestSimple(t *testing.T) {
 	res, err := testCodegen(`
+    fn sum(a : float64, b : float64) : float64 {
+      return a + b
+    }
+
     fn main() {
       var a = 1
       var b = 2
 
-      printInt(int64(a + b - int32(1.5)))
+      var abSum = int32(
+        sum(
+          float64(a),
+          float64(b)
+        )
+      )
+
+      printInt(int64(abSum - int32(1.5)))
     }
   `)
 

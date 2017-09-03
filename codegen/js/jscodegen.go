@@ -52,6 +52,8 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 			`%s`,
 			n.Text,
 		))
+	case *ast.ReturnStatement:
+		jscg.buffer.WriteString(`return `)
 	case *ast.FunctionCall:
 		if nodeInfo.TypeCast {
 			if nodeInfo.Type == types.Int32Type || nodeInfo.Type == types.Int64Type {
