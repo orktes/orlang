@@ -17,11 +17,19 @@ import (
 func TestSimple(t *testing.T) {
 	res, err := testCodegen(`
     macro createTuple {
-      ($a:expr, $b:expr, $c:expr) : (($a, $b + $c))
+      ($a:expr , $( $x:expr ),*) : (
+        (
+          $a
+          $(
+            ,
+            $x
+          )*
+        )
+      )
     }
 
     fn getData() : (int32, int32) {
-      return createTuple!(1, 1, 1)
+      return createTuple!(1, 2)
     }
 
     fn sum(a : float64, b : float64) : float64 {
