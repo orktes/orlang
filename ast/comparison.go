@@ -1,6 +1,10 @@
 package ast
 
-import "github.com/orktes/orlang/scanner"
+import (
+	"fmt"
+
+	"github.com/orktes/orlang/scanner"
+)
 
 type ComparisonExpression struct {
 	Operator scanner.Token
@@ -17,3 +21,7 @@ func (a *ComparisonExpression) EndPos() Position {
 }
 
 func (_ *ComparisonExpression) exprNode() {}
+
+func (b *ComparisonExpression) String() string {
+	return fmt.Sprintf("%s %s %s", b.Left, b.Operator.Text, b.Right)
+}

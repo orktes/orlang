@@ -51,8 +51,12 @@ func TestVisitor(t *testing.T) {
 
 			var boolValue : bool = true
 			boolValue = false
+			boolValue = 1 > 2
 
 			var strVal = ""
+
+			var intValAfterCast = int32(1.5) + 1
+			var sameSame = int32(1)
 		}
   `))
 	if err != nil {
@@ -207,6 +211,42 @@ func TestVisitorErrors(t *testing.T) {
 			fn foo() {
 			}
 		`, "2:7 foo declared but not used"},
+		{`
+			fn foo() : bool {
+				return 1 > 0.5
+			}
+		`, "3:12 invalid operation: 1 > 0.5 (mismatched types int32 and float32)"},
+		{`
+			fn foo() : bool {
+				return 1 == 0.5
+			}
+		`, "3:12 invalid operation: 1 == 0.5 (mismatched types int32 and float32)"},
+		{`
+			fn foo() : float32 {
+				return int32(0.4)
+			}
+		`, "3:12 cannot use int32(0.4) (type int32) as type float32 in return statement"},
+		{`
+			fn foo() {
+				var bar = int32("foo")
+			}
+		`, "3:15 cannot convert \"foo\" (string) to type int32"},
+		{`
+			fn foo() {
+				var fiz = "foo"
+				var bar = int32(fiz)
+			}
+		`, "4:15 cannot convert fiz (string) to type int32"},
+		{`
+			fn foo() {
+				var bar = int32(1, 1)
+			}
+		`, "3:15 too many argument to conversion to int32"},
+		{`
+			fn foo() {
+				var bar = int32()
+			}
+		`, "3:15 too few argument to conversion to int32"},
 	}
 
 	for _, test := range tests {

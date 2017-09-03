@@ -71,6 +71,8 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			return v.getTypeForNode(n.Type)
 		}
 		return v.getTypeForNode(n.DefaultValue)
+	case *ast.ComparisonExpression:
+		return types.BoolType
 	case *ast.TypeReference:
 		typ := types.Types[n.Token.Text]
 		if typ == nil {
@@ -97,6 +99,14 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			panic(fmt.Errorf("Could not resolve type for token %s", n.Token.String()))
 		}
 	case *ast.FunctionCall:
+		// check if function calls is a typecast
+		if ident, ok := n.Callee.(*ast.Identifier); ok {
+			typ := v.getType(ident.Text)
+			if typ != nil {
+				return typ
+			}
+		}
+
 		typ := v.getTypeForNode(n.Callee)
 		if fnDeclType, ok := typ.(*types.SignatureType); ok {
 			return fnDeclType.ReturnType
@@ -178,6 +188,11 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 	return typ
 }
 
+func (v *visitor) getType(typeName string) types.Type {
+	// TODO handle custom types
+	return types.Types[typeName]
+}
+
 func (v *visitor) getParentFuncDecl() *ast.FunctionDeclaration {
 	parent := v.parent
 	for parent != nil {
@@ -200,6 +215,61 @@ func (v *visitor) isEqualType(a ast.Node, b ast.Node) (bool, types.Type, types.T
 	return aType.IsEqual(bType), aType, bType
 }
 
+func (v *visitor) validateTypeConversion(call *ast.FunctionCall) bool {
+	if ident, ok := call.Callee.(*ast.Identifier); ok {
+		typ := v.getType(ident.Text)
+		if typ != nil {
+			argLen := len(call.Arguments)
+			if argLen != 1 {
+				if argLen > 1 {
+					v.emitError(
+						call,
+						fmt.Sprintf("too many argument to conversion to %s", typ.GetName()),
+						true)
+				} else {
+					v.emitError(
+						call,
+						fmt.Sprintf("too few argument to conversion to %s", typ.GetName()),
+						true)
+				}
+				return false
+			}
+
+			// TODO check for a named call argument
+			expr := call.Arguments[0].Expression
+			exprType := v.getTypeForNode(expr)
+
+			if exprType.IsEqual(typ) {
+				return true
+			}
+
+			conversionOk := false
+			switch exprType {
+			case types.Float32Type, types.Float64Type, types.Int32Type, types.Int64Type:
+				switch typ {
+				case types.Float32Type, types.Float64Type, types.Int32Type, types.Int64Type:
+					conversionOk = true
+				}
+			}
+
+			if !conversionOk {
+				// cannot convert "" (type string) to type int
+				v.emitError(
+					call,
+					fmt.Sprintf(
+						"cannot convert %s (%s) to type %s",
+						expr,
+						exprType.GetName(),
+						typ.GetName(),
+					),
+					true)
+			}
+
+		}
+	}
+	return true
+}
+
 func (v *visitor) Visit(node ast.Node) ast.Visitor {
 	nodeInfo := v.getNodeInfo(node)
 	nodeInfo.Scope = v.scope
@@ -214,9 +284,17 @@ typeCheck:
 		}
 
 		if v.parent != nil {
-			switch v.node.(type) {
+			switch n := v.node.(type) {
 			case ast.Declaration, *ast.CallArgument:
 				break typeCheck
+			case *ast.FunctionCall:
+				// check if call is a typecast
+				if ident, ok := n.Callee.(*ast.Identifier); ok {
+					typ := v.getType(ident.Text)
+					if typ != nil {
+						break typeCheck
+					}
+				}
 			}
 		}
 
@@ -228,6 +306,15 @@ typeCheck:
 
 		v.scope.MarkUsage(scopeItem, n)
 	case *ast.FunctionCall:
+		// Check if function call is a typecast
+		if ident, ok := n.Callee.(*ast.Identifier); ok {
+			typ := v.getType(ident.Text)
+			if typ != nil {
+				v.validateTypeConversion(n)
+				break
+			}
+		}
+
 		funcType := v.getTypeForNode(n.Callee)
 		if signType, ok := funcType.(*types.SignatureType); !ok {
 			v.emitError(
@@ -327,6 +414,19 @@ typeCheck:
 		}
 
 	case *ast.BinaryExpression:
+		equal, aType, bType := v.isEqualType(n.Left, n.Right)
+
+		if !equal {
+			v.emitError(n, fmt.Sprintf(
+				"invalid operation: %s (mismatched types %s and %s)",
+				n,
+				aType.GetName(),
+				bType.GetName(),
+			), true)
+			break
+		}
+
+	case *ast.ComparisonExpression:
 		equal, aType, bType := v.isEqualType(n.Left, n.Right)
 
 		if !equal {
