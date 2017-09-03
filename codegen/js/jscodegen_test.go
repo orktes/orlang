@@ -16,8 +16,12 @@ import (
 
 func TestSimple(t *testing.T) {
 	res, err := testCodegen(`
+    macro createTuple {
+      ($a:expr, $b:expr, $c:expr) : (($a, $b + $c))
+    }
+
     fn getData() : (int32, int32) {
-      return (1, 2)
+      return createTuple!(1, 1, 1)
     }
 
     fn sum(a : float64, b : float64) : float64 {

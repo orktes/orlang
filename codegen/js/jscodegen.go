@@ -27,7 +27,7 @@ func (jscg *JSCodeGen) getTempVar() string {
 func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 	nodeInfo := jscg.analyserInfo.FileInfo[jscg.currentFile].NodeInfo[node]
 	switch n := node.(type) {
-	case *ast.File, *ast.CallArgument:
+	case *ast.File, *ast.Macro, *ast.CallArgument:
 	case *ast.TupleDeclaration:
 		tempVar := jscg.getTempVar()
 		jscg.buffer.WriteString(fmt.Sprintf(
