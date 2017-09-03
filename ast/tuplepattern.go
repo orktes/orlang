@@ -13,7 +13,8 @@ type TuplePattern struct {
 	RightParen scanner.Token
 }
 
-func (TuplePattern) patternNode() {}
+func (TuplePattern) patternNode()     {}
+func (TuplePattern) declarationNode() {}
 
 func (tp *TuplePattern) StartPos() Position {
 	return StartPositionFromToken(tp.LeftParen)

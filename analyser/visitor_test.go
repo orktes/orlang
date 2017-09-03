@@ -187,7 +187,22 @@ func TestVisitorErrors(t *testing.T) {
 			fn foo() {
 				var bar = 1
 			}
-		`, "2:4 Declared but not used"},
+		`, "3:9 bar declared but not used"},
+		{`
+			fn foo() {
+				bar
+			}
+		`, "3:5 undefined: bar"},
+		{`
+			fn foo(x: int32) {
+
+			}
+		`, "2:11 x declared but not used"},
+		{`
+			fn foo() {
+				var foo = 1
+			}
+		`, "3:9 foo declared but not used"},
 	}
 
 	for _, test := range tests {

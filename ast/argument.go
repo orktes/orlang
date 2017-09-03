@@ -7,6 +7,8 @@ type Argument struct {
 	Variadic     bool
 }
 
+func (Argument) declarationNode() {}
+
 func (a *Argument) StartPos() Position {
 	return a.Name.StartPos()
 }

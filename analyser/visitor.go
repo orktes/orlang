@@ -29,9 +29,7 @@ func (v *visitor) emitError(node ast.Node, err string, fatal bool) {
 }
 
 func (v *visitor) scopeMustGet(identifier *ast.Identifier, cb func(ScopeItem)) {
-	if node := v.scope.Get(identifier.Text, true); node == nil {
-		v.emitError(identifier, fmt.Sprintf("%s not initialized", identifier), true) // TODO process scope error
-	} else {
+	if node := v.scope.Get(identifier.Text, true); node != nil {
 		cb(node)
 	}
 }
@@ -189,11 +187,8 @@ typeCheck:
 		}
 
 		if v.parent != nil {
-			switch v.parent.node.(type) {
-			case *ast.FunctionCall,
-				*ast.VariableDeclaration,
-				*ast.TuplePattern,
-				*ast.Argument:
+			switch v.node.(type) {
+			case ast.Declaration, *ast.CallArgument:
 				break typeCheck
 			}
 		}
@@ -205,7 +200,6 @@ typeCheck:
 		}
 
 		v.scope.MarkUsage(scopeItem, n)
-
 	case *ast.FunctionCall:
 		funcType := v.getTypeForNode(n.Callee)
 		if signType, ok := funcType.(*types.SignatureType); !ok {
@@ -343,7 +337,7 @@ typeCheck:
 			break
 		}
 
-		v.scope.Set(n.Name.Text, n)
+		v.scope.Set(n.Name, n)
 	case *ast.Block:
 		if _, fundeclOk := v.scope.node.(*ast.FunctionDeclaration); fundeclOk {
 			break
@@ -358,7 +352,7 @@ typeCheck:
 				break
 			}
 
-			v.scope.Set(n.Signature.Identifier.Text, n)
+			v.scope.Set(n.Signature.Identifier, n)
 		}
 
 		return v.subVisitor(node, v.scope.SubScope(node))
@@ -386,7 +380,7 @@ typeCheck:
 				for i, pat := range patrn.Patterns {
 					switch p := pat.(type) {
 					case *ast.Identifier:
-						v.scope.Set(p.Text, &CustomTypeResolvingScopeItem{
+						v.scope.Set(p, &CustomTypeResolvingScopeItem{
 							Node:         n,
 							ResolvedType: typ.Types[i],
 						})
@@ -426,7 +420,7 @@ typeCheck:
 			break
 		}
 
-		v.scope.Set(n.Name.Text, n)
+		v.scope.Set(n.Name, n)
 	case *ast.Assigment:
 		equal, leftType, rightType := v.isEqualType(n.Left, n.Right)
 		if !equal {
@@ -443,17 +437,14 @@ typeCheck:
 }
 
 func (v *visitor) Leave(node ast.Node) {
+
 	switch node.(type) {
 	case *ast.Block, *ast.FunctionDeclaration:
 		unusedScopeItems := v.scope.UnusedScopeItems()
-		for _, scopeItem := range unusedScopeItems {
-			switch n := scopeItem.(type) {
-			case ast.Node:
-				v.emitError(n,
-					"Declared but not used",
-					false)
-			}
-
+		for _, scopeItemInfo := range unusedScopeItems {
+			v.emitError(scopeItemInfo.DefineIdentifier,
+				fmt.Sprintf("%s declared but not used", scopeItemInfo.DefineIdentifier.Text),
+				false)
 		}
 	}
 }

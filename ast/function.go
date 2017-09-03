@@ -9,7 +9,8 @@ type FunctionSignature struct {
 	Extern     bool
 }
 
-func (FunctionSignature) typeNode() {}
+func (FunctionSignature) declarationNode() {}
+func (FunctionSignature) typeNode()        {}
 
 func (fs *FunctionSignature) StartPos() Position {
 	return fs.Start

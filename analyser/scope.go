@@ -10,9 +10,14 @@ type ScopeItem interface {
 	ast.Node
 }
 
+type ScopeItemDetails struct {
+	ScopeItem
+	DefineIdentifier *ast.Identifier
+}
+
 type Scope struct {
 	parent *Scope
-	items  map[string]ScopeItem
+	items  map[string]*ScopeItemDetails
 	usage  map[ScopeItem][]*ast.Identifier
 	node   ast.Node
 }
@@ -20,7 +25,7 @@ type Scope struct {
 func NewScope(node ast.Node) *Scope {
 	return &Scope{
 		node:  node,
-		items: map[string]ScopeItem{},
+		items: map[string]*ScopeItemDetails{},
 		usage: map[ScopeItem][]*ast.Identifier{},
 	}
 }
@@ -37,15 +42,17 @@ func (s *Scope) MarkUsage(si ScopeItem, ident *ast.Identifier) {
 		return
 	}
 
-	usages := scope.usage[si]
-	usages = append(usages, ident)
-	s.usage[si] = usages
+	if scope.items[ident.Text].DefineIdentifier != ident {
+		usages := scope.usage[si]
+		usages = append(usages, ident)
+		s.usage[si] = usages
+	}
 }
 
-func (s *Scope) UnusedScopeItems() (scopeItems []ScopeItem) {
-	for _, scopeItem := range s.items {
-		if usage, ok := s.usage[scopeItem]; !ok || len(usage) == 0 {
-			scopeItems = append(scopeItems, scopeItem)
+func (s *Scope) UnusedScopeItems() (scopeItems []*ScopeItemDetails) {
+	for _, scopeItemInfo := range s.items {
+		if usage := s.usage[scopeItemInfo.ScopeItem]; len(usage) == 0 {
+			scopeItems = append(scopeItems, scopeItemInfo)
 		}
 	}
 
@@ -64,7 +71,7 @@ func (s *Scope) GetDefiningScope(indentifier string) *Scope {
 
 func (s *Scope) Get(indentifier string, parent bool) ast.Node {
 	if info, ok := s.items[indentifier]; ok {
-		return info
+		return info.ScopeItem
 	}
 	if s.parent != nil && parent {
 		return s.parent.Get(indentifier, parent)
@@ -72,8 +79,11 @@ func (s *Scope) Get(indentifier string, parent bool) ast.Node {
 	return nil
 }
 
-func (s *Scope) Set(identifier string, node ast.Node) {
-	s.items[identifier] = node
+func (s *Scope) Set(identifier *ast.Identifier, node ast.Node) {
+	s.items[identifier.Text] = &ScopeItemDetails{
+		ScopeItem:        node,
+		DefineIdentifier: identifier,
+	}
 }
 
 type CustomTypeResolvingScopeItem struct {
