@@ -32,18 +32,16 @@ func TestSimple(t *testing.T) {
       return createTuple!(1, 2)
     }
 
-    fn sum(a : float64, b : float64) : float64 {
-      return a + b
+    fn sum(a : float64, b : float64) : int32 {
+      return int32(a + b)
     }
 
     fn main() {
       var (a, b) = getData()
 
-      var abSum = int32(
-        sum(
-          float64(a),
-          float64(b)
-        )
+      var abSum = sum(
+        float64(a),
+        float64(b)
       )
 
       print("result is: " + int_to_str(int64(abSum - int32(1.5))))
