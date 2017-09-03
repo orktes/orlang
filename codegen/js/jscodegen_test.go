@@ -31,7 +31,7 @@ func TestSimple(t *testing.T) {
         )
       )
 
-      printInt(int64(abSum - int32(1.5)))
+      print("result is: " + int_to_str(int64(abSum - int32(1.5))))
     }
   `)
 
@@ -39,7 +39,7 @@ func TestSimple(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res != "2" {
+	if res != "result is: 2" {
 		t.Error("Wrong result received", res)
 	}
 }
@@ -54,6 +54,12 @@ func testCodegen(str string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	analyser.AddExternalFunc("int_to_str", &types.SignatureType{
+		ArgumentNames: []string{"num"},
+		ArgumentTypes: []types.Type{types.Int64Type},
+		ReturnType:    types.StringType,
+	})
 
 	analyser.AddExternalFunc("print", &types.SignatureType{
 		ArgumentNames: []string{"str"},
@@ -91,6 +97,12 @@ func testCodegen(str string) (string, error) {
 	vm.Set("print", func(call otto.FunctionCall) otto.Value {
 		result = call.Argument(0).String()
 		return otto.Value{}
+	})
+
+	vm.Set("int_to_str", func(call otto.FunctionCall) otto.Value {
+		result = call.Argument(0).String()
+		val, _ := vm.ToValue(result)
+		return val
 	})
 
 	vm.Set("printInt", func(call otto.FunctionCall) otto.Value {
