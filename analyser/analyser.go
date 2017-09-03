@@ -20,7 +20,7 @@ func (analyser *Analyser) Analyse() (info *Info, err error) {
 	visitor := &visitor{
 		scope: analyser.scope,
 		node:  analyser.main,
-		info:  &FileInfo{},
+		info:  NewFileInfo(),
 		errorCb: func(node ast.Node, err string, fatal bool) {
 			if analyser.Error != nil {
 				analyser.Error(node, err, fatal)
