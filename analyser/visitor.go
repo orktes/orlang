@@ -396,7 +396,15 @@ typeCheck:
 		funcDecl := v.getParentFuncDecl()
 		funcDeclType := v.getTypeForNode(funcDecl).(*types.SignatureType)
 
-		if n.Expression == nil && funcDeclType.ReturnType == nil {
+		if n.Expression == nil && (funcDeclType.ReturnType == nil || funcDeclType.ReturnType == types.VoidType) {
+			break
+		}
+
+		if n.Expression == nil {
+			v.emitError(n, fmt.Sprintf(
+				"missing return value with type %s",
+				funcDeclType.ReturnType.GetName(),
+			), true)
 			break
 		}
 

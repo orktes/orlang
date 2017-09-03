@@ -57,6 +57,8 @@ func TestVisitor(t *testing.T) {
 
 			var intValAfterCast = int32(1.5) + 1
 			var sameSame = int32(1)
+
+			return
 		}
   `))
 	if err != nil {
@@ -247,6 +249,21 @@ func TestVisitorErrors(t *testing.T) {
 				var bar = int32()
 			}
 		`, "3:15 too few argument to conversion to int32"},
+		{`
+			fn foo() {
+				return 1
+			}
+		`, "3:12 cannot use 1 (type int32) as type void in return statement"},
+		{`
+			fn foo() : void {
+				return 1
+			}
+		`, "3:12 cannot use 1 (type int32) as type void in return statement"},
+		{`
+			fn foo() : int32 {
+				return
+			}
+		`, "3:5 missing return value with type int32"},
 	}
 
 	for _, test := range tests {

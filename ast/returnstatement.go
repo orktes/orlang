@@ -1,5 +1,7 @@
 package ast
 
+import "fmt"
+
 type ReturnStatement struct {
 	Start      Position
 	ReturnEnd  Position
@@ -15,6 +17,13 @@ func (rtrn *ReturnStatement) EndPos() Position {
 		return rtrn.ReturnEnd
 	}
 	return rtrn.Expression.EndPos()
+}
+
+func (rtrn *ReturnStatement) String() string {
+	if rtrn.Expression != nil {
+		return fmt.Sprintf("return %s", rtrn.Expression)
+	}
+	return "return"
 }
 
 func (_ *ReturnStatement) stmtNode() {}
