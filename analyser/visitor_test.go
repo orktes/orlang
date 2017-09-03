@@ -58,6 +58,9 @@ func TestVisitor(t *testing.T) {
 			var intValAfterCast = int32(1.5) + 1
 			var sameSame = int32(1)
 
+			var funcType : (int32) : void
+			funcType(1)
+
 			return
 		}
   `))
