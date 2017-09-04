@@ -235,6 +235,7 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 
 		return nil
 	case *ast.File:
+		jscg.buffer.WriteString("(function () {")
 		for _, node := range n.Body {
 			ast.Walk(jscg, node)
 			jscg.buffer.WriteString(";")
@@ -303,6 +304,7 @@ func (jscg *JSCodeGen) Leave(node ast.Node) {
 			}
 		}
 
+		jscg.buffer.WriteString("})();")
 	case *ast.Block:
 		jscg.buffer.WriteString(`}`)
 	case *ast.ParenExpression:
