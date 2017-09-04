@@ -29,26 +29,37 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 	switch n := node.(type) {
 	case *ast.File, *ast.Macro, *ast.CallArgument:
 	case *ast.TupleDeclaration:
-		tempVar := jscg.getTempVar()
-		jscg.buffer.WriteString(fmt.Sprintf(
-			`var %s`,
-			tempVar,
-		))
+
+		var varName string
 
 		if n.DefaultValue != nil {
-			jscg.buffer.WriteString("=")
+			if ident, ok := n.DefaultValue.(*ast.Identifier); ok {
+				varName = ident.Text
+			}
 		}
 
-		ast.Walk(jscg, n.DefaultValue)
+		if varName == "" {
+			varName = jscg.getTempVar()
+			jscg.buffer.WriteString(fmt.Sprintf(
+				`var %s`,
+				varName,
+			))
 
-		jscg.buffer.WriteString(";")
+			if n.DefaultValue != nil {
+				jscg.buffer.WriteString("=")
+			}
+
+			ast.Walk(jscg, n.DefaultValue)
+
+			jscg.buffer.WriteString(";")
+		}
 
 		var ptrnPrint func(pattern *ast.TuplePattern, prefix string)
 		ptrnPrint = func(pattern *ast.TuplePattern, prefix string) {
 			for i, ptrrn := range pattern.Patterns {
 				switch pt := ptrrn.(type) {
 				case *ast.TuplePattern:
-					ptrnPrint(pt, fmt.Sprintf("%s[%d];", prefix, i))
+					ptrnPrint(pt, fmt.Sprintf("%s[%d]", prefix, i))
 				case *ast.Identifier:
 					jscg.buffer.WriteString(
 						fmt.Sprintf(
@@ -62,7 +73,7 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 			}
 		}
 
-		ptrnPrint(n.Pattern, tempVar)
+		ptrnPrint(n.Pattern, varName)
 
 		return nil
 	case *ast.VariableDeclaration:

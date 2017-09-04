@@ -37,14 +37,18 @@ func TestSimple(t *testing.T) {
     }
 
     fn main() {
-      var (a, b) = getData()
+      var ab = getData()
 
+      var (a, b) = ab
       var abSum = sum(
         float64(a),
         float64(b)
       )
 
-      print("result is: " + int_to_str(int64(abSum - int32(1.5))))
+      var negative = int64(-1)
+      var (x, y, (h, j)) = (1, 2, ab)
+
+      print("result is: " + int_to_str(int64(abSum - int32(1.5))) + " and " + int_to_str(int64(h + j)) + " and " + int_to_str(negative))
     }
   `)
 
@@ -52,7 +56,7 @@ func TestSimple(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res != "result is: 2" {
+	if res != "result is: 2 and 3 and -1" {
 		t.Error("Wrong result received", res)
 	}
 }
