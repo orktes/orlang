@@ -39,7 +39,7 @@ func TestSimple(t *testing.T) {
     fn main() {
       var ab = getData()
 
-      var (a, b) = ab
+      var (a, b) : (int32, int32) = ab
       var abSum = sum(
         float64(a),
         float64(b)
