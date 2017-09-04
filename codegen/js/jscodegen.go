@@ -90,7 +90,6 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 	case *ast.TupleExpression:
 		jscg.buffer.WriteString(`[`)
 
-		// TODO set named args into the right order
 		for i, expr := range n.Expressions {
 			ast.Walk(jscg, expr)
 			if i < len(n.Expressions)-1 {
@@ -133,10 +132,39 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 		jscg.buffer.WriteString(`(`)
 
 		// TODO set named args into the right order
-		for i, expr := range n.Arguments {
-			ast.Walk(jscg, expr)
-			if i < len(n.Arguments)-1 {
-				jscg.buffer.WriteString(`,`)
+		var argNames []string
+
+		calleeNodeInfo := jscg.analyserInfo.FileInfo[jscg.currentFile].NodeInfo[n.Callee]
+		if calleeNodeInfo != nil && calleeNodeInfo.Type != nil {
+			argNames = calleeNodeInfo.Type.(*types.SignatureType).ArgumentNames
+		}
+
+		namedArgs := len(n.Arguments) > 0 && n.Arguments[0].Name != nil
+		if len(argNames) == 0 || !namedArgs {
+			for i, expr := range n.Arguments {
+				ast.Walk(jscg, expr)
+				if i < len(n.Arguments)-1 {
+					jscg.buffer.WriteString(`,`)
+				}
+			}
+		} else {
+			for i, argName := range argNames {
+				found := false
+				for _, expr := range n.Arguments {
+					if expr.Name.Text == argName {
+						ast.Walk(jscg, expr.Expression)
+						found = true
+						break
+					}
+				}
+
+				if !found {
+					jscg.buffer.WriteString("undefined")
+				}
+
+				if i < len(argNames)-1 {
+					jscg.buffer.WriteString(`,`)
+				}
 			}
 		}
 
@@ -165,6 +193,8 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 		ast.Walk(jscg, n.Block)
 
 		return nil
+	case *ast.ParenExpression:
+		jscg.buffer.WriteString("(")
 	default:
 		panic(fmt.Sprintf("TODO: %T", n))
 	}
@@ -181,6 +211,8 @@ func (jscg *JSCodeGen) Leave(node ast.Node) {
 		jscg.buffer.WriteString(`}`)
 	case ast.Statement, *ast.FunctionDeclaration:
 		jscg.buffer.WriteString(`;`)
+	case *ast.ParenExpression:
+		jscg.buffer.WriteString(")")
 	}
 }
 

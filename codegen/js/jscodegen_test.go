@@ -41,14 +41,21 @@ func TestSimple(t *testing.T) {
 
       var (a, b) : (int32, int32) = ab
       var abSum = sum(
-        float64(a),
-        float64(b)
+        b: float64(b),
+        a: float64(a)
       )
 
-      var negative = int64(-1)
+      var negative = int64(-((1 + 4) * int32(5.5)))
       var (x, y, (h, j)) = (1, 2, ab)
 
-      print("result is: " + int_to_str(int64(abSum - int32(1.5))) + " and " + int_to_str(int64(h + j)) + " and " + int_to_str(negative))
+      print(
+        "result is: " +
+        int_to_str(int64(abSum - int32(1.5))) +
+        " and " +
+        int_to_str(int64(h + j)) +
+        " and " +
+        int_to_str(negative)
+      )
     }
   `)
 
@@ -56,7 +63,7 @@ func TestSimple(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res != "result is: 2 and 3 and -1" {
+	if res != "result is: 2 and 3 and -25" {
 		t.Error("Wrong result received", res)
 	}
 }
