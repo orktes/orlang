@@ -195,6 +195,7 @@ rightLoop:
 			expression = &ast.UnaryExpression{
 				Operator:   token,
 				Expression: expression,
+				Postfix:    true,
 			}
 			return
 		}

@@ -48,14 +48,27 @@ func TestSimple(t *testing.T) {
       var negative = int64(-((1 + 4) * int32(5.5)))
       var (x, y, (h, j)) = (1, 2, ab)
 
-      print(
-        "result is: " +
-        int_to_str(int64(abSum - int32(1.5))) +
-        " and " +
-        int_to_str(int64(h + j)) +
-        " and " +
-        int_to_str(negative)
-      )
+      var counter = 0
+
+      for counter < 10 {
+				// var a = 100 // This should not affect result
+        counter++
+      }
+
+      if true {
+        print(
+          "result is: " +
+          int_to_str(int64(abSum - int32(1.5))) +
+          " and " +
+          int_to_str(int64(h + j)) +
+          " and " +
+          int_to_str(negative) +
+          " and " +
+          int_to_str(int64(counter))
+        )
+      } else if false {
+        print("Will not ever be here")
+      }
     }
   `)
 
@@ -63,7 +76,7 @@ func TestSimple(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res != "result is: 2 and 3 and -25" {
+	if res != "result is: 2 and 3 and -25 and 10" {
 		t.Error("Wrong result received", res)
 	}
 }
@@ -83,18 +96,21 @@ func testCodegen(str string) (string, error) {
 		ArgumentNames: []string{"num"},
 		ArgumentTypes: []types.Type{types.Int64Type},
 		ReturnType:    types.StringType,
+		Extern:        true,
 	})
 
 	analyser.AddExternalFunc("print", &types.SignatureType{
 		ArgumentNames: []string{"str"},
 		ArgumentTypes: []types.Type{types.StringType},
 		ReturnType:    types.VoidType,
+		Extern:        true,
 	})
 
 	analyser.AddExternalFunc("printInt", &types.SignatureType{
 		ArgumentNames: []string{"num"},
 		ArgumentTypes: []types.Type{types.Int64Type},
 		ReturnType:    types.VoidType,
+		Extern:        true,
 	})
 
 	var analyErr error

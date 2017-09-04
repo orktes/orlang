@@ -96,6 +96,7 @@ type SignatureType struct {
 	ArgumentTypes []Type
 	ReturnType    Type
 	ArgumentNames []string
+	Extern        bool
 }
 
 func (st *SignatureType) GetName() string {

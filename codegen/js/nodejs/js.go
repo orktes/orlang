@@ -31,18 +31,21 @@ func main() {
 				ArgumentNames: []string{"num"},
 				ArgumentTypes: []types.Type{types.Int64Type},
 				ReturnType:    types.StringType,
+				Extern:        true,
 			})
 
 			analyser.AddExternalFunc("print", &types.SignatureType{
 				ArgumentNames: []string{"str"},
 				ArgumentTypes: []types.Type{types.StringType},
 				ReturnType:    types.VoidType,
+				Extern:        true,
 			})
 
 			analyser.AddExternalFunc("printInt", &types.SignatureType{
 				ArgumentNames: []string{"num"},
 				ArgumentTypes: []types.Type{types.Int64Type},
 				ReturnType:    types.VoidType,
+				Extern:        true,
 			})
 
 			var analyErr error

@@ -79,6 +79,16 @@ func (s *Scope) Get(indentifier string, parent bool) ast.Node {
 	return nil
 }
 
+func (s *Scope) GetDetails(indentifier string, parent bool) *ScopeItemDetails {
+	if info, ok := s.items[indentifier]; ok {
+		return info
+	}
+	if s.parent != nil && parent {
+		return s.parent.GetDetails(indentifier, parent)
+	}
+	return nil
+}
+
 func (s *Scope) Set(identifier *ast.Identifier, node ast.Node) {
 	s.items[identifier.Text] = &ScopeItemDetails{
 		ScopeItem:        node,

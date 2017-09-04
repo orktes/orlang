@@ -54,6 +54,7 @@ func (p *Parser) parseForLoop() (node *ast.ForLoop, nodeOk bool) {
 			p.unread()
 			// TODO create isExpression to check if a node is an expression
 			condition = init
+			init = nil
 			goto parseBlock
 		}
 
