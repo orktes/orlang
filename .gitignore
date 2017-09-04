@@ -22,3 +22,7 @@ _testmain.go
 *.exe
 *.test
 *.prof
+
+codegen/js/nodejs/js.js
+
+codegen/js/nodejs/js.js.map
