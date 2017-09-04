@@ -36,8 +36,9 @@ func TestSimple(t *testing.T) {
       return int32(a + b)
     }
 
+    var ab = getData()
+
     fn main() {
-      var ab = getData()
 
       var (a, b) : (int32, int32) = ab
       var abSum = sum(

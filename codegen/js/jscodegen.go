@@ -44,7 +44,7 @@ func (jscg *JSCodeGen) getIdentifier(ident *ast.Identifier) string {
 func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 	nodeInfo := jscg.analyserInfo.FileInfo[jscg.currentFile].NodeInfo[node]
 	switch n := node.(type) {
-	case *ast.File, *ast.Macro, *ast.CallArgument:
+	case *ast.Macro, *ast.CallArgument:
 	case *ast.TupleDeclaration:
 
 		var varName string
@@ -233,6 +233,12 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 			jscg.buffer.WriteString(";")
 		}
 
+		return nil
+	case *ast.File:
+		for _, node := range n.Body {
+			ast.Walk(jscg, node)
+			jscg.buffer.WriteString(";")
+		}
 		return nil
 	case *ast.ForLoop:
 		jscg.buffer.WriteString(" for (")
