@@ -80,11 +80,14 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 				case *ast.Identifier:
 					jscg.buffer.WriteString(
 						fmt.Sprintf(
-							"var %s = %s[%d];",
+							"var %s = %s[%d]",
 							jscg.getIdentifier(pt),
 							prefix,
 							i,
 						))
+					if i != len(pattern.Patterns)-1 {
+						jscg.buffer.WriteString(";")
+					}
 				}
 
 			}
