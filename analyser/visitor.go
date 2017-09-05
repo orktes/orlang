@@ -475,7 +475,7 @@ typeCheck:
 
 		v.scope.Set(n.Name, n)
 	case *ast.Block:
-		if _, fundeclOk := v.scope.node.(*ast.FunctionDeclaration); fundeclOk {
+		if _, fundeclOk := v.node.(*ast.FunctionDeclaration); fundeclOk {
 			break
 		}
 

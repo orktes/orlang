@@ -52,7 +52,7 @@ func TestSimple(t *testing.T) {
       var counter = 0
 
       for counter < 10 {
-				// var a = 100 // This should not affect result
+				var a = 100 // This should not affect result
         counter++
       }
 
