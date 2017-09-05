@@ -91,6 +91,9 @@ const (
 
 	// TokenTypeEllipsis ...
 	TokenTypeEllipsis
+
+	// TokenTypeArrow =>
+	TokenTypeArrow
 )
 
 var tokenNames = [...]string{
@@ -145,6 +148,7 @@ var tokenNames = [...]string{
 	TokenTypeDecrement: "DECREMENT",
 
 	TokenTypeEllipsis: "ELLIPSIS",
+	TokenTypeArrow:    "ARROW",
 }
 
 func (typ TokenType) String() string {

@@ -323,7 +323,7 @@ func (jscg *JSCodeGen) Leave(node ast.Node) {
 			if funDecl, ok := n.(*ast.FunctionDeclaration); ok {
 				if funDecl.Signature != nil && funDecl.Signature.Identifier != nil && funDecl.Signature.Identifier.Text == "main" {
 					name := jscg.getIdentifier(funDecl.Signature.Identifier)
-					jscg.buffer.WriteString(fmt.Sprintf("%s && %s();", name, name))
+					jscg.buffer.WriteString(fmt.Sprintf("%s();", name))
 					break
 				}
 			}

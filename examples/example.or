@@ -1,0 +1,69 @@
+macro createTuple {
+  ($a:expr , $( $x:expr ),*) : (
+    (
+      $a
+      $(
+        ,
+        $x
+      )*
+    )
+  )
+}
+
+fn getData() => (int32, int32) {
+  return createTuple!(1, 2)
+}
+
+fn sum(a : float64, b : float64 = float64(100.0)) => int32 {
+  return int32(a + b)
+}
+
+fn callback(cb : (int32) => void = fn (a : int32) {}) {
+  cb(1)
+}
+
+var ab = getData()
+
+fn main() {
+
+  var (a, b) : (int32, int32) = ab
+  var abSum = sum(
+    b: float64(b),
+    a: float64(a)
+  )
+
+  var negative = int64(-((1 + 4) * int32(5.5)))
+  var (x, y, (h, j)) = (1, 2, ab)
+
+  var counter = 0
+
+  for counter < 10 {
+    var a = 100 // This should not affect result
+    counter++
+  }
+
+  var sum100 = sum(a: float64(1))
+
+  callback(fn (a : int32) {
+    sum100 = sum100 + a
+  })
+
+  if true {
+    print(
+      "result is: " +
+      int_to_str(int64(abSum - int32(1.5))) +
+      " and " +
+      int_to_str(int64(h + j)) +
+      " and " +
+      int_to_str(negative) +
+      " and " +
+      int_to_str(int64(counter)) +
+      " and " +
+      int_to_str(int64(sum100))
+    )
+  } else if false {
+    print("Will not ever be here")
+  } else {
+    print("New else")
+  }
+}

@@ -84,7 +84,7 @@ func (p *Parser) parseTupleOrSignatureType() (node ast.Type, ok bool) {
 		Types:      typeList,
 	}
 
-	_, returnTypeColonOk := p.expectToken(scanner.TokenTypeCOLON)
+	_, returnTypeColonOk := p.expectToken(scanner.TokenTypeArrow)
 	if returnTypeColonOk {
 		// It is actually a signature type
 		if returnType, returnTypeOk := p.parseType(); returnTypeOk {

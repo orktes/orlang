@@ -12,7 +12,7 @@ import (
 
 func TestVisitor(t *testing.T) {
 	file, err := parser.Parse(strings.NewReader(`
-    fn foobar(x : int32 = 1, y : float32) : (float32, int32) {
+    fn foobar(x : int32 = 1, y : float32) => (float32, int32) {
       return (y, x)
     }
 
@@ -39,7 +39,7 @@ func TestVisitor(t *testing.T) {
 			foo3 = 1
 			foo3 = foo3 + foo3
 
-			var fnVar : (int32, float32) : (float32, int32)
+			var fnVar : (int32, float32) => (float32, int32)
 			fnVar = foobar
 
 			var arrVar : []int32
@@ -63,7 +63,7 @@ func TestVisitor(t *testing.T) {
 				var sameSame = 1
 			}
 
-			var funcType : (int32) : void
+			var funcType : (int32) => void
 			funcType(1)
 
 			return
@@ -222,17 +222,17 @@ func TestVisitorErrors(t *testing.T) {
 			}
 		`, "2:7 foo declared but not used"},
 		{`
-			fn foo() : bool {
+			fn foo() => bool {
 				return 1 > 0.5
 			}
 		`, "3:12 invalid operation: 1 > 0.5 (mismatched types int32 and float32)"},
 		{`
-			fn foo() : bool {
+			fn foo() => bool {
 				return 1 == 0.5
 			}
 		`, "3:12 invalid operation: 1 == 0.5 (mismatched types int32 and float32)"},
 		{`
-			fn foo() : float32 {
+			fn foo() => float32 {
 				return int32(0.4)
 			}
 		`, "3:12 cannot use int32(0.4) (type int32) as type float32 in return statement"},
@@ -263,12 +263,12 @@ func TestVisitorErrors(t *testing.T) {
 			}
 		`, "3:12 cannot use 1 (type int32) as type void in return statement"},
 		{`
-			fn foo() : void {
+			fn foo() => void {
 				return 1
 			}
 		`, "3:12 cannot use 1 (type int32) as type void in return statement"},
 		{`
-			fn foo() : int32 {
+			fn foo() => int32 {
 				return
 			}
 		`, "3:5 missing return value with type int32"},

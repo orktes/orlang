@@ -28,15 +28,15 @@ func TestSimple(t *testing.T) {
       )
     }
 
-    fn getData() : (int32, int32) {
+    fn getData() => (int32, int32) {
       return createTuple!(1, 2)
     }
 
-    fn sum(a : float64, b : float64 = float64(100.0)) : int32 {
+    fn sum(a : float64, b : float64 = float64(100.0)) => int32 {
       return int32(a + b)
     }
 
-		fn callback(cb : (int32) : void = fn thisShouldNotBeNeeded(a : int32) {}) {
+		fn callback(cb : (int32) => void = fn (a : int32) {}) {
 			cb(1)
 		}
 
@@ -62,7 +62,7 @@ func TestSimple(t *testing.T) {
 
 			var sum100 = sum(a: float64(1))
 
-			callback(fn thisShouldNotBeNeeded(a : int32) {
+			callback(fn (a : int32) {
 				sum100 = sum100 + a
 			})
 

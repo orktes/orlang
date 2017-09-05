@@ -81,7 +81,7 @@ func TestParseBinaryExpression(t *testing.T) {
 
 func TestParseFunctionCall(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
-		fn foobar(x : int = 0, y: int = 0) : int {
+		fn foobar(x : int = 0, y: int = 0) => int {
 			foobar()
 			foobar()()
 			foobar()()()

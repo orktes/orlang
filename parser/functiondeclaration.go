@@ -30,7 +30,7 @@ func (p *Parser) parseFuncSignature() (signature *ast.FunctionSignature, ok bool
 
 		signature.Arguments = arguments
 
-		_, returnTypeColonOk := p.expectToken(scanner.TokenTypeCOLON)
+		_, returnTypeColonOk := p.expectToken(scanner.TokenTypeArrow)
 		if returnTypeColonOk {
 			if returnType, returnTypeOk := p.parseType(); returnTypeOk {
 				signature.ReturnType = returnType

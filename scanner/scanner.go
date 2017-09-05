@@ -235,9 +235,13 @@ func (s *Scanner) Scan() (token Token) {
 	case ch == '=':
 		t = TokenTypeASSIGN
 		text = string(ch)
-		if s.read() == '=' {
+		next := s.read()
+		if next == '=' {
 			t = TokenTypeEqual
 			text = "=="
+		} else if next == '>' {
+			t = TokenTypeArrow
+			text = "=>"
 		} else {
 			s.unread()
 		}

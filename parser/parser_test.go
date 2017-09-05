@@ -225,7 +225,7 @@ func TestSnapshots(t *testing.T) {
 
 func TestExternDefinition(t *testing.T) {
 	_, err := Parse(strings.NewReader(`
-		extern printf(format: string, args:...) : int
+		extern printf(format: string, args:...) => int
 	`))
 	if err != nil {
 		t.Error(err)

@@ -18,7 +18,7 @@ func TestParseFailures(t *testing.T) {
 		{"fn test()", "1:10: Expected code block got EOF"},
 		{"fn test(,) {}", "1:9: Expected [IDENT RPAREN] got COMMA"},
 		{"fn test(bar i = 1) {}", "1:13: Expected [RPAREN COMMA] got i"},
-		{"fn test(int) : {}", "1:16: Expected function return type got LBRACE({)"},
+		{"fn test(int) => {}", "1:17: Expected function return type got LBRACE({)"},
 		{"fn test(foo : float foo) {}", "1:21: Expected [RPAREN COMMA] got foo"},
 		{"fn test(foo : ) {}", "1:15: Expected [IDENT] got RPAREN"},
 		{"fn test(foo : bar = ) {}", "1:21: Expected expression got RPAREN())"},
@@ -37,7 +37,7 @@ func TestParseFailures(t *testing.T) {
 		{"var (foo) :", "1:12: Expected type got EOF"},
 		{"var foo :", "1:10: Expected type got EOF"},
 		{"var (", "1:6: Expected [RPAREN] got EOF"},
-		{"var foo : (int32, float32) :", "1:29: Expected function return type got EOF"},
+		{"var foo : (int32, float32) =>", "1:30: Expected function return type got EOF"},
 		{"var foo : [int32", "1:17: Expected [RBRACK] got EOF"},
 		{"var foo : [", "1:12: Expected length expression got EOF"},
 		// For loops
