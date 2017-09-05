@@ -38,7 +38,7 @@ func (jscg *JSCodeGen) getIdentifier(ident *ast.Identifier) string {
 		jscg.identNumbers[scopeItemDetals.DefineIdentifier] = identNumber
 	}
 
-	return fmt.Sprintf("$%d", identNumber)
+	return fmt.Sprintf("$%d_%s", identNumber, ident.Text)
 }
 
 func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {

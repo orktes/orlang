@@ -56,10 +56,6 @@ loop:
 		}
 		switch {
 		case check(p.parseFuncDecl()):
-			ident := node.(*ast.FunctionDeclaration).Signature.Identifier
-			if ident == nil || ident.Text == "" {
-				p.error("Root level functions can't be anonymous")
-			}
 		case check(p.parseVarDecl()):
 		case check(p.parseImportDecl()):
 		case check(p.parseExportDecl()):

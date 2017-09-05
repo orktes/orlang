@@ -1,9 +1,12 @@
 package ast
 
+import "github.com/orktes/orlang/scanner"
+
 type FunctionSignature struct {
 	Start      Position
 	End        Position
 	Identifier *Identifier
+	Operator   *scanner.Token
 	Arguments  []*Argument
 	ReturnType Type
 	Extern     bool

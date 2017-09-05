@@ -16,6 +16,20 @@ func (p *Parser) parseFuncSignature() (signature *ast.FunctionSignature, ok bool
 		signature.Start = ast.StartPositionFromToken(token)
 		if identifier, parseIdent := p.parseIdentfier(); parseIdent {
 			signature.Identifier = identifier
+		} else {
+			operatorToken, operatorOk := p.expectToken(
+				scanner.TokenTypeADD,
+				scanner.TokenTypeSUB,
+				scanner.TokenTypeASTERISK,
+				scanner.TokenTypeSLASH,
+			)
+
+			if operatorOk {
+				signature.Operator = &operatorToken
+			} else {
+				p.unread()
+			}
+
 		}
 
 		arguments, argumentsOk := p.parseArguments()

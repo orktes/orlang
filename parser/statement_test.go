@@ -153,6 +153,8 @@ func TestFuncParse(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
 		fn test(bar : int, foo : float = 0.2) {}
 		fn withoutArguments() { return }
+		fn -(bar : int, foo : int) {}
+		fn name() { fn (bar : int, foo : int) {} }
   `))
 
 	if err != nil {

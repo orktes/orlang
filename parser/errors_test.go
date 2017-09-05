@@ -24,7 +24,6 @@ func TestParseFailures(t *testing.T) {
 		{"fn test(foo : bar = ) {}", "1:21: Expected expression got RPAREN())"},
 		{"fn test(foo : int) {]", "1:21: Expected code block got RBRACK(])"},
 		{"fn", "1:3: Expected function name or argument list got EOF"},
-		{"fn (foo : int) {}", "1:17: Root level functions can't be anonymous"},
 		{"fn ( {}", "1:6: Expected [IDENT RPAREN] got LBRACE"},
 		// Variable declarations
 		{"var [", "1:5: Expected variable or tuple declaration got LBRACK([)"},

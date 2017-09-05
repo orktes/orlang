@@ -490,6 +490,7 @@ typeCheck:
 
 			v.scope.Set(n.Signature.Identifier, n)
 		}
+		// TODO analyse n.Signature.Operator
 
 		return v.subVisitor(node, v.scope.SubScope(node))
 	case *ast.TupleDeclaration:
