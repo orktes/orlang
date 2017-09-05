@@ -9,10 +9,17 @@ func (p *Parser) parseType() (typ ast.Type, ok bool) {
 	if typ, ok = p.parseTypeReference(); ok {
 		return
 	} else if typ, ok = p.parseTupleOrSignatureType(); ok {
+		if tuple, tupleOk := typ.(*ast.TupleType); tupleOk {
+			// (type) === type
+			if len(tuple.Types) == 1 {
+				typ = tuple.Types[0]
+			}
+		}
 		return
 	} else if typ, ok = p.parseArrayType(); ok {
 		return
 	}
+
 	return
 }
 

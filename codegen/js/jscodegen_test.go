@@ -36,7 +36,7 @@ func TestSimple(t *testing.T) {
       return int32(a + b)
     }
 
-		fn callback(cb : (int32) => void = fn (a : int32) {}) {
+		fn callback(cb : ((int32) => void) = fn (a : int32) {}) {
 			cb(1)
 		}
 
