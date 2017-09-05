@@ -32,9 +32,13 @@ func TestSimple(t *testing.T) {
       return createTuple!(1, 2)
     }
 
-    fn sum(a : float64, b : float64) : int32 {
+    fn sum(a : float64, b : float64 = float64(100.0)) : int32 {
       return int32(a + b)
     }
+
+		fn callback(cb : (int32) : void = fn thisShouldNotBeNeeded(a : int32) {}) {
+			cb(1)
+		}
 
     var ab = getData()
 
@@ -56,6 +60,12 @@ func TestSimple(t *testing.T) {
         counter++
       }
 
+			var sum100 = sum(a: float64(1))
+
+			callback(fn thisShouldNotBeNeeded(a : int32) {
+				sum100 = sum100 + a
+			})
+
       if true {
         print(
           "result is: " +
@@ -65,11 +75,15 @@ func TestSimple(t *testing.T) {
           " and " +
           int_to_str(negative) +
           " and " +
-          int_to_str(int64(counter))
+          int_to_str(int64(counter)) +
+					" and " +
+          int_to_str(int64(sum100))
         )
       } else if false {
         print("Will not ever be here")
-      }
+      } else {
+				print("New else")
+			}
     }
   `)
 
@@ -77,7 +91,7 @@ func TestSimple(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res != "result is: 2 and 3 and -25 and 10" {
+	if res != "result is: 2 and 3 and -25 and 10 and 102" {
 		t.Error("Wrong result received", res)
 	}
 }
@@ -117,7 +131,13 @@ func testCodegen(str string) (string, error) {
 	var analyErr error
 	analyser.Error = func(node ast.Node, msg string, fatal bool) {
 		if fatal {
-			analyErr = errors.New(msg)
+			errStr := fmt.Sprintf(
+				"%d:%d %s",
+				node.StartPos().Line+1,
+				node.StartPos().Column+1,
+				msg,
+			)
+			analyErr = errors.New(errStr)
 		}
 	}
 

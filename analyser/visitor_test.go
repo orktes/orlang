@@ -12,7 +12,7 @@ import (
 
 func TestVisitor(t *testing.T) {
 	file, err := parser.Parse(strings.NewReader(`
-    fn foobar(x : int32, y : float32) : (float32, int32) {
+    fn foobar(x : int32 = 1, y : float32) : (float32, int32) {
       return (y, x)
     }
 
@@ -25,6 +25,7 @@ func TestVisitor(t *testing.T) {
 			fiz = (0.5,11)
 
 			var namedArgs = foobar(y: 2.0, x: 1)
+			var missingArg = foobar(y: 2.0)
 
 			var tupleVar = (1,1)
 			tupleVar = (5, 5)

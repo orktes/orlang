@@ -107,6 +107,11 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 
 		ast.Walk(jscg, n.DefaultValue)
 		return nil
+	case *ast.Assigment:
+		ast.Walk(jscg, n.Left)
+		jscg.buffer.WriteString(" = ")
+		ast.Walk(jscg, n.Right)
+		return nil
 	case *ast.IfStatement:
 		jscg.buffer.WriteString(" if (")
 		ast.Walk(jscg, n.Condition)
@@ -233,6 +238,7 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 			jscg.buffer.WriteString(";")
 		}
 
+		jscg.buffer.WriteString(`}`)
 		return nil
 	case *ast.File:
 		jscg.buffer.WriteString("(function () {")
@@ -278,8 +284,27 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 			strings.Join(args, ","),
 		))
 
-		ast.Walk(jscg, n.Block)
+		jscg.buffer.WriteString("{")
 
+		for _, arg := range n.Signature.Arguments {
+			if arg.DefaultValue != nil {
+				name := jscg.getIdentifier(arg.Name)
+				jscg.buffer.WriteString(fmt.Sprintf(
+					`if (%s === undefined) {%s =`,
+					name,
+					name,
+				))
+				ast.Walk(jscg, arg.DefaultValue)
+				jscg.buffer.WriteString("}")
+			}
+		}
+
+		for _, node := range n.Block.Body {
+			ast.Walk(jscg, node)
+			jscg.buffer.WriteString(";")
+		}
+
+		jscg.buffer.WriteString("}")
 		return nil
 	case *ast.ParenExpression:
 		jscg.buffer.WriteString("(")
@@ -305,8 +330,6 @@ func (jscg *JSCodeGen) Leave(node ast.Node) {
 		}
 
 		jscg.buffer.WriteString("})();")
-	case *ast.Block:
-		jscg.buffer.WriteString(`}`)
 	case *ast.ParenExpression:
 		jscg.buffer.WriteString(")")
 	}
