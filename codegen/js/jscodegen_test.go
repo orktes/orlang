@@ -16,6 +16,64 @@ import (
 
 func TestSimple(t *testing.T) {
 	res, err := testCodegen(`
+		macro stringCat {
+			() : (
+				fn +(left:string, right:float32) => string {
+					return left + num_to_str(float64(right))
+				}
+
+				fn +(left:string, right:float64) => string {
+					return left + num_to_str(float64(right))
+				}
+
+				fn +(left:string, right:int32) => string {
+					return left + num_to_str(float64(right))
+				}
+
+				fn +(left:string, right:int64) => string {
+					return left + num_to_str(float64(right))
+				}
+
+				fn +(left:int32, right:string) => string {
+					return num_to_str(float64(left)) + right
+				}
+
+				fn +(left:int64, right:string) => string {
+					return num_to_str(float64(left)) + right
+				}
+
+				fn +(left:float32, right:string) => string {
+					return num_to_str(float64(left)) + right
+				}
+
+				fn +(left:float64, right:string) => string {
+					return num_to_str(float64(left)) + right
+				}
+			)
+		}
+
+
+		macro print {
+			($a:expr) : (
+				(fn () => void {
+					stringCat!()
+					print($a)
+				})()
+			)
+
+			($a:expr, $( $x:expr ),*) : (
+				print!(
+					$a
+          $(
+						+
+						" "
+            +
+            $x
+          )*
+				)
+			)
+		}
+
     macro createTuple {
       ($a:expr , $( $x:expr ),*) : (
         (
@@ -74,22 +132,22 @@ func TestSimple(t *testing.T) {
 				return left - int32(right)
 			}
 
-			var overloaded = (10 + 9) - 1.0
+			var overloaded = (10 + 9) - 1
 
       if true {
-        print(
-          "result is: " +
-          int_to_str(int64(abSum - int32(1.5))) +
-          " and " +
-          int_to_str(int64(h + j)) +
-          " and " +
-          int_to_str(negative) +
-          " and " +
-          int_to_str(int64(counter)) +
-					" and " +
-          int_to_str(int64(sum100)) +
-					" and " +
-          int_to_str(int64(overloaded))
+        print!(
+          "result is:",
+          abSum - 1.5,
+          "and",
+          h + j,
+          "and",
+        	negative,
+          "and",
+          counter,
+					"and",
+          sum100,
+					"and",
+          overloaded
         )
       } else if false {
         print("Will not ever be here")
@@ -103,7 +161,7 @@ func TestSimple(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res != "result is: 2 and 3 and -25 and 10 and 102 and 0" {
+	if res != "result is: 2 and -1 and -25 and 10 and 102 and 0" {
 		t.Error("Wrong result received", res)
 	}
 }
@@ -119,9 +177,9 @@ func testCodegen(str string) (string, error) {
 		return "", err
 	}
 
-	analyser.AddExternalFunc("int_to_str", &types.SignatureType{
+	analyser.AddExternalFunc("num_to_str", &types.SignatureType{
 		ArgumentNames: []string{"num"},
-		ArgumentTypes: []types.Type{types.Int64Type},
+		ArgumentTypes: []types.Type{types.Float64Type},
 		ReturnType:    types.StringType,
 		Extern:        true,
 	})
@@ -172,7 +230,7 @@ func testCodegen(str string) (string, error) {
 		return otto.Value{}
 	})
 
-	vm.Set("int_to_str", func(call otto.FunctionCall) otto.Value {
+	vm.Set("num_to_str", func(call otto.FunctionCall) otto.Value {
 		result = call.Argument(0).String()
 		val, _ := vm.ToValue(result)
 		return val
