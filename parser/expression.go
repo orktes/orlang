@@ -236,7 +236,7 @@ func (p *Parser) parseBinaryExpression(left ast.Expression) (node *ast.BinaryExp
 	); nextTokenOk {
 		p.unread()
 		// TODO use proper weights
-		if nextToken.Type == scanner.TokenTypeASTERISK || nextToken.Type == scanner.TokenTypeSLASH {
+		if !(token.Type == scanner.TokenTypeASTERISK || token.Type == scanner.TokenTypeSLASH) && (nextToken.Type == scanner.TokenTypeASTERISK || nextToken.Type == scanner.TokenTypeSLASH) {
 			right, exprOk = p.parseBinaryExpression(right)
 			if !exprOk {
 				p.error(unexpected(p.read().StringValue(), "expression"))
