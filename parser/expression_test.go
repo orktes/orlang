@@ -49,6 +49,36 @@ func TestParseTupleExpression(t *testing.T) {
 func TestParseBinaryExpression(t *testing.T) {
 	file, err := Parse(strings.NewReader(`
 		fn main() {
+			var foo = 1 + 2 + 3
+		}
+	`))
+	if err != nil {
+		t.Error(err)
+	}
+
+	binaryExpr, ok := file.Body[0].(*ast.FunctionDeclaration).Block.Body[0].(*ast.VariableDeclaration).DefaultValue.(*ast.BinaryExpression)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	binaryExprLeft := binaryExpr.Left.(*ast.BinaryExpression)
+
+	if binaryExprLeft.Left.(*ast.ValueExpression).Value != int64(1) {
+		t.Error("Wrong value on the left left")
+	}
+
+	if binaryExprLeft.Right.(*ast.ValueExpression).Value != int64(2) {
+		t.Error("Wrong value on the left right")
+	}
+
+	if binaryExpr.Right.(*ast.ValueExpression).Value != int64(3) {
+		t.Error("Wrong value on the right most side")
+	}
+}
+
+func TestParseBinaryExpressionWithMultiplication(t *testing.T) {
+	file, err := Parse(strings.NewReader(`
+		fn main() {
 			var foo = 1 + 2 * 3 + 4
 		}
 	`))
@@ -76,6 +106,10 @@ func TestParseBinaryExpression(t *testing.T) {
 
 	if binaryExprRight.Left.(*ast.BinaryExpression).Right.(*ast.ValueExpression).Value != int64(3) {
 		t.Error("Wrong value on the inner right")
+	}
+
+	if binaryExprRight.Right.(*ast.ValueExpression).Value != int64(4) {
+		t.Error("Wrong value on the right most side")
 	}
 }
 

@@ -171,6 +171,7 @@ func (p *Parser) parseUnaryExpression() (expression ast.Expression, ok bool) {
 	case check(p.parseArrayExpression()):
 	case check(p.parseIdentfier()):
 	case check(p.parseValueExpression()):
+	// case check(p.parseBlock()): this messes up for loops
 	case check(p.parseMacroSubstitutionExpression()):
 	default:
 		return
@@ -221,16 +222,35 @@ func (p *Parser) parseBinaryExpression(left ast.Expression) (node *ast.BinaryExp
 
 	var right ast.Expression
 	var exprOk bool
-	switch token.Type {
-	case scanner.TokenTypeASTERISK, scanner.TokenTypeSLASH:
-		right, exprOk = p.parseUnaryExpression()
-	default:
-		right, exprOk = p.parseExpression()
-	}
-
+	right, exprOk = p.parseUnaryExpression()
 	if !exprOk {
 		p.error(unexpected(p.read().StringValue(), "expression"))
 		return
+	}
+
+	if nextToken, nextTokenOk := p.expectToken(
+		scanner.TokenTypeADD,
+		scanner.TokenTypeSUB,
+		scanner.TokenTypeASTERISK,
+		scanner.TokenTypeSLASH,
+	); nextTokenOk {
+		p.unread()
+		// TODO use proper weights
+		if nextToken.Type == scanner.TokenTypeASTERISK || nextToken.Type == scanner.TokenTypeSLASH {
+			right, exprOk = p.parseBinaryExpression(right)
+			if !exprOk {
+				p.error(unexpected(p.read().StringValue(), "expression"))
+				return
+			}
+		} else {
+			return p.parseBinaryExpression(&ast.BinaryExpression{
+				Operator: token,
+				Left:     left,
+				Right:    right,
+			})
+		}
+	} else {
+		p.unread()
 	}
 
 	node = &ast.BinaryExpression{
@@ -244,12 +264,8 @@ func (p *Parser) parseBinaryExpression(left ast.Expression) (node *ast.BinaryExp
 
 func (p *Parser) parseExpression() (expression ast.Expression, ok bool) {
 	if expression, ok = p.parseUnaryExpression(); ok {
-		for {
-			if binaryExpression, binaryOk := p.parseBinaryExpression(expression); binaryOk {
-				expression = binaryExpression
-			} else {
-				break
-			}
+		if binaryExpression, binaryOk := p.parseBinaryExpression(expression); binaryOk {
+			expression = binaryExpression
 		}
 	}
 	return
