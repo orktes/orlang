@@ -114,7 +114,19 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 	case *ast.UnaryExpression:
 		return v.getTypeForNode(n.Expression)
 	case *ast.BinaryExpression:
-		return v.getTypeForNode(n.Left)
+		leftType := v.getTypeForNode(n.Left)
+		rightType := v.getTypeForNode(n.Right)
+
+		operatorOverload := v.scope.GetOperatorOverload(n.Operator.Text, leftType, rightType)
+		if operatorOverload != nil {
+			// Overloads should not be recursive
+			parentFunc := v.getParentFuncDecl()
+			if parentFunc != operatorOverload {
+				return v.getTypeForNode(operatorOverload).(*types.SignatureType).ReturnType
+			}
+		}
+
+		return leftType
 	case *ast.FunctionSignature:
 		returnType := types.VoidType
 		if n.ReturnType != nil {
@@ -285,8 +297,13 @@ typeCheck:
 
 		if v.parent != nil {
 			switch n := v.node.(type) {
-			case ast.Declaration, *ast.CallArgument:
+			case ast.Declaration:
 				break typeCheck
+			case *ast.CallArgument:
+				// Identifier is call argument name
+				if n.Name == node {
+					break typeCheck
+				}
 			case *ast.FunctionCall:
 				// check if call is a typecast
 				if ident, ok := n.Callee.(*ast.Identifier); ok {
@@ -425,6 +442,17 @@ typeCheck:
 	case *ast.BinaryExpression:
 		equal, aType, bType := v.isEqualType(n.Left, n.Right)
 
+		operatorOverload := v.scope.GetOperatorOverload(n.Operator.Text, aType, bType)
+
+		if operatorOverload != nil {
+			// Check that overload is not recursive
+			parentFunc := v.getParentFuncDecl()
+			if parentFunc != operatorOverload {
+				nodeInfo.OverloadedOperation = operatorOverload
+				break
+			}
+		}
+
 		if !equal {
 			v.emitError(n, fmt.Sprintf(
 				"invalid operation: %s (mismatched types %s and %s)",
@@ -432,7 +460,6 @@ typeCheck:
 				aType.GetName(),
 				bType.GetName(),
 			), true)
-			break
 		}
 
 	case *ast.ComparisonExpression:
@@ -489,8 +516,20 @@ typeCheck:
 			}
 
 			v.scope.Set(n.Signature.Identifier, n)
+		} else if n.Signature.Operator != nil {
+			argCount := len(n.Signature.Arguments)
+			if argCount != 2 {
+				if argCount < 2 {
+					v.emitError(n, "too few arguments for an operator overload", true)
+				} else {
+					v.emitError(n, "too many arguments for an operator overload", true)
+				}
+			} else {
+				// Add operator overload
+				typs := v.getTypesForNodeList(convertArgumentsToNodes(n.Signature.Arguments...)...)
+				v.scope.SetOperatorOverload(n.Signature.Operator.Text, typs[0], typs[1], n)
+			}
 		}
-		// TODO analyse n.Signature.Operator
 
 		return v.subVisitor(node, v.scope.SubScope(node))
 	case *ast.TupleDeclaration:

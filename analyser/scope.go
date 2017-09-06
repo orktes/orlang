@@ -15,18 +15,27 @@ type ScopeItemDetails struct {
 	DefineIdentifier *ast.Identifier
 }
 
+type OperatorOverload struct {
+	Operator            string
+	LeftType            types.Type
+	RightType           types.Type
+	FunctionDeclaration *ast.FunctionDeclaration
+}
+
 type Scope struct {
-	parent *Scope
-	items  map[string]*ScopeItemDetails
-	usage  map[ScopeItem][]*ast.Identifier
-	node   ast.Node
+	parent            *Scope
+	items             map[string]*ScopeItemDetails
+	operatorOverloads []OperatorOverload
+	usage             map[ScopeItem][]*ast.Identifier
+	node              ast.Node
 }
 
 func NewScope(node ast.Node) *Scope {
 	return &Scope{
-		node:  node,
-		items: map[string]*ScopeItemDetails{},
-		usage: map[ScopeItem][]*ast.Identifier{},
+		node:              node,
+		items:             map[string]*ScopeItemDetails{},
+		usage:             map[ScopeItem][]*ast.Identifier{},
+		operatorOverloads: []OperatorOverload{},
 	}
 }
 
@@ -94,6 +103,29 @@ func (s *Scope) Set(identifier *ast.Identifier, node ast.Node) {
 		ScopeItem:        node,
 		DefineIdentifier: identifier,
 	}
+}
+
+func (s *Scope) SetOperatorOverload(operator string, typA types.Type, typB types.Type, funDecl *ast.FunctionDeclaration) {
+	s.operatorOverloads = append(s.operatorOverloads, OperatorOverload{
+		Operator:            operator,
+		LeftType:            typA,
+		RightType:           typB,
+		FunctionDeclaration: funDecl,
+	})
+}
+
+func (s *Scope) GetOperatorOverload(operator string, typA types.Type, typB types.Type) *ast.FunctionDeclaration {
+	for _, oo := range s.operatorOverloads {
+		if oo.LeftType.IsEqual(typA) && oo.RightType.IsEqual(typB) && oo.Operator == operator {
+			return oo.FunctionDeclaration
+		}
+	}
+
+	if s.parent != nil {
+		return s.parent.GetOperatorOverload(operator, typA, typB)
+	}
+
+	return nil
 }
 
 type CustomTypeResolvingScopeItem struct {

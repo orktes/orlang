@@ -7,10 +7,11 @@ import (
 )
 
 type NodeInfo struct {
-	Type     types.Type
-	Parent   ast.Node
-	Scope    *Scope
-	TypeCast bool
+	Type                types.Type
+	Parent              ast.Node
+	Scope               *Scope
+	TypeCast            bool
+	OverloadedOperation *ast.FunctionDeclaration
 }
 
 type FileInfo struct {

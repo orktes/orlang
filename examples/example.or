@@ -18,7 +18,7 @@ fn sum(a : float64, b : float64 = float64(100.0)) => int32 {
   return int32(a + b)
 }
 
-fn callback(cb : (int32) => void = fn (a : int32) {}) {
+fn callback(cb : ((int32) => void) = fn (a : int32) {}) {
   cb(1)
 }
 
@@ -48,6 +48,16 @@ fn main() {
     sum100 = sum100 + a
   })
 
+  fn +(left:int32, right:int32) => int32 {
+    return left - right
+  }
+
+  fn -(left:int32, right:float32) => int32 {
+    return left - int32(right)
+  }
+
+  var overloaded = (10 + 9) - 1.0
+
   if true {
     print(
       "result is: " +
@@ -59,7 +69,9 @@ fn main() {
       " and " +
       int_to_str(int64(counter)) +
       " and " +
-      int_to_str(int64(sum100))
+      int_to_str(int64(sum100)) +
+      " and " +
+      int_to_str(int64(overloaded))
     )
   } else if false {
     print("Will not ever be here")

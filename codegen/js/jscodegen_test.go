@@ -66,6 +66,16 @@ func TestSimple(t *testing.T) {
 				sum100 = sum100 + a
 			})
 
+			fn +(left:int32, right:int32) => int32 {
+				return left - right
+			}
+
+			fn -(left:int32, right:float32) => int32 {
+				return left - int32(right)
+			}
+
+			var overloaded = (10 + 9) - 1.0
+
       if true {
         print(
           "result is: " +
@@ -77,7 +87,9 @@ func TestSimple(t *testing.T) {
           " and " +
           int_to_str(int64(counter)) +
 					" and " +
-          int_to_str(int64(sum100))
+          int_to_str(int64(sum100)) +
+					" and " +
+          int_to_str(int64(overloaded))
         )
       } else if false {
         print("Will not ever be here")
@@ -91,7 +103,7 @@ func TestSimple(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res != "result is: 2 and 3 and -25 and 10 and 102" {
+	if res != "result is: 2 and 3 and -25 and 10 and 102 and 0" {
 		t.Error("Wrong result received", res)
 	}
 }

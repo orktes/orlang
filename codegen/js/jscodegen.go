@@ -14,11 +14,11 @@ type JSCodeGen struct {
 	analyserInfo *analyser.Info
 	buffer       bytes.Buffer
 	currentFile  *ast.File
-	identNumbers map[*ast.Identifier]int
+	identNumbers map[ast.Node]int
 }
 
 func New(info *analyser.Info) *JSCodeGen {
-	return &JSCodeGen{analyserInfo: info, identNumbers: map[*ast.Identifier]int{}}
+	return &JSCodeGen{analyserInfo: info, identNumbers: map[ast.Node]int{}}
 }
 
 func (jscg *JSCodeGen) getTempVar() string {
@@ -26,19 +26,22 @@ func (jscg *JSCodeGen) getTempVar() string {
 	return "_temp"
 }
 
-func (jscg *JSCodeGen) getIdentifier(ident *ast.Identifier) string {
-	nodeInfo := jscg.analyserInfo.FileInfo[jscg.currentFile].NodeInfo[ident]
-	scopeItemDetals := nodeInfo.Scope.GetDetails(ident.Text, true)
-
+func (jscg *JSCodeGen) getIdentifierForNode(node ast.Node, name string) string {
 	identNumber := 0
-	if number, ok := jscg.identNumbers[scopeItemDetals.DefineIdentifier]; ok {
+	if number, ok := jscg.identNumbers[node]; ok {
 		identNumber = number
 	} else {
 		identNumber = len(jscg.identNumbers)
-		jscg.identNumbers[scopeItemDetals.DefineIdentifier] = identNumber
+		jscg.identNumbers[node] = identNumber
 	}
 
-	return fmt.Sprintf("$%d_%s", identNumber, ident.Text)
+	return fmt.Sprintf("$%d_%s", identNumber, name)
+}
+
+func (jscg *JSCodeGen) getIdentifier(ident *ast.Identifier) string {
+	nodeInfo := jscg.analyserInfo.FileInfo[jscg.currentFile].NodeInfo[ident]
+	scopeItemDetals := nodeInfo.Scope.GetDetails(ident.Text, true)
+	return jscg.getIdentifierForNode(scopeItemDetals.DefineIdentifier, ident.Text)
 }
 
 func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
@@ -154,9 +157,19 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 		ast.Walk(jscg, n.Right)
 		return nil
 	case *ast.BinaryExpression:
-		ast.Walk(jscg, n.Left)
-		jscg.buffer.WriteString(n.Operator.Text)
-		ast.Walk(jscg, n.Right)
+		if nodeInfo.OverloadedOperation == nil {
+			ast.Walk(jscg, n.Left)
+			jscg.buffer.WriteString(n.Operator.Text)
+			ast.Walk(jscg, n.Right)
+		} else {
+			// Operator has been overloaded
+			name := jscg.getIdentifierForNode(nodeInfo.OverloadedOperation, n.Operator.Type.String())
+			jscg.buffer.WriteString(fmt.Sprintf("%s(", name))
+			ast.Walk(jscg, n.Left)
+			jscg.buffer.WriteString(", ")
+			ast.Walk(jscg, n.Right)
+			jscg.buffer.WriteString(")")
+		}
 		return nil
 	case *ast.Identifier:
 		if n == nil {
@@ -272,6 +285,9 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 		var args []string
 		if n.Signature.Identifier != nil {
 			name = jscg.getIdentifier(n.Signature.Identifier)
+		} else if n.Signature.Operator != nil {
+			// Operator overload
+			name = jscg.getIdentifierForNode(n, n.Signature.Operator.Type.String())
 		}
 
 		for _, arg := range n.Signature.Arguments {
@@ -316,8 +332,6 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 
 func (jscg *JSCodeGen) Leave(node ast.Node) {
 	switch n := node.(type) {
-	case *ast.TupleDeclaration:
-		// DO nothing
 	case *ast.File:
 		for _, n := range n.Body {
 			if funDecl, ok := n.(*ast.FunctionDeclaration); ok {

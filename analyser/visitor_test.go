@@ -272,6 +272,35 @@ func TestVisitorErrors(t *testing.T) {
 				return
 			}
 		`, "3:5 missing return value with type int32"},
+		{`
+			fn +() => int32 {
+				return
+			}
+		`, "2:4 too few arguments for an operator overload"},
+		{`
+			fn +(left:int32) => int32 {
+				return
+			}
+		`, "2:4 too few arguments for an operator overload"},
+		{`
+			fn +(left:int32, right:float32, third:int32) => int32 {
+				return
+			}
+		`, "2:4 too many arguments for an operator overload"},
+		{`
+			fn +(left:int32, right:int32) => int32 {
+				return left + int32(right)
+			}
+		`, ""},
+		{`
+			fn foobar() {
+				fn +(left:int32, right:float32) => float64 {
+					return float64(left + int32(right))
+				}
+
+				var result : int32 = 1 + 1.0
+			}
+		`, "7:26 cannot use 1 + 1.0 (type float64) as type int32 in assigment"},
 	}
 
 	for _, test := range tests {
