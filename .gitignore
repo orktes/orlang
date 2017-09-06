@@ -26,3 +26,7 @@ _testmain.go
 codegen/js/nodejs/js.js
 
 codegen/js/nodejs/js.js.map
+
+codegen/js/nodejs/nodejs.js
+
+codegen/js/nodejs/nodejs.js.map

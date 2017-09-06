@@ -86,6 +86,17 @@ func TestSimple(t *testing.T) {
       )
     }
 
+		struct CustomStruct {
+			var foo = 1
+			var bar = 0
+
+			fn +(left:CustomStruct, right:CustomStruct) => int32 {
+				left // Just refer
+				right // Just refer
+				return 100
+			}
+		}
+
     fn getData() => (int32, int32) {
       return createTuple!(1, 2)
     }
@@ -134,6 +145,8 @@ func TestSimple(t *testing.T) {
 
 			var overloaded = (10 + 9) - 1
 
+			var structSum = CustomStruct{} + CustomStruct{}
+
       if true {
         print!(
           "result is:",
@@ -147,7 +160,9 @@ func TestSimple(t *testing.T) {
 					"and",
           sum100,
 					"and",
-          overloaded
+          overloaded,
+					"and",
+					structSum
         )
       } else if false {
         print("Will not ever be here")
@@ -161,7 +176,7 @@ func TestSimple(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res != "result is: 2 and -1 and -25 and 10 and 102 and 0" {
+	if res != "result is: 2 and -1 and -25 and 10 and 102 and 0 and 100" {
 		t.Error("Wrong result received", res)
 	}
 }

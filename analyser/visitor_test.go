@@ -77,6 +77,7 @@ func TestVisitor(t *testing.T) {
 		scope: NewScope(file),
 		node:  file,
 		info:  NewFileInfo(),
+		types: map[string]ast.Node{},
 		errorCb: func(node ast.Node, msg string, fatal bool) {
 			if !fatal {
 				return
@@ -301,6 +302,61 @@ func TestVisitorErrors(t *testing.T) {
 				var result : int32 = 1 + 1.0
 			}
 		`, "7:26 cannot use 1 + 1.0 (type float64) as type int32 in assigment"},
+		{`
+			struct Foobar {
+				var foo = 1
+				var bar = 1
+			}
+		`, ""},
+		{`
+			struct Foobar {
+				var foo = 1
+				var bar = 1
+
+				fn barfoo() {
+				}
+			}
+		`, ""},
+		{`
+			struct Foobar {
+				var foo = 1
+				var bar = 1
+
+				fn +(left:int64, right:int64) => int64 {
+					return int64(100)
+				}
+			}
+		`, "6:5 Other one of the arguments needs to match type struct Foobar { foo: int32, bar: int32 }"},
+		{`
+			struct Foobar {
+				var foo = 1
+				var bar = 1
+
+				fn +(left:Foobar, right:int64) => int64 {
+					left
+					right
+					return int64(100)
+				}
+			}
+		`, ""},
+		{`
+			struct Foobar {
+				var foo = 1
+				var bar = 1
+
+				fn +(left:Foobar, right:int32) => int32 {
+					left
+					right
+					return 100
+				}
+			}
+
+			fn main() {
+				var foo = Foobar{}
+				var bar = foo + 0
+				bar
+			}
+		`, ""},
 	}
 
 	for _, test := range tests {
@@ -313,6 +369,7 @@ func TestVisitorErrors(t *testing.T) {
 		visitor := &visitor{
 			scope: NewScope(file),
 			node:  file,
+			types: map[string]ast.Node{},
 			info:  NewFileInfo(),
 			errorCb: func(node ast.Node, msg string, _ bool) {
 				if errStr != "" {

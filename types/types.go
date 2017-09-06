@@ -46,6 +46,8 @@ func (pt PrimitiveType) GetName() string {
 }
 
 func (pt PrimitiveType) IsEqual(t Type) bool {
+	t = LazyResolve(t)
+
 	if typ, ok := t.(PrimitiveType); ok {
 		return pt.Type == typ.Type
 	} else if typ, ok := t.(EntendedType); ok {
@@ -70,6 +72,8 @@ func (tt *TupleType) GetName() string {
 }
 
 func (tt *TupleType) IsEqual(aType Type) bool {
+	aType = LazyResolve(aType)
+
 	if tt == aType {
 		return true
 	}
@@ -116,6 +120,8 @@ func (st *SignatureType) GetName() string {
 }
 
 func (st *SignatureType) IsEqual(aType Type) bool {
+	aType = LazyResolve(aType)
+
 	if st == aType {
 		return true
 	}
@@ -161,6 +167,8 @@ func (at *ArrayType) GetName() string {
 }
 
 func (at *ArrayType) IsEqual(aType Type) bool {
+	aType = LazyResolve(aType)
+
 	if at == aType {
 		return true
 	}
@@ -178,6 +186,84 @@ func (at *ArrayType) IsEqual(aType Type) bool {
 	}
 
 	return false
+}
+
+type StructType struct {
+	Name      string
+	Variables []struct {
+		Name string
+		Type Type
+	}
+	Functions []struct {
+		Name string
+		Type *SignatureType
+	}
+}
+
+func (st *StructType) GetName() string {
+	var name = "struct"
+	if st.Name != "" {
+		name = name + " " + st.Name
+	}
+
+	names := []string{}
+
+	for _, v := range st.Variables {
+		names = append(names, v.Name+": "+v.Type.GetName())
+	}
+
+	return fmt.Sprintf("%s { %s }", name, strings.Join(names, ", "))
+}
+
+func (st *StructType) IsEqual(aType Type) bool {
+	aType = LazyResolve(aType)
+
+	if st == aType {
+		return true
+	}
+
+	if structType, ok := aType.(*StructType); ok {
+		if len(st.Variables) != len(structType.Variables) {
+			return false
+		} else if len(st.Functions) != len(structType.Functions) {
+			return false
+		}
+
+		for i, v := range st.Variables {
+			if !v.Type.IsEqual(structType.Variables[i].Type) {
+				return false
+			}
+		}
+
+		for i, v := range st.Functions {
+			if !v.Type.IsEqual(structType.Functions[i].Type) {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	return false
+}
+
+type LazyType struct {
+	Resolver func() Type
+}
+
+func (lt LazyType) GetName() string {
+	return lt.Resolver().GetName()
+}
+
+func (lt LazyType) IsEqual(t Type) bool {
+	return lt.Resolver().IsEqual(t)
+}
+
+func LazyResolve(t Type) Type {
+	if t, ok := t.(*LazyType); ok {
+		return t.Resolver()
+	}
+	return t
 }
 
 func registerType(typ Type) Type {

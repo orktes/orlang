@@ -12,6 +12,7 @@ var (
 	keywordConst    = registerKeyword("const")
 	keywordExtern   = registerKeyword("extern")
 	keywordMacro    = registerKeyword("macro")
+	keywordStruct   = registerKeyword("struct")
 )
 
 func registerKeyword(kw string) string {

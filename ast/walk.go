@@ -134,6 +134,17 @@ func Walk(v Visitor, node Node) {
 			Walk(v, n.Length)
 		}
 		Walk(v, n.Type)
+
+	case *Struct:
+		Walk(v, n.Name)
+		for _, vr := range n.Variables {
+			Walk(v, vr)
+		}
+		for _, fn := range n.Functions {
+			Walk(v, fn)
+		}
+	case *StructExpression:
+		Walk(v, n.Identifier)
 	default:
 		panic(fmt.Errorf("Unknown node type: %s", reflect.TypeOf(n)))
 	}

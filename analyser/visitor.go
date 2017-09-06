@@ -15,11 +15,12 @@ type visitor struct {
 	scope   *Scope
 	info    *FileInfo
 	parent  *visitor
+	types   map[string]ast.Node
 	errorCb func(node ast.Node, msg string, fatal bool)
 }
 
 func (v *visitor) subVisitor(node ast.Node, scope *Scope) *visitor {
-	return &visitor{info: v.info, parent: v, node: node, scope: scope, errorCb: v.errorCb}
+	return &visitor{info: v.info, types: v.types, parent: v, node: node, scope: scope, errorCb: v.errorCb}
 }
 
 func (v *visitor) emitError(node ast.Node, err string, fatal bool) {
@@ -42,6 +43,24 @@ func (v *visitor) getTypesForNodeList(nodes ...ast.Node) []types.Type {
 	}
 
 	return types
+}
+
+func (v *visitor) getTypeForTypeName(typName string) types.Type {
+	if typ := types.Types[typName]; typ != nil {
+		return typ
+	}
+
+	if typNode := v.types[typName]; typNode != nil {
+		return v.getTypeForNode(typNode)
+	}
+
+	return &types.LazyType{Resolver: func() types.Type {
+		if typNode := v.types[typName]; typNode != nil {
+			return v.getTypeForNode(typNode)
+		}
+
+		return types.UnknownType(typName)
+	}}
 }
 
 func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
@@ -74,11 +93,7 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 	case *ast.ComparisonExpression:
 		return types.BoolType
 	case *ast.TypeReference:
-		typ := types.Types[n.Token.Text]
-		if typ == nil {
-			return types.UnknownType(n.Token.Text)
-		}
-		return typ
+		return v.getTypeForTypeName(n.Token.Text)
 	case *ast.ValueExpression:
 		switch n.Token.Type {
 		case scanner.TokenTypeNumber:
@@ -116,8 +131,28 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 	case *ast.BinaryExpression:
 		leftType := v.getTypeForNode(n.Left)
 		rightType := v.getTypeForNode(n.Right)
+		leftType, rightType = types.LazyResolve(leftType), types.LazyResolve(rightType)
 
-		operatorOverload := v.scope.GetOperatorOverload(n.Operator.Text, leftType, rightType)
+		var operatorOverload *ast.FunctionDeclaration
+
+	leftRight:
+		for _, typ := range []types.Type{leftType, rightType} {
+			if structType, ok := typ.(*types.StructType); ok {
+				for i, fun := range structType.Functions {
+					if fun.Name == n.Operator.Text {
+						if fun.Type.ArgumentTypes[0].IsEqual(leftType) && fun.Type.ArgumentTypes[1].IsEqual(rightType) {
+							operatorOverload = v.types[structType.Name].(*ast.Struct).Functions[i]
+							break leftRight
+						}
+					}
+				}
+			}
+		}
+
+		if operatorOverload == nil {
+			operatorOverload = v.scope.GetOperatorOverload(n.Operator.Text, leftType, rightType)
+		}
+
 		if operatorOverload != nil {
 			// Overloads should not be recursive
 			parentFunc := v.getParentFuncDecl()
@@ -169,6 +204,35 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			}
 		})
 		return tp
+	case *ast.StructExpression:
+		return v.getTypeForTypeName(n.Identifier.Text)
+	case *ast.Struct:
+		typ := &types.StructType{}
+		if n.Name != nil {
+			typ.Name = n.Name.Text
+		}
+
+		for _, varDecl := range n.Variables {
+			typ.Variables = append(typ.Variables, struct {
+				Name string
+				Type types.Type
+			}{varDecl.Name.Text, v.getTypeForNode(varDecl)})
+		}
+
+		for _, fun := range n.Functions {
+			var name string
+			if fun.Signature.Identifier != nil {
+				name = fun.Signature.Identifier.Text
+			} else if fun.Signature.Operator != nil {
+				name = fun.Signature.Operator.Text
+			}
+			typ.Functions = append(typ.Functions, struct {
+				Name string
+				Type *types.SignatureType
+			}{name, v.getTypeForNode(fun).(*types.SignatureType)})
+		}
+
+		return typ
 	case *CustomTypeResolvingScopeItem:
 		return n.ResolvedType
 	default:
@@ -295,22 +359,20 @@ typeCheck:
 			break
 		}
 
-		if v.parent != nil {
-			switch n := v.node.(type) {
-			case ast.Declaration:
+		switch n := v.node.(type) {
+		case ast.Declaration, *ast.StructExpression, *ast.Struct:
+			break typeCheck
+		case *ast.CallArgument:
+			// Identifier is call argument name
+			if n.Name == node {
 				break typeCheck
-			case *ast.CallArgument:
-				// Identifier is call argument name
-				if n.Name == node {
+			}
+		case *ast.FunctionCall:
+			// check if call is a typecast
+			if ident, ok := n.Callee.(*ast.Identifier); ok {
+				typ := v.getType(ident.Text)
+				if typ != nil {
 					break typeCheck
-				}
-			case *ast.FunctionCall:
-				// check if call is a typecast
-				if ident, ok := n.Callee.(*ast.Identifier); ok {
-					typ := v.getType(ident.Text)
-					if typ != nil {
-						break typeCheck
-					}
 				}
 			}
 		}
@@ -441,8 +503,27 @@ typeCheck:
 
 	case *ast.BinaryExpression:
 		equal, aType, bType := v.isEqualType(n.Left, n.Right)
+		aType, bType = types.LazyResolve(aType), types.LazyResolve(bType)
 
-		operatorOverload := v.scope.GetOperatorOverload(n.Operator.Text, aType, bType)
+		var operatorOverload *ast.FunctionDeclaration
+
+	leftRight:
+		for _, typ := range []types.Type{aType, bType} {
+			if structType, ok := typ.(*types.StructType); ok {
+				for i, fun := range structType.Functions {
+					if fun.Name == n.Operator.Text {
+						if fun.Type.ArgumentTypes[0].IsEqual(aType) && fun.Type.ArgumentTypes[1].IsEqual(bType) {
+							operatorOverload = v.types[structType.Name].(*ast.Struct).Functions[i]
+							break leftRight
+						}
+					}
+				}
+			}
+		}
+
+		if operatorOverload == nil {
+			operatorOverload = v.scope.GetOperatorOverload(n.Operator.Text, aType, bType)
+		}
 
 		if operatorOverload != nil {
 			// Check that overload is not recursive
@@ -508,10 +589,17 @@ typeCheck:
 
 		return v.subVisitor(node, v.scope.SubScope(node))
 	case *ast.FunctionDeclaration:
+		// Struct member function dont need to be added to scope
+		structParen, structParentOk := v.node.(*ast.Struct)
+
 		if n.Signature.Identifier != nil {
 			scopeItem := v.scope.Get(n.Signature.Identifier.Text, false)
 			if scopeItem != nil {
 				v.emitError(n, fmt.Sprintf("%s already declared", n.Signature.Identifier), true)
+				break
+			}
+
+			if structParentOk {
 				break
 			}
 
@@ -527,7 +615,18 @@ typeCheck:
 			} else {
 				// Add operator overload
 				typs := v.getTypesForNodeList(convertArgumentsToNodes(n.Signature.Arguments...)...)
-				v.scope.SetOperatorOverload(n.Signature.Operator.Text, typs[0], typs[1], n)
+
+				if structParentOk {
+					structParenType := v.getTypeForNode(structParen)
+					if !typs[0].IsEqual(structParenType) && !typs[1].IsEqual(structParenType) {
+						v.emitError(
+							n,
+							fmt.Sprintf("Other one of the arguments needs to match type %s", structParenType.GetName()),
+							true)
+					}
+				} else {
+					v.scope.SetOperatorOverload(n.Signature.Operator.Text, typs[0], typs[1], n)
+				}
 			}
 		}
 
@@ -590,6 +689,11 @@ typeCheck:
 			}
 		}
 
+		// Struct properties dont need to be added to scope
+		if _, structParentOk := v.node.(*ast.Struct); structParentOk {
+			break
+		}
+
 		scopeItem := v.scope.Get(n.Name.Text, false)
 		if scopeItem != nil {
 			v.emitError(n, fmt.Sprintf("%s already declared", n.Name), true)
@@ -606,6 +710,11 @@ typeCheck:
 				rightType.GetName(),
 				leftType.GetName(),
 			), true)
+		}
+	case *ast.Struct:
+		nodeInfo.Type = v.getTypeForNode(node)
+		if n.Name != nil {
+			v.types[n.Name.Text] = n
 		}
 	}
 

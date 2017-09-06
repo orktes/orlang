@@ -15,64 +15,62 @@ import (
 )
 
 func main() {
-	js.Global.Set("Orlang", map[string]interface{}{
-		"Compile": func(input string) string {
-			file, err := parser.Parse(strings.NewReader(input))
-			if err != nil {
-				panic(err)
+	js.Module.Get("exports").Set("Compile", func(input string) string {
+		file, err := parser.Parse(strings.NewReader(input))
+		if err != nil {
+			panic(err)
+		}
+
+		analyser, err := analyser.New(file)
+		if err != nil {
+			panic(err)
+		}
+
+		analyser.AddExternalFunc("int_to_str", &types.SignatureType{
+			ArgumentNames: []string{"num"},
+			ArgumentTypes: []types.Type{types.Int64Type},
+			ReturnType:    types.StringType,
+			Extern:        true,
+		})
+
+		analyser.AddExternalFunc("print", &types.SignatureType{
+			ArgumentNames: []string{"str"},
+			ArgumentTypes: []types.Type{types.StringType},
+			ReturnType:    types.VoidType,
+			Extern:        true,
+		})
+
+		analyser.AddExternalFunc("printInt", &types.SignatureType{
+			ArgumentNames: []string{"num"},
+			ArgumentTypes: []types.Type{types.Int64Type},
+			ReturnType:    types.VoidType,
+			Extern:        true,
+		})
+
+		var analyErr error
+		analyser.Error = func(node ast.Node, msg string, fatal bool) {
+			if fatal {
+				errStr := fmt.Sprintf(
+					"%d:%d %s",
+					node.StartPos().Line+1,
+					node.StartPos().Column+1,
+					msg,
+				)
+				analyErr = errors.New(errStr)
 			}
+		}
 
-			analyser, err := analyser.New(file)
-			if err != nil {
-				panic(err)
-			}
+		info, err := analyser.Analyse()
+		if err != nil {
+			panic(err)
+		}
 
-			analyser.AddExternalFunc("int_to_str", &types.SignatureType{
-				ArgumentNames: []string{"num"},
-				ArgumentTypes: []types.Type{types.Int64Type},
-				ReturnType:    types.StringType,
-				Extern:        true,
-			})
+		if analyErr != nil {
+			panic(err)
+		}
 
-			analyser.AddExternalFunc("print", &types.SignatureType{
-				ArgumentNames: []string{"str"},
-				ArgumentTypes: []types.Type{types.StringType},
-				ReturnType:    types.VoidType,
-				Extern:        true,
-			})
+		code := jscodegen.New(info).Generate(file)
 
-			analyser.AddExternalFunc("printInt", &types.SignatureType{
-				ArgumentNames: []string{"num"},
-				ArgumentTypes: []types.Type{types.Int64Type},
-				ReturnType:    types.VoidType,
-				Extern:        true,
-			})
-
-			var analyErr error
-			analyser.Error = func(node ast.Node, msg string, fatal bool) {
-				if fatal {
-					errStr := fmt.Sprintf(
-						"%d:%d %s",
-						node.StartPos().Line+1,
-						node.StartPos().Column+1,
-						msg,
-					)
-					analyErr = errors.New(errStr)
-				}
-			}
-
-			info, err := analyser.Analyse()
-			if err != nil {
-				panic(err)
-			}
-
-			if analyErr != nil {
-				panic(err)
-			}
-
-			code := jscodegen.New(info).Generate(file)
-
-			return string(code)
-		},
+		return string(code)
 	})
 }

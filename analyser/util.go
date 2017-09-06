@@ -22,6 +22,16 @@ func convertArgumentsToNodes(args ...*ast.Argument) []ast.Node {
 	return nodes
 }
 
+func convertVariableDeclarationsToNodes(vardecls ...*ast.VariableDeclaration) []ast.Node {
+	nodes := make([]ast.Node, len(vardecls))
+
+	for i, v := range vardecls {
+		nodes[i] = v
+	}
+
+	return nodes
+}
+
 func convertTypesToNodes(types ...ast.Type) []ast.Node {
 	nodes := make([]ast.Node, len(types))
 

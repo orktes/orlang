@@ -98,8 +98,10 @@ func TestParseFailures(t *testing.T) {
 		{"fn main() { M!(foo) }", "1:13: No macro with name M"},
 		{"macro M { (", "1:12: Expected token but got eof"},
 		{"macro M { ($()", "1:15: Expected macro repetition delimeter or operand (+, * or ?) got EOF"},
-		// fuzz test results
-		//{"var r=foo(0(//", ""},
+		// structs
+		{"struct {", "1:9: Expected [RBRACE] got EOF"},
+		{"struct", "1:7: Expected [LBRACE] got EOF"},
+		{"struct { var (foo, bar) = (1,2) }", "1:33: Expected variable declaration or member function got tuple declration"},
 	}
 	for _, test := range tests {
 		_, err := Parse(strings.NewReader(test.src))

@@ -78,6 +78,35 @@ func TestParseIfElseCondition(t *testing.T) {
 	}
 }
 
+func TestParseStruct(t *testing.T) {
+	file, err := Parse(strings.NewReader(`
+		struct Foobar {
+			var foo = 1
+			var foo = 2
+
+			fn hello() {}
+			fn foobar() {}
+		}
+	`))
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	val, ok := file.Body[0].(*ast.Struct)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	if len(val.Variables) != 2 {
+		t.Error("Wrong number of vals")
+	}
+
+	if len(val.Functions) != 2 {
+		t.Error("Wrong number of functions")
+	}
+}
+
 func TestParseIfElseIfCondition(t *testing.T) {
 	_, err := Parse(strings.NewReader(`
 		fn foobar() {
@@ -96,7 +125,7 @@ func TestParseForLoop(t *testing.T) {
 			for var i = 0; true; {
 			}
 
-			for foo; bar; baz {
+			for foo; bar; baz++ {
 			}
 
 			for foo; 1 <= 2; {

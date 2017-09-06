@@ -183,6 +183,7 @@ rightLoop:
 		switch {
 		case check(p.parseAssigment(expression)):
 		case check(p.parseCallExpression(expression)):
+		case check(p.parseStructExpression(expression)):
 		case check(p.parseMemberExpression(expression)):
 		case check(p.parseComparisonExpression(expression)):
 		default:

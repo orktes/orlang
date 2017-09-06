@@ -15,10 +15,11 @@ type JSCodeGen struct {
 	buffer       bytes.Buffer
 	currentFile  *ast.File
 	identNumbers map[ast.Node]int
+	types        map[string]ast.Node
 }
 
 func New(info *analyser.Info) *JSCodeGen {
-	return &JSCodeGen{analyserInfo: info, identNumbers: map[ast.Node]int{}}
+	return &JSCodeGen{analyserInfo: info, identNumbers: map[ast.Node]int{}, types: map[string]ast.Node{}}
 }
 
 func (jscg *JSCodeGen) getIdentifierForNode(node ast.Node, name string) string {
@@ -198,7 +199,6 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 		}
 		jscg.buffer.WriteString(`(`)
 
-		// TODO set named args into the right order
 		var argNames []string
 
 		calleeNodeInfo := jscg.analyserInfo.FileInfo[jscg.currentFile].NodeInfo[n.Callee]
@@ -278,11 +278,13 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 	case *ast.FunctionDeclaration:
 		var name string
 		var args []string
-		if n.Signature.Identifier != nil {
-			name = jscg.getIdentifier(n.Signature.Identifier)
-		} else if n.Signature.Operator != nil {
-			// Operator overload
-			name = jscg.getIdentifierForNode(n, n.Signature.Operator.Type.String())
+		if _, isStruct := nodeInfo.Parent.(*ast.Struct); !isStruct {
+			if n.Signature.Identifier != nil {
+				name = jscg.getIdentifier(n.Signature.Identifier)
+			} else if n.Signature.Operator != nil {
+				// Operator overload
+				name = jscg.getIdentifierForNode(n, n.Signature.Operator.Type.String())
+			}
 		}
 
 		for _, arg := range n.Signature.Arguments {
@@ -319,6 +321,73 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 		return nil
 	case *ast.ParenExpression:
 		jscg.buffer.WriteString("(")
+	case *ast.Struct:
+		if n.Name == nil {
+			break
+		}
+
+		name := jscg.getIdentifierForNode(n, n.Name.Text)
+		jscg.types[n.Name.Text] = n
+
+		args := []string{}
+		for _, v := range n.Variables {
+			args = append(args, v.Name.Text)
+		}
+
+		jscg.buffer.WriteString(fmt.Sprintf("function %s (%s) {", name, strings.Join(args, ", ")))
+		for _, v := range n.Variables {
+			name := v.Name.Text
+			if v.DefaultValue != nil {
+				jscg.buffer.WriteString(fmt.Sprintf(
+					`this.%s = %s !== undefined ? %s : `,
+					name,
+					name,
+					name,
+				))
+				ast.Walk(jscg, v.DefaultValue)
+			} else {
+				jscg.buffer.WriteString(fmt.Sprintf(
+					`this.%s = %s;`,
+					name,
+					name,
+				))
+			}
+
+			jscg.buffer.WriteString(";")
+		}
+
+		jscg.buffer.WriteString("};")
+
+		for _, funDecl := range n.Functions {
+			var funcName string
+			if funDecl.Signature.Identifier != nil {
+				funcName = jscg.getIdentifier(funDecl.Signature.Identifier)
+			} else if funDecl.Signature.Operator != nil {
+				// Operator overload
+				funcName = jscg.getIdentifierForNode(funDecl, funDecl.Signature.Operator.Type.String())
+				jscg.buffer.WriteString(fmt.Sprintf("var %s =", funcName))
+			}
+
+			jscg.buffer.WriteString(fmt.Sprintf(
+				"%s.prototype.%s = ",
+				name,
+				funcName,
+			))
+
+			ast.Walk(jscg, funDecl)
+			jscg.buffer.WriteString(";")
+		}
+
+		return nil
+	case *ast.StructExpression:
+		if typeNode := jscg.types[n.Identifier.Text]; typeNode != nil {
+			if structTypeNode, ok := typeNode.(*ast.Struct); ok {
+				name := jscg.getIdentifierForNode(structTypeNode, structTypeNode.Name.Text)
+				jscg.buffer.WriteString(fmt.Sprintf("new %s()", name))
+				// TODO struct args
+			}
+		}
+		return nil
 	default:
 		panic(fmt.Sprintf("TODO: %T", n))
 	}
