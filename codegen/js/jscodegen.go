@@ -21,11 +21,6 @@ func New(info *analyser.Info) *JSCodeGen {
 	return &JSCodeGen{analyserInfo: info, identNumbers: map[ast.Node]int{}}
 }
 
-func (jscg *JSCodeGen) getTempVar() string {
-	// TODO check if temp var is defined in scope
-	return "_temp"
-}
-
 func (jscg *JSCodeGen) getIdentifierForNode(node ast.Node, name string) string {
 	identNumber := 0
 	if number, ok := jscg.identNumbers[node]; ok {
@@ -59,7 +54,7 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 		}
 
 		if varName == "" {
-			varName = jscg.getTempVar()
+			varName = jscg.getIdentifierForNode(n, "tuple_temp")
 			jscg.buffer.WriteString(fmt.Sprintf(
 				`var %s`,
 				varName,
