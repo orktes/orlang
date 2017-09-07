@@ -242,7 +242,7 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 		}
 
 		v.emitError(n, fmt.Sprintf(
-			"%s undefined: (type %s has not field or method %s)",
+			"%s undefined: (type %s has no field or method %s)",
 			n,
 			targetType.GetName(),
 			n.Property.Text,
@@ -740,7 +740,7 @@ typeCheck:
 		}
 
 		v.emitError(n, fmt.Sprintf(
-			"%s undefined: (type %s has not field or method %s)",
+			"%s undefined: (type %s has no field or method %s)",
 			n,
 			targetType.GetName(),
 			n.Property.Text,

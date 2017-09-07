@@ -380,7 +380,16 @@ func TestVisitorErrors(t *testing.T) {
 				foo
 				barfoo
 			}
-		`, "17:20 foo.barfoo undefined: (type int32 has not field or method barfoo)"},
+		`, "17:20 foo.barfoo undefined: (type int32 has no field or method barfoo)"},
+		{`
+			struct Foobar {
+				var foo = 1
+			}
+
+			struct Barfoo {
+				var foo = 1
+			}
+		`, ""},
 	}
 
 	for _, test := range tests {
