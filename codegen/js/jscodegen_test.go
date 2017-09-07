@@ -97,6 +97,10 @@ func TestSimple(t *testing.T) {
 			fn foobar(a: int32) => int32 {
 				return this.foo * a
 			}
+
+			fn incrementBar() {
+				this.bar = this.bar + 1
+			}
 		}
 
     fn getData() => (int32, int32) {
@@ -150,6 +154,12 @@ func TestSimple(t *testing.T) {
 			var structSum = CustomStruct{} + CustomStruct{}
 			var foobarValue = (CustomStruct{}).foobar(100)
 
+			var structVal = CustomStruct{}
+			structVal.incrementBar()
+			structVal.incrementBar()
+			structVal.incrementBar()
+			structVal.incrementBar()
+
       if true {
         print!(
           "result is:",
@@ -167,7 +177,9 @@ func TestSimple(t *testing.T) {
 					"and",
 					structSum,
 					"and",
-					foobarValue
+					foobarValue,
+					"and",
+					structVal.bar
         )
       } else if false {
         print("Will not ever be here")
@@ -181,7 +193,7 @@ func TestSimple(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res != "result is: 2 and -1 and -25 and 10 and 102 and 0 and 2 and 100" {
+	if res != "result is: 2 and -1 and -25 and 10 and 102 and 0 and 2 and 100 and 4" {
 		t.Error("Wrong result received", res)
 	}
 }
