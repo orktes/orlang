@@ -40,6 +40,11 @@ func (jscg *JSCodeGen) getIdentifier(ident *ast.Identifier) string {
 	return jscg.getIdentifierForNode(scopeItemDetals.DefineIdentifier, ident.Text)
 }
 
+func (jscg *JSCodeGen) getParent(node ast.Node) ast.Node {
+	nodeInfo := jscg.analyserInfo.FileInfo[jscg.currentFile].NodeInfo[node]
+	return nodeInfo.Parent
+}
+
 func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 	nodeInfo := jscg.analyserInfo.FileInfo[jscg.currentFile].NodeInfo[node]
 	switch n := node.(type) {
@@ -160,6 +165,17 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 		} else {
 			// Operator has been overloaded
 			name := jscg.getIdentifierForNode(nodeInfo.OverloadedOperation, n.Operator.Type.String())
+
+			// If Overload operation parent is a struct refer to it trough that
+			parent := jscg.getParent(nodeInfo.OverloadedOperation)
+			if parentStruct, parentStructOk := parent.(*ast.Struct); parentStructOk {
+				name = fmt.Sprintf(
+					"%s.prototype.%s",
+					jscg.getIdentifierForNode(parentStruct, parentStruct.Name.Text),
+					name,
+				)
+			}
+
 			jscg.buffer.WriteString(fmt.Sprintf("%s(", name))
 			ast.Walk(jscg, n.Left)
 			jscg.buffer.WriteString(", ")
@@ -365,7 +381,6 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 			} else if funDecl.Signature.Operator != nil {
 				// Operator overload
 				funcName = jscg.getIdentifierForNode(funDecl, funDecl.Signature.Operator.Type.String())
-				jscg.buffer.WriteString(fmt.Sprintf("var %s =", funcName))
 			}
 
 			jscg.buffer.WriteString(fmt.Sprintf(

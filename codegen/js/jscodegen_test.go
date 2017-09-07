@@ -143,7 +143,7 @@ func TestSimple(t *testing.T) {
 				return left - int32(right)
 			}
 
-			var overloaded = (10 + 9) - 1
+			var overloaded = (10 + 9) - 1.0
 
 			var structSum = CustomStruct{} + CustomStruct{}
 
