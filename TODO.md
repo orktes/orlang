@@ -6,5 +6,6 @@
 - type assertion. related to ^
 - JSCodegen numbertypes?
 - LLVM codegen
+- ARC
 - IR?
 - VM?
