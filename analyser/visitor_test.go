@@ -390,6 +390,19 @@ func TestVisitorErrors(t *testing.T) {
 				var foo = 1
 			}
 		`, ""},
+		{`
+			struct Foobar {
+				var bar = 1
+				fn foo() => int32 {
+					return this.bar
+				}
+			}
+
+			fn foobar(a:int32) {
+				var foo = (Foobar{}).foo()
+				foobar(foo + a)
+			}
+		`, ""},
 	}
 
 	for _, test := range tests {

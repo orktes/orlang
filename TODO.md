@@ -1,1 +1,5 @@
 - make macros hygienic
+- make variadic arguments work (required for INLINE_JS and other compiler instructions)
+- import and export statements
+- decide on interface/protocol/traits
+- type assertion. related to ^

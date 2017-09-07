@@ -196,6 +196,14 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 	case *ast.TupleType:
 		return &types.TupleType{Types: v.getTypesForNodeList(convertTypesToNodes(n.Types...)...)}
 	case *ast.Identifier:
+		// Handle this refs
+		if n.Text == "this" {
+			structParent := v.getParentStructDecl()
+			if structParent != nil {
+				return v.getTypeForNode(structParent)
+			}
+		}
+
 		var tp types.Type = types.UnknownType("undefined")
 		v.scopeMustGet(n, func(node ScopeItem) {
 			switch n := node.(type) {
@@ -283,6 +291,11 @@ func (v *visitor) getType(typeName string) types.Type {
 	return types.Types[typeName]
 }
 
+func (v *visitor) getParent(node ast.Node) ast.Node {
+	nodeInfo := v.info.NodeInfo[node]
+	return nodeInfo.Parent
+}
+
 func (v *visitor) getParentFuncDecl() *ast.FunctionDeclaration {
 	parent := v.parent
 	for parent != nil {
@@ -290,6 +303,18 @@ func (v *visitor) getParentFuncDecl() *ast.FunctionDeclaration {
 			return funDecl
 		}
 		return parent.getParentFuncDecl()
+	}
+
+	return nil
+}
+
+func (v *visitor) getParentStructDecl() *ast.Struct {
+
+	if structDecl, ok := v.node.(*ast.Struct); ok {
+		return structDecl
+	}
+	if v.parent != nil {
+		return v.parent.getParentStructDecl()
 	}
 
 	return nil
@@ -388,6 +413,13 @@ typeCheck:
 				if typ != nil {
 					break typeCheck
 				}
+			}
+		}
+
+		if n.Text == "this" {
+			structParent := v.getParentStructDecl()
+			if structParent != nil {
+				break typeCheck
 			}
 		}
 

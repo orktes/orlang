@@ -99,7 +99,11 @@ func (s *Scope) GetDetails(indentifier string, parent bool) *ScopeItemDetails {
 }
 
 func (s *Scope) Set(identifier *ast.Identifier, node ast.Node) {
-	s.items[identifier.Text] = &ScopeItemDetails{
+	s.SetWithName(identifier.Text, identifier, node)
+}
+
+func (s *Scope) SetWithName(name string, identifier *ast.Identifier, node ast.Node) {
+	s.items[name] = &ScopeItemDetails{
 		ScopeItem:        node,
 		DefineIdentifier: identifier,
 	}

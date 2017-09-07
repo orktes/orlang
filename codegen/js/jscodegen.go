@@ -194,6 +194,11 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 			}
 		}
 
+		if n.Text == "this" {
+			jscg.buffer.WriteString("this")
+			break
+		}
+
 		jscg.buffer.WriteString(jscg.getIdentifier(n))
 	case *ast.ValueExpression:
 		jscg.buffer.WriteString(fmt.Sprintf(
