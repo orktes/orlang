@@ -5,6 +5,7 @@
 - decide on interface/protocol/traits
 - type assertion. related to ^
 - JSCodegen numbertypes?
+- Proper extern support
 - LLVM codegen
 - ARC
 - IR?
