@@ -23,6 +23,10 @@ type Type interface {
 	IsEqual(t Type) bool
 }
 
+type IndexedType interface {
+	HasMember(member string) (bool, Type)
+}
+
 type EntendedType interface {
 	Entends(t Type) bool
 }
@@ -247,6 +251,22 @@ func (st *StructType) IsEqual(aType Type) bool {
 	return false
 }
 
+func (st *StructType) HasMember(member string) (bool, Type) {
+	for _, v := range st.Variables {
+		if v.Name == member {
+			return true, v.Type
+		}
+	}
+
+	for _, v := range st.Functions {
+		if v.Name == member {
+			return true, v.Type
+		}
+	}
+
+	return false, nil
+}
+
 type LazyType struct {
 	Resolver func() Type
 }
@@ -257,6 +277,14 @@ func (lt LazyType) GetName() string {
 
 func (lt LazyType) IsEqual(t Type) bool {
 	return lt.Resolver().IsEqual(t)
+}
+
+func (lt LazyType) HasMember(member string) (bool, Type) {
+	typ := lt.Resolver()
+	if itype, ok := typ.(IndexedType); ok {
+		return itype.HasMember(member)
+	}
+	return false, nil
 }
 
 func LazyResolve(t Type) Type {

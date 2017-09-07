@@ -1,6 +1,10 @@
 package ast
 
-import "github.com/orktes/orlang/scanner"
+import (
+	"fmt"
+
+	"github.com/orktes/orlang/scanner"
+)
 
 type MemberExpression struct {
 	Target   Expression
@@ -16,4 +20,8 @@ func (me *MemberExpression) EndPos() Position {
 }
 
 func (_ *MemberExpression) exprNode() {
+}
+
+func (me *MemberExpression) String() string {
+	return fmt.Sprintf("%s.%s", me.Target, me.Property.Text)
 }

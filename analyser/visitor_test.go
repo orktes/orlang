@@ -357,6 +357,30 @@ func TestVisitorErrors(t *testing.T) {
 				bar
 			}
 		`, ""},
+		{`
+			struct Foobar {
+				var foo = 1
+				var bar = 1
+
+				fn barfoo() => int32 {
+					return 100
+				}
+			}
+
+			fn main() {
+				var foobar = Foobar{}
+				var bar : int32 = foobar.bar
+				var foo : int32 = foobar.foo
+				var barfoo : int32 = foobar.barfoo()
+
+				var wontWork = foo.barfoo()
+
+				// Refer to variables
+				bar
+				foo
+				barfoo
+			}
+		`, "17:20 foo.barfoo undefined: (type int32 has not field or method barfoo)"},
 	}
 
 	for _, test := range tests {

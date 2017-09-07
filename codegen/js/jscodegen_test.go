@@ -91,10 +91,10 @@ func TestSimple(t *testing.T) {
 			var bar = 0
 
 			fn +(left:CustomStruct, right:CustomStruct) => int32 {
-				left // Just refer
-				right // Just refer
-				return 100
+				return left.foo + right.foo
 			}
+
+			fn foobar() {}
 		}
 
     fn getData() => (int32, int32) {
@@ -176,7 +176,7 @@ func TestSimple(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res != "result is: 2 and -1 and -25 and 10 and 102 and 0 and 100" {
+	if res != "result is: 2 and -1 and -25 and 10 and 102 and 0 and 2" {
 		t.Error("Wrong result received", res)
 	}
 }

@@ -358,10 +358,10 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 
 		jscg.buffer.WriteString("};")
 
-		for _, funDecl := range n.Functions {
+		for i, funDecl := range n.Functions {
 			var funcName string
 			if funDecl.Signature.Identifier != nil {
-				funcName = jscg.getIdentifier(funDecl.Signature.Identifier)
+				funcName = funDecl.Signature.Identifier.Text
 			} else if funDecl.Signature.Operator != nil {
 				// Operator overload
 				funcName = jscg.getIdentifierForNode(funDecl, funDecl.Signature.Operator.Type.String())
@@ -375,7 +375,9 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 			))
 
 			ast.Walk(jscg, funDecl)
-			jscg.buffer.WriteString(";")
+			if i < len(n.Functions)-1 {
+				jscg.buffer.WriteString(";")
+			}
 		}
 
 		return nil
@@ -387,6 +389,12 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 				// TODO struct args
 			}
 		}
+		return nil
+	case *ast.MemberExpression:
+		ast.Walk(jscg, n.Target)
+		jscg.buffer.WriteString(".")
+		jscg.buffer.WriteString(n.Property.Text)
+
 		return nil
 	default:
 		panic(fmt.Sprintf("TODO: %T", n))

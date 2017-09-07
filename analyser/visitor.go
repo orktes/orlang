@@ -233,6 +233,20 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 		}
 
 		return typ
+	case *ast.MemberExpression:
+		targetType := v.getTypeForNode(n.Target)
+		if indexedType, ok := targetType.(types.IndexedType); ok {
+			if ok, typ := indexedType.HasMember(n.Property.Text); ok {
+				return typ
+			}
+		}
+
+		v.emitError(n, fmt.Sprintf(
+			"%s undefined: (type %s has not field or method %s)",
+			n,
+			targetType.GetName(),
+			n.Property.Text,
+		), true)
 	case *CustomTypeResolvingScopeItem:
 		return n.ResolvedType
 	default:
@@ -716,6 +730,21 @@ typeCheck:
 		if n.Name != nil {
 			v.types[n.Name.Text] = n
 		}
+	case *ast.MemberExpression:
+		nodeInfo.Type = v.getTypeForNode(node)
+		targetType := v.getTypeForNode(n.Target)
+		if indexedType, ok := targetType.(types.IndexedType); ok {
+			if ok, _ := indexedType.HasMember(n.Property.Text); ok {
+				break
+			}
+		}
+
+		v.emitError(n, fmt.Sprintf(
+			"%s undefined: (type %s has not field or method %s)",
+			n,
+			targetType.GetName(),
+			n.Property.Text,
+		), true)
 	}
 
 	return v.subVisitor(node, v.scope)
