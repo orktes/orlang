@@ -4,3 +4,7 @@
 - import and export statements
 - decide on interface/protocol/traits
 - type assertion. related to ^
+- JSCodegen numbertypes?
+- LLVM codegen
+- IR?
+- VM?
