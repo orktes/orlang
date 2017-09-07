@@ -1,3 +1,4 @@
+- struct initial values
 - make macros hygienic
 - make variadic arguments work (required for INLINE_JS and other compiler instructions)
 - import and export statements
