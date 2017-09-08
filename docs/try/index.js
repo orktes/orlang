@@ -7,8 +7,32 @@ import _ from 'lodash';
 var defaultCode =
 `// type your code here (global functions print & int_to_str)
 
+struct Point {
+  var x = 0
+  var y = 0
+
+  fn +(left:Point, right:Point) => Point {
+    var newPoint = Point{}
+    newPoint.x = left.x + right.x
+    newPoint.y = left.y + right.y
+    return newPoint
+  }
+
+  fn toString() => string {
+    return "{x:" + int_to_str(int64(this.x)) + ", y: " + int_to_str(int64(this.y)) + "}"
+  }
+}
+
 fn main() {
-  print("Hello world")
+  var pointA = Point{}
+  pointA.x = 1
+
+  var pointB = Point{}
+  pointB.y = 1
+
+  var combined = pointA + pointB
+
+  print("Hello world: " + combined.toString())
 }
 
 `;
