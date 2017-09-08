@@ -5,8 +5,7 @@ import MonacoEditor from 'react-monaco-editor';
 import _ from 'lodash';
 
 var defaultCode =
-`
-// type your code here (global functions print & int_to_str)
+`// type your code here (global functions print & int_to_str)
 
 fn main() {
   print("Hello world")
