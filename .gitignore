@@ -23,10 +23,6 @@ _testmain.go
 *.test
 *.prof
 
-codegen/js/nodejs/js.js
-
-codegen/js/nodejs/js.js.map
-
-codegen/js/nodejs/nodejs.js
-
-codegen/js/nodejs/nodejs.js.map
+editor_plugins/node/node.js
+editor_plugins/node/node.js.map
+node_modules

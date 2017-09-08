@@ -33,7 +33,7 @@ var lintCmd = &cobra.Command{
 				panic(err)
 			}
 
-			lintError, err := linter.Lint(file)
+			lintError, err := linter.Lint(file, nil)
 			if err != nil {
 				panic(err)
 			}

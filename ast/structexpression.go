@@ -9,7 +9,7 @@ type StructExpression struct {
 func (StructExpression) exprNode() {}
 
 func (se *StructExpression) StartPos() Position {
-	return se.StartPos()
+	return se.Identifier.StartPos()
 }
 
 func (se *StructExpression) EndPos() Position {

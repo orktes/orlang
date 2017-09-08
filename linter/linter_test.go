@@ -18,7 +18,7 @@ func TestLinter(t *testing.T) {
         }
       }
     }
-  `))
+  `), nil)
 
 	if err != nil {
 		t.Error(err)
@@ -29,13 +29,13 @@ func TestLinter(t *testing.T) {
 			Position:    ast.Position{Line: 2, Column: 23},
 			EndPosition: ast.Position{Line: 2, Column: 24},
 			Message:     "Expected expression got SEMICOLON(;)",
-			CodeLine:    "      for var i = 1; i<; 1 {",
+			CodeLine:    "",
 		},
 		LintIssue{
 			Position:    ast.Position{Line: 4, Column: 31},
 			EndPosition: ast.Position{Line: 4, Column: 32},
 			Message:     "Expected code block got NUMBER(1)",
-			CodeLine:    "          for var i = 0; i; i++1 {",
+			CodeLine:    "",
 		},
 	}) {
 		t.Errorf("Output didnt match expected output %+v", lintErrors)
@@ -49,7 +49,7 @@ func TestLinterAnalyzeErrors(t *testing.T) {
 			foo = 0.0
 			foo = "foo"
     }
-  `))
+  `), nil)
 
 	if err != nil {
 		t.Error(err)

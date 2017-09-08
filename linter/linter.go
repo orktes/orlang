@@ -7,7 +7,6 @@ import (
 	"github.com/orktes/orlang/ast"
 	"github.com/orktes/orlang/parser"
 	"github.com/orktes/orlang/scanner"
-	"github.com/orktes/orlang/util"
 )
 
 type LintIssue struct {
@@ -18,14 +17,13 @@ type LintIssue struct {
 	Warning     bool
 }
 
-func Lint(r io.Reader) (issues []LintIssue, err error) {
-	hr := util.NewHistoryReader(r)
-	p := parser.NewParser(scanner.NewScanner(hr))
+func Lint(r io.Reader, configureAnalyzer func(analyzer *analyser.Analyser)) (issues []LintIssue, err error) {
+	p := parser.NewParser(scanner.NewScanner(r))
 	p.ContinueOnErrors = true
 	lastTokenErrorIndex := -2
 	p.Error = func(tokenIndx int, pos ast.Position, endPosition ast.Position, message string) {
 		if tokenIndx != lastTokenErrorIndex+1 {
-			line := hr.FindLineForPosition(pos)
+			line := ""
 			issues = append(issues, LintIssue{
 				Position:    pos,
 				EndPosition: endPosition,
@@ -45,6 +43,10 @@ func Lint(r io.Reader) (issues []LintIssue, err error) {
 	analyser, err := analyser.New(file)
 	if err != nil {
 		return
+	}
+
+	if configureAnalyzer != nil {
+		configureAnalyzer(analyser)
 	}
 
 	analyser.Error = func(node ast.Node, message string, fatal bool) {

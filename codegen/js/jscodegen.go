@@ -45,6 +45,18 @@ func (jscg *JSCodeGen) getParent(node ast.Node) ast.Node {
 	return nodeInfo.Parent
 }
 
+func (jscg *JSCodeGen) writeWithNodePosition(node ast.Node, str string) {
+	jscg.writeWithPosition(node.StartPos(), node.EndPos(), str)
+}
+
+func (jscg *JSCodeGen) writeWithPosition(start ast.Position, end ast.Position, str string) {
+	jscg.write(str)
+}
+
+func (jscg *JSCodeGen) write(str string) {
+	jscg.buffer.WriteString(str)
+}
+
 func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 	nodeInfo := jscg.analyserInfo.FileInfo[jscg.currentFile].NodeInfo[node]
 	switch n := node.(type) {
@@ -61,18 +73,18 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 
 		if varName == "" {
 			varName = jscg.getIdentifierForNode(n, "tuple_temp")
-			jscg.buffer.WriteString(fmt.Sprintf(
+			jscg.writeWithNodePosition(n, fmt.Sprintf(
 				`var %s`,
 				varName,
 			))
 
 			if n.DefaultValue != nil {
-				jscg.buffer.WriteString("=")
+				jscg.write("=")
 			}
 
 			ast.Walk(jscg, n.DefaultValue)
 
-			jscg.buffer.WriteString(";")
+			jscg.write(";")
 		}
 
 		var ptrnPrint func(pattern *ast.TuplePattern, prefix string)
@@ -82,7 +94,7 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 				case *ast.TuplePattern:
 					ptrnPrint(pt, fmt.Sprintf("%s[%d]", prefix, i))
 				case *ast.Identifier:
-					jscg.buffer.WriteString(
+					jscg.writeWithNodePosition(pt,
 						fmt.Sprintf(
 							"var %s = %s[%d]",
 							jscg.getIdentifier(pt),
@@ -90,7 +102,7 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 							i,
 						))
 					if i != len(pattern.Patterns)-1 {
-						jscg.buffer.WriteString(";")
+						jscg.write(";")
 					}
 				}
 
@@ -101,45 +113,45 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 
 		return nil
 	case *ast.VariableDeclaration:
-		jscg.buffer.WriteString(fmt.Sprintf(
+		jscg.writeWithNodePosition(n.Name, fmt.Sprintf(
 			`var %s`,
 			jscg.getIdentifier(n.Name),
 		))
 		if n.DefaultValue != nil {
-			jscg.buffer.WriteString("=")
+			jscg.write("=")
 		}
 
 		ast.Walk(jscg, n.DefaultValue)
 		return nil
 	case *ast.Assigment:
 		ast.Walk(jscg, n.Left)
-		jscg.buffer.WriteString(" = ")
+		jscg.write(" = ")
 		ast.Walk(jscg, n.Right)
 		return nil
 	case *ast.IfStatement:
-		jscg.buffer.WriteString(" if (")
+		jscg.writeWithPosition(n.StartPos(), n.StartPos(), " if (")
 		ast.Walk(jscg, n.Condition)
-		jscg.buffer.WriteString(")")
+		jscg.write(")")
 
 		ast.Walk(jscg, n.Block)
 
 		if n.Else != nil {
-			jscg.buffer.WriteString(" else ")
+			jscg.writeWithNodePosition(n.Else, " else ")
 			ast.Walk(jscg, n.Else)
 		}
 
 		return nil
 	case *ast.TupleExpression:
-		jscg.buffer.WriteString(`[`)
+		jscg.writeWithPosition(n.StartPos(), n.EndPos(), `[`)
 
 		for i, expr := range n.Expressions {
 			ast.Walk(jscg, expr)
 			if i < len(n.Expressions)-1 {
-				jscg.buffer.WriteString(`,`)
+				jscg.write(`,`)
 			}
 		}
 
-		jscg.buffer.WriteString(`]`)
+		jscg.writeWithPosition(n.EndPos(), n.EndPos(), `]`)
 		return nil
 	case *ast.UnaryExpression:
 		if n.Postfix {
@@ -147,20 +159,20 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 
 		}
 
-		jscg.buffer.WriteString(n.Operator.Text)
+		jscg.writeWithPosition(ast.StartPositionFromToken(n.Operator), ast.EndPositionFromToken(n.Operator), n.Operator.Text)
 
 		if n.Postfix {
 			return nil
 		}
 	case *ast.ComparisonExpression:
 		ast.Walk(jscg, n.Left)
-		jscg.buffer.WriteString(n.Operator.Text)
+		jscg.writeWithPosition(ast.StartPositionFromToken(n.Operator), ast.EndPositionFromToken(n.Operator), n.Operator.Text)
 		ast.Walk(jscg, n.Right)
 		return nil
 	case *ast.BinaryExpression:
 		if nodeInfo.OverloadedOperation == nil {
 			ast.Walk(jscg, n.Left)
-			jscg.buffer.WriteString(n.Operator.Text)
+			jscg.writeWithPosition(ast.StartPositionFromToken(n.Operator), ast.EndPositionFromToken(n.Operator), n.Operator.Text)
 			ast.Walk(jscg, n.Right)
 		} else {
 			// Operator has been overloaded
@@ -176,11 +188,11 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 				)
 			}
 
-			jscg.buffer.WriteString(fmt.Sprintf("%s(", name))
+			jscg.writeWithPosition(ast.StartPositionFromToken(n.Operator), ast.EndPositionFromToken(n.Operator), fmt.Sprintf("%s(", name))
 			ast.Walk(jscg, n.Left)
-			jscg.buffer.WriteString(", ")
+			jscg.write(", ")
 			ast.Walk(jscg, n.Right)
-			jscg.buffer.WriteString(")")
+			jscg.writeWithPosition(n.EndPos(), n.EndPos(), ")")
 		}
 		return nil
 	case *ast.Identifier:
@@ -189,28 +201,28 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 		}
 		if sigType, ok := nodeInfo.Type.(*types.SignatureType); ok {
 			if sigType.Extern {
-				jscg.buffer.WriteString(n.Text)
+				jscg.writeWithNodePosition(n, n.Text)
 				break
 			}
 		}
 
 		if n.Text == "this" {
-			jscg.buffer.WriteString("this")
+			jscg.writeWithNodePosition(n, "this")
 			break
 		}
 
-		jscg.buffer.WriteString(jscg.getIdentifier(n))
+		jscg.writeWithNodePosition(n, jscg.getIdentifier(n))
 	case *ast.ValueExpression:
-		jscg.buffer.WriteString(fmt.Sprintf(
+		jscg.writeWithNodePosition(n, fmt.Sprintf(
 			`%s`,
 			n.Text,
 		))
 	case *ast.ReturnStatement:
-		jscg.buffer.WriteString(`return `)
+		jscg.writeWithPosition(n.Start, n.ReturnEnd, `return `)
 	case *ast.FunctionCall:
 		if nodeInfo.TypeCast {
 			if nodeInfo.Type == types.Int32Type || nodeInfo.Type == types.Int64Type {
-				jscg.buffer.WriteString(`Math.floor`)
+				jscg.writeWithNodePosition(n, `Math.floor`)
 			} else {
 				ast.Walk(jscg, n.Arguments[0])
 				return nil
@@ -218,7 +230,7 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 		} else {
 			ast.Walk(jscg, n.Callee)
 		}
-		jscg.buffer.WriteString(`(`)
+		jscg.write(`(`)
 
 		var argNames []string
 
@@ -232,7 +244,7 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 			for i, expr := range n.Arguments {
 				ast.Walk(jscg, expr)
 				if i < len(n.Arguments)-1 {
-					jscg.buffer.WriteString(`,`)
+					jscg.write(`,`)
 				}
 			}
 		} else {
@@ -247,63 +259,70 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 				}
 
 				if !found {
-					jscg.buffer.WriteString("undefined")
+					jscg.write("undefined")
 				}
 
 				if i < len(argNames)-1 {
-					jscg.buffer.WriteString(`,`)
+					jscg.write(`,`)
 				}
 			}
 		}
 
-		jscg.buffer.WriteString(`)`)
+		jscg.write(`)`)
 
 		return nil
 	case *ast.Block:
-		jscg.buffer.WriteString(`{`)
+		jscg.writeWithPosition(n.Start, n.Start, `{`)
 
 		for _, node := range n.Body {
 			ast.Walk(jscg, node)
-			jscg.buffer.WriteString(";")
+			jscg.write(";")
 		}
 
-		jscg.buffer.WriteString(`}`)
+		jscg.writeWithPosition(n.End, n.End, `}`)
 		return nil
 	case *ast.File:
-		jscg.buffer.WriteString("(function () {")
+		jscg.write("(function () {")
 		for _, node := range n.Body {
 			ast.Walk(jscg, node)
-			jscg.buffer.WriteString(";")
+			jscg.write(";")
 		}
 		return nil
 	case *ast.ForLoop:
-		jscg.buffer.WriteString(" for (")
+		jscg.writeWithPosition(n.StartPos(), n.StartPos(), " for (")
 
 		if n.Init != nil {
 			ast.Walk(jscg, n.Init)
 		}
-		jscg.buffer.WriteString(";")
+
+		jscg.write(";")
 
 		if n.Condition != nil {
 			ast.Walk(jscg, n.Condition)
 		}
-		jscg.buffer.WriteString(";")
+		jscg.write(";")
 
 		if n.After != nil {
 			ast.Walk(jscg, n.After)
 		}
-		jscg.buffer.WriteString(")")
+		jscg.write(")")
 
 		ast.Walk(jscg, n.Block)
 		return nil
 	case *ast.FunctionDeclaration:
 		var name string
 		var args []string
+		var start ast.Position
+		var end ast.Position
 		if _, isStruct := nodeInfo.Parent.(*ast.Struct); !isStruct {
 			if n.Signature.Identifier != nil {
 				name = jscg.getIdentifier(n.Signature.Identifier)
+				start = n.Signature.Identifier.StartPos()
+				end = n.Signature.Identifier.EndPos()
 			} else if n.Signature.Operator != nil {
 				// Operator overload
+				start = ast.StartPositionFromToken(*n.Signature.Operator)
+				end = ast.EndPositionFromToken(*n.Signature.Operator)
 				name = jscg.getIdentifierForNode(n, n.Signature.Operator.Type.String())
 			}
 		}
@@ -312,36 +331,36 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 			args = append(args, jscg.getIdentifier(arg.Name))
 		}
 
-		jscg.buffer.WriteString(fmt.Sprintf(
+		jscg.writeWithPosition(start, end, fmt.Sprintf(
 			`function %s (%s)`,
 			name,
 			strings.Join(args, ","),
 		))
 
-		jscg.buffer.WriteString("{")
+		jscg.write("{")
 
 		for _, arg := range n.Signature.Arguments {
 			if arg.DefaultValue != nil {
 				name := jscg.getIdentifier(arg.Name)
-				jscg.buffer.WriteString(fmt.Sprintf(
+				jscg.writeWithNodePosition(arg.DefaultValue, fmt.Sprintf(
 					`if (%s === undefined) {%s =`,
 					name,
 					name,
 				))
 				ast.Walk(jscg, arg.DefaultValue)
-				jscg.buffer.WriteString("}")
+				jscg.write("}")
 			}
 		}
 
 		for _, node := range n.Block.Body {
 			ast.Walk(jscg, node)
-			jscg.buffer.WriteString(";")
+			jscg.write(";")
 		}
 
-		jscg.buffer.WriteString("}")
+		jscg.write("}")
 		return nil
 	case *ast.ParenExpression:
-		jscg.buffer.WriteString("(")
+		jscg.writeWithPosition(n.StartPos(), n.StartPos(), "(")
 	case *ast.Struct:
 		if n.Name == nil {
 			break
@@ -355,11 +374,11 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 			args = append(args, v.Name.Text)
 		}
 
-		jscg.buffer.WriteString(fmt.Sprintf("function %s (%s) {", name, strings.Join(args, ", ")))
+		jscg.writeWithNodePosition(n.Name, fmt.Sprintf("function %s (%s) {", name, strings.Join(args, ", ")))
 		for _, v := range n.Variables {
 			name := v.Name.Text
 			if v.DefaultValue != nil {
-				jscg.buffer.WriteString(fmt.Sprintf(
+				jscg.writeWithNodePosition(v, fmt.Sprintf(
 					`this.%s = %s !== undefined ? %s : `,
 					name,
 					name,
@@ -367,28 +386,34 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 				))
 				ast.Walk(jscg, v.DefaultValue)
 			} else {
-				jscg.buffer.WriteString(fmt.Sprintf(
+				jscg.writeWithNodePosition(v, fmt.Sprintf(
 					`this.%s = %s;`,
 					name,
 					name,
 				))
 			}
 
-			jscg.buffer.WriteString(";")
+			jscg.write(";")
 		}
 
-		jscg.buffer.WriteString("};")
+		jscg.write("};")
 
 		for i, funDecl := range n.Functions {
+			var start ast.Position
+			var end ast.Position
 			var funcName string
 			if funDecl.Signature.Identifier != nil {
 				funcName = funDecl.Signature.Identifier.Text
+				start = funDecl.Signature.Identifier.StartPos()
+				end = funDecl.Signature.Identifier.EndPos()
 			} else if funDecl.Signature.Operator != nil {
 				// Operator overload
 				funcName = jscg.getIdentifierForNode(funDecl, funDecl.Signature.Operator.Type.String())
+				start = ast.StartPositionFromToken(*funDecl.Signature.Operator)
+				end = ast.EndPositionFromToken(*funDecl.Signature.Operator)
 			}
 
-			jscg.buffer.WriteString(fmt.Sprintf(
+			jscg.writeWithPosition(start, end, fmt.Sprintf(
 				"%s.prototype.%s = ",
 				name,
 				funcName,
@@ -396,7 +421,7 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 
 			ast.Walk(jscg, funDecl)
 			if i < len(n.Functions)-1 {
-				jscg.buffer.WriteString(";")
+				jscg.write(";")
 			}
 		}
 
@@ -405,15 +430,15 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 		if typeNode := jscg.types[n.Identifier.Text]; typeNode != nil {
 			if structTypeNode, ok := typeNode.(*ast.Struct); ok {
 				name := jscg.getIdentifierForNode(structTypeNode, structTypeNode.Name.Text)
-				jscg.buffer.WriteString(fmt.Sprintf("new %s()", name))
+				jscg.writeWithNodePosition(n, fmt.Sprintf("new %s()", name))
 				// TODO struct args
 			}
 		}
 		return nil
 	case *ast.MemberExpression:
 		ast.Walk(jscg, n.Target)
-		jscg.buffer.WriteString(".")
-		jscg.buffer.WriteString(n.Property.Text)
+		jscg.write(".")
+		jscg.writeWithPosition(ast.StartPositionFromToken(n.Property), ast.EndPositionFromToken(n.Property), n.Property.Text)
 
 		return nil
 	default:
@@ -429,15 +454,15 @@ func (jscg *JSCodeGen) Leave(node ast.Node) {
 			if funDecl, ok := n.(*ast.FunctionDeclaration); ok {
 				if funDecl.Signature != nil && funDecl.Signature.Identifier != nil && funDecl.Signature.Identifier.Text == "main" {
 					name := jscg.getIdentifier(funDecl.Signature.Identifier)
-					jscg.buffer.WriteString(fmt.Sprintf("%s();", name))
+					jscg.write(fmt.Sprintf("%s();", name))
 					break
 				}
 			}
 		}
 
-		jscg.buffer.WriteString("})();")
+		jscg.write("})();")
 	case *ast.ParenExpression:
-		jscg.buffer.WriteString(")")
+		jscg.writeWithPosition(n.EndPos(), n.EndPos(), ")")
 	}
 }
 
