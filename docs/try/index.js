@@ -30,7 +30,6 @@ class App extends React.Component {
   }
 
   _printErrorsToConsole(errors) {
-    console.log(errors);
     this.setState({
       lintErrors: errors
     });
@@ -124,7 +123,12 @@ class App extends React.Component {
         <div className="monaco-editor" style={{margin: 10, fontSize: 20, width: "100%", height: "30%", color: 'white', backgroundColor: 'black'}}>
             {this.state.lintErrors.length > 0 ? <div>Lint errors:</div> : null}
             {this.state.lintErrors.map((error, i) => {
-              return <div style={{color: error.Warning ? 'blue' : 'red' }} key={i}>{error.Position.Line + 1}:{error.Position.Column + 1}: {error.Message}</div>;
+              return <div onClick={(e)=> {
+                  const pos = {column: error.Position.Column + 1, lineNumber: error.Position.Line + 1};
+                  this._editor.focus();
+                  this._editor.setPosition(pos);
+                  this._editor.revealPositionInCenter(pos);
+                }} style={{color: error.Warning ? 'blue' : 'red' }} key={i}>{error.Position.Line + 1}:{error.Position.Column + 1}: {error.Message}</div>;
             })}
             <br />
             {this.state.printOutput.length > 0 ? <div>Output:</div> : null}
