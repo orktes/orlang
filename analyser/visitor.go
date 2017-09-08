@@ -399,8 +399,8 @@ typeCheck:
 		}
 
 		switch n := v.node.(type) {
-		case ast.Declaration, *ast.StructExpression, *ast.Struct:
-			break typeCheck
+		case *ast.TupleDeclaration:
+			// Just continue as normal
 		case *ast.CallArgument:
 			// Identifier is call argument name
 			if n.Name == node {
@@ -414,6 +414,8 @@ typeCheck:
 					break typeCheck
 				}
 			}
+		case ast.Declaration, *ast.StructExpression, *ast.Struct:
+			break typeCheck
 		}
 
 		if n.Text == "this" {

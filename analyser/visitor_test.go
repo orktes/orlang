@@ -403,6 +403,15 @@ func TestVisitorErrors(t *testing.T) {
 				foobar(foo + a)
 			}
 		`, ""},
+		{`
+			fn foobar(a:(int32, int32)) => int32 {
+				var (f, b) = a
+				return f + b
+			}
+			fn main() {
+				foobar((1,2))
+			}
+		`, ""},
 	}
 
 	for _, test := range tests {

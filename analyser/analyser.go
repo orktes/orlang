@@ -22,9 +22,14 @@ func New(file *ast.File) (analyser *Analyser, err error) {
 
 func (analyser *Analyser) AddExternalFunc(name string, typ types.Type) {
 	ident := &ast.Identifier{Token: scanner.Token{Text: name}}
-	analyser.scope.Set(ident, &CustomTypeResolvingScopeItem{
+	scopeItem := &CustomTypeResolvingScopeItem{
 		ResolvedType: typ,
-	})
+	}
+	analyser.scope.Set(ident, scopeItem)
+
+	// Hack to fix unused variale lint errors for build-in funcs
+	// TODO figure out a proper way to do this
+	analyser.scope.MarkUsage(scopeItem, &ast.Identifier{Token: scanner.Token{Text: name}})
 }
 
 func (analyser *Analyser) Analyse() (info *Info, err error) {
