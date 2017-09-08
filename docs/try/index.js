@@ -18,8 +18,19 @@ struct Point {
     return newPoint
   }
 
+  fn -(left:Point, right:Point) => Point {
+    var newPoint = Point{}
+    newPoint.x = left.x - right.x
+    newPoint.y = left.y - right.y
+    return newPoint
+  }
+
   fn toString() => string {
-    return "{x:" + int_to_str(int64(this.x)) + ", y: " + int_to_str(int64(this.y)) + "}"
+    return "{\\n" +
+           "  x: " + int_to_str(int64(this.x)) +
+           ",\\n" +
+           "  y: " + int_to_str(int64(this.y)) +
+           "\\n}"
   }
 }
 
@@ -156,7 +167,7 @@ class App extends React.Component {
             <br />
             {this.state.printOutput.length > 0 ? <div>Output:</div> : null}
             {this.state.printOutput.map((line, i)=> {
-              return <div key={i}>{line}</div>;
+              return <pre key={i}>{line}</pre>;
             })}
         </div>
       </div>
