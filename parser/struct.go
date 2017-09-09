@@ -63,8 +63,24 @@ func (p *Parser) parseStructExpression(expr ast.Expression) (node *ast.StructExp
 		return
 	}
 
+	args := make([]*ast.CallArgument, 0)
+	for {
+		arg, ok := p.parseCallArgument()
+		if !ok {
+			break
+		}
+
+		args = append(args, arg)
+		_, commaOk := p.expectToken(scanner.TokenTypeCOMMA)
+		if !commaOk {
+			p.unread()
+			break
+		}
+	}
+
 	node = &ast.StructExpression{
 		Identifier: ident,
+		Arguments:  args,
 	}
 
 	token, rBraceOk := p.expectToken(scanner.TokenTypeRBRACE)

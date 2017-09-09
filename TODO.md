@@ -1,4 +1,4 @@
-- struct initial values
+- variable zero values
 - make macros hygienic
 - make variadic arguments work (required for INLINE_JS and other compiler instructions)
 - pass by value (pointers?)?

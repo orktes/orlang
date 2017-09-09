@@ -3,7 +3,7 @@ package ast
 type StructExpression struct {
 	Identifier *Identifier
 	End        Position
-	// TODO properties
+	Arguments  []*CallArgument
 }
 
 func (StructExpression) exprNode() {}

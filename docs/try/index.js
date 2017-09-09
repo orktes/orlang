@@ -35,11 +35,8 @@ struct Point {
 }
 
 fn main() {
-  var pointA = Point{}
-  pointA.x = 1
-
-  var pointB = Point{}
-  pointB.y = 1
+  var pointA = Point{10, 10}
+  var pointB = Point{20, 30}
 
   var combined = pointA + pointB
 

@@ -520,6 +520,84 @@ typeCheck:
 			}
 		}
 
+	case *ast.StructExpression:
+		identType := types.LazyResolve(v.getTypeForTypeName(n.Identifier.Text))
+		if structType, structTypeOk := identType.(*types.StructType); !structTypeOk {
+			v.emitError(
+				n,
+				fmt.Sprintf("%s (type %s) is not a struct", n.Identifier, identType.GetName()),
+				true)
+			break
+		} else {
+			usedArgs := map[string]bool{}
+			namedArgs := false
+			for i, callArg := range n.Arguments {
+				if callArg.Name != nil {
+					namedArgs = true
+					foundArg := false
+
+					for x, vr := range structType.Variables {
+						if vr.Name == callArg.Name.Text {
+							i = x
+							foundArg = true
+							break
+						}
+					}
+
+					if !foundArg {
+						v.emitError(
+							callArg,
+							fmt.Sprintf("struct has no property named %s", callArg.Name.Text),
+							true)
+						continue
+					}
+				} else if namedArgs {
+					v.emitError(
+						n,
+						"named and non-named properties cannot be mixed",
+						true)
+				}
+				if len(structType.Variables) > i {
+					argName := structType.Variables[i].Name
+					if _, ok := usedArgs[argName]; ok {
+						v.emitError(
+							callArg,
+							fmt.Sprintf("property %s already defined", argName),
+							true)
+					}
+
+					usedArgs[argName] = true
+
+					structArgType := structType.Variables[i].Type
+					exprType := v.getTypeForNode(callArg.Expression)
+					equal := structArgType.IsEqual(exprType)
+
+					if !equal {
+						v.emitError(callArg.Expression, fmt.Sprintf(
+							"cannot use %s (type %s) as type %s in struct initializer",
+							callArg.Expression,
+							exprType.GetName(),
+							structArgType.GetName(),
+						), true)
+					}
+				}
+			}
+
+			if !namedArgs && len(n.Arguments) != 0 {
+				if len(n.Arguments) < len(structType.Variables) {
+					v.emitError(n, fmt.Sprintf(
+						"too few properties for %s",
+						n.Identifier,
+					), true)
+				} else if len(n.Arguments) > len(structType.Variables) {
+					v.emitError(n, fmt.Sprintf(
+						"too many properties for %s",
+						n.Identifier,
+					), true)
+				}
+			}
+		}
+
 	case *ast.ReturnStatement:
 		funcDecl := v.getParentFuncDecl()
 		funcDeclType := v.getTypeForNode(funcDecl).(*types.SignatureType)

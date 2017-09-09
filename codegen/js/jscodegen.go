@@ -430,8 +430,48 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 		if typeNode := jscg.types[n.Identifier.Text]; typeNode != nil {
 			if structTypeNode, ok := typeNode.(*ast.Struct); ok {
 				name := jscg.getIdentifierForNode(structTypeNode, structTypeNode.Name.Text)
-				jscg.writeWithNodePosition(n, fmt.Sprintf("new %s()", name))
-				// TODO struct args
+				jscg.writeWithNodePosition(n, fmt.Sprintf("new %s(", name))
+
+				var argNames []string
+
+				calleeNodeInfo := jscg.analyserInfo.FileInfo[jscg.currentFile].NodeInfo[n.Identifier]
+				if calleeNodeInfo != nil && calleeNodeInfo.Type != nil {
+					strType := calleeNodeInfo.Type.(*types.StructType)
+					for _, varDef := range strType.Variables {
+						argNames = append(argNames, varDef.Name)
+					}
+				}
+
+				namedArgs := len(n.Arguments) > 0 && n.Arguments[0].Name != nil
+				if len(argNames) == 0 || !namedArgs {
+					for i, expr := range n.Arguments {
+						ast.Walk(jscg, expr)
+						if i < len(n.Arguments)-1 {
+							jscg.write(`,`)
+						}
+					}
+				} else {
+					for i, argName := range argNames {
+						found := false
+						for _, expr := range n.Arguments {
+							if expr.Name.Text == argName {
+								ast.Walk(jscg, expr.Expression)
+								found = true
+								break
+							}
+						}
+
+						if !found {
+							jscg.write("undefined")
+						}
+
+						if i < len(argNames)-1 {
+							jscg.write(`,`)
+						}
+					}
+				}
+
+				jscg.write(")")
 			}
 		}
 		return nil

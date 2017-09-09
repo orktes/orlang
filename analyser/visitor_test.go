@@ -412,6 +412,26 @@ func TestVisitorErrors(t *testing.T) {
 				foobar((1,2))
 			}
 		`, ""},
+		{`
+			fn main() {
+				foobar{}
+			}
+		`, "3:5 foobar (type unknown (foobar)) is not a struct"},
+		{`
+			struct foobar {}
+			fn main() {
+				foobar{1}
+			}
+		`, "4:5 too many properties for foobar"},
+		{`
+			struct foobar {
+				var i : int32
+				var o : int32
+			}
+			fn main() {
+				foobar{1}
+			}
+		`, "7:5 too few properties for foobar"},
 	}
 
 	for _, test := range tests {
