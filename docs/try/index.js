@@ -151,7 +151,7 @@ class App extends React.Component {
             options={{fontSize: 20}}
           />
         </div>
-        <div className="monaco-editor" style={{margin: 10, fontSize: 20, width: "100%", height: "30%", color: 'white', backgroundColor: 'black'}}>
+        <div className="monaco-editor" style={{overflowY: 'scroll', margin: 10, fontSize: 20, width: "100%", height: "30%", color: 'white', backgroundColor: 'black'}}>
             {this.state.lintErrors.length > 0 ? <div>Lint errors:</div> : null}
             {this.state.lintErrors.map((error, i) => {
               return <div onClick={(e)=> {
