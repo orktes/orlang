@@ -151,7 +151,7 @@ func TestSimple(t *testing.T) {
 
 			var overloaded = (10 + 9) - 1.0
 
-			var structSum = CustomStruct{10,10} + CustomStruct{10,10}
+			var structSum = CustomStruct{10,10} + CustomStruct{foo:10,bar:10}
 			var foobarValue = (CustomStruct{}).foobar(100)
 
 			var structVal = CustomStruct{}

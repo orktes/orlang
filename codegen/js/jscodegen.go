@@ -37,6 +37,10 @@ func (jscg *JSCodeGen) getIdentifierForNode(node ast.Node, name string) string {
 func (jscg *JSCodeGen) getIdentifier(ident *ast.Identifier) string {
 	nodeInfo := jscg.analyserInfo.FileInfo[jscg.currentFile].NodeInfo[ident]
 	scopeItemDetals := nodeInfo.Scope.GetDetails(ident.Text, true)
+	if scopeItemDetals == nil {
+		// TODO figure out why struct initializers arrive here
+		return ""
+	}
 	return jscg.getIdentifierForNode(scopeItemDetals.DefineIdentifier, ident.Text)
 }
 
@@ -199,6 +203,7 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 		if n == nil {
 			break
 		}
+
 		if sigType, ok := nodeInfo.Type.(*types.SignatureType); ok {
 			if sigType.Extern {
 				jscg.writeWithNodePosition(n, n.Text)
@@ -474,6 +479,7 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 				jscg.write(")")
 			}
 		}
+
 		return nil
 	case *ast.MemberExpression:
 		ast.Walk(jscg, n.Target)
