@@ -102,6 +102,17 @@ func main() {
 			})
 		}
 
+		for macroName, _ := range file.Macros {
+			items = append(items, map[string]interface{}{
+				"label":         macroName + "!",
+				"insertText":    macroName + "!",
+				"kind":          "Reference",
+				"documentation": "macro " + macroName,
+				"detail":        "macro " + macroName,
+				"type":          "macro",
+			})
+		}
+
 		return
 	})
 
