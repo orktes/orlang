@@ -252,18 +252,32 @@ func (st *StructType) IsEqual(aType Type) bool {
 }
 
 func (st *StructType) HasMember(member string) (bool, Type) {
+	if has, t := st.HasProperty(member); has {
+		return has, t
+	}
+
+	if has, t := st.HasFunction(member); has {
+		return has, t
+	}
+
+	return false, nil
+}
+
+func (st *StructType) HasProperty(member string) (bool, Type) {
 	for _, v := range st.Variables {
 		if v.Name == member {
 			return true, v.Type
 		}
 	}
+	return false, nil
+}
 
+func (st *StructType) HasFunction(member string) (bool, Type) {
 	for _, v := range st.Functions {
 		if v.Name == member {
 			return true, v.Type
 		}
 	}
-
 	return false, nil
 }
 

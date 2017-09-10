@@ -41,8 +41,12 @@ func (jscg *JSCodeGen) getIdentifier(ident *ast.Identifier) string {
 }
 
 func (jscg *JSCodeGen) getParent(node ast.Node) ast.Node {
-	nodeInfo := jscg.analyserInfo.FileInfo[jscg.currentFile].NodeInfo[node]
-	return nodeInfo.Parent
+
+	return jscg.getNodeInfo(node).Parent.Node
+}
+
+func (jscg *JSCodeGen) getNodeInfo(node ast.Node) *analyser.NodeInfo {
+	return jscg.analyserInfo.FileInfo[jscg.currentFile].NodeInfo[node]
 }
 
 func (jscg *JSCodeGen) writeWithNodePosition(node ast.Node, str string) {
@@ -318,7 +322,7 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 		var args []string
 		var start ast.Position
 		var end ast.Position
-		if _, isStruct := nodeInfo.Parent.(*ast.Struct); !isStruct {
+		if _, isStruct := nodeInfo.Parent.Node.(*ast.Struct); !isStruct {
 			if n.Signature.Identifier != nil {
 				name = jscg.getIdentifier(n.Signature.Identifier)
 				start = n.Signature.Identifier.StartPos()
@@ -477,6 +481,37 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 
 		return nil
 	case *ast.MemberExpression:
+		targetType := jscg.getNodeInfo(n.Target).Type
+		if structType, structTypeOk := targetType.(*types.StructType); structTypeOk {
+			// Is property a method
+			if ok, _ := structType.HasFunction(n.Property.Text); ok {
+				// Is it a function call
+				if _, parentIsFunctionCall := nodeInfo.Parent.Node.(*ast.FunctionCall); !parentIsFunctionCall {
+					// Get targetet struct
+					if typeNode := jscg.types[structType.Name]; typeNode != nil {
+						if structTypeNode, ok := typeNode.(*ast.Struct); ok {
+							name := jscg.getIdentifierForNode(structTypeNode, structTypeNode.Name.Text)
+
+							jscg.writeWithPosition(
+								node.StartPos(),
+								node.StartPos(),
+								fmt.Sprintf(
+									"%s.prototype.%s.bind(",
+									name,
+									n.Property.Text,
+								),
+							)
+
+							ast.Walk(jscg, n.Target)
+							jscg.write(")")
+
+							return nil
+						}
+					}
+				}
+			}
+		}
+
 		ast.Walk(jscg, n.Target)
 		jscg.write(".")
 		jscg.writeWithPosition(ast.StartPositionFromToken(n.Property), ast.EndPositionFromToken(n.Property), n.Property.Text)

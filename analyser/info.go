@@ -8,7 +8,9 @@ import (
 
 type NodeInfo struct {
 	Type                types.Type
-	Parent              ast.Node
+	Node                ast.Node
+	Parent              *NodeInfo
+	Children            []*NodeInfo
 	Scope               *Scope
 	TypeCast            bool
 	OverloadedOperation *ast.FunctionDeclaration

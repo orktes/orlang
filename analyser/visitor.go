@@ -291,11 +291,6 @@ func (v *visitor) getType(typeName string) types.Type {
 	return types.Types[typeName]
 }
 
-func (v *visitor) getParent(node ast.Node) ast.Node {
-	nodeInfo := v.info.NodeInfo[node]
-	return nodeInfo.Parent
-}
-
 func (v *visitor) getParentFuncDecl() *ast.FunctionDeclaration {
 	parent := v.parent
 	for parent != nil {
@@ -388,7 +383,9 @@ func (v *visitor) validateTypeConversion(call *ast.FunctionCall) bool {
 func (v *visitor) Visit(node ast.Node) ast.Visitor {
 	nodeInfo := v.getNodeInfo(node)
 	nodeInfo.Scope = v.scope
-	nodeInfo.Parent = v.node
+	nodeInfo.Node = node
+	nodeInfo.Parent = v.getNodeInfo(v.node)
+	nodeInfo.Parent.Children = append(nodeInfo.Parent.Children, nodeInfo)
 
 typeCheck:
 	switch n := node.(type) {
