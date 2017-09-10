@@ -34,13 +34,21 @@ struct Point {
   }
 }
 
+interface Stringer {
+  fn toString() => string
+}
+
+fn toString(str:Stringer) => string {
+  return str.toString()
+}
+
 fn main() {
   var pointA = Point{10, 10}
   var pointB = Point{20, 30}
 
   var combined = pointA + pointB
 
-  print("Hello world: " + combined.toString())
+  print("Hello world: " + toString(combined))
 }
 
 `;
