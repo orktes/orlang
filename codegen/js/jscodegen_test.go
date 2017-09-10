@@ -151,7 +151,7 @@ func TestSimple(t *testing.T) {
 
 			var overloaded = (10 + 9) - 1.0
 
-			var structSum = CustomStruct{10,10} + CustomStruct{foo:10,bar:10}
+			var structSum = CustomStruct{10,10} + CustomStruct{bar:1000, foo:100}
 			var foobarValue = (CustomStruct{}).foobar(100)
 
 			var structVal = CustomStruct{}
@@ -193,12 +193,12 @@ func TestSimple(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res != "result is: 2 and -1 and -25 and 10 and 102 and 0 and 20 and 100 and 4" {
+	if res != "result is: 2 and -1 and -25 and 10 and 102 and 0 and 110 and 100 and 4" {
 		t.Error("Wrong result received", res)
 	}
 }
 
-func testCodegen(str string) (string, error) {
+func generateCode(str string) (string, error) {
 	file, err := parser.Parse(strings.NewReader(str))
 	if err != nil {
 		return "", err
@@ -253,6 +253,15 @@ func testCodegen(str string) (string, error) {
 	}
 
 	code := New(info).Generate(file)
+	return string(code), nil
+}
+
+func testCodegen(str string) (string, error) {
+	code, err := generateCode(str)
+	if err != nil {
+		return "", err
+	}
+
 	println(string(code)) // debug
 
 	var result string

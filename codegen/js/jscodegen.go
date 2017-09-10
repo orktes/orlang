@@ -37,10 +37,6 @@ func (jscg *JSCodeGen) getIdentifierForNode(node ast.Node, name string) string {
 func (jscg *JSCodeGen) getIdentifier(ident *ast.Identifier) string {
 	nodeInfo := jscg.analyserInfo.FileInfo[jscg.currentFile].NodeInfo[ident]
 	scopeItemDetals := nodeInfo.Scope.GetDetails(ident.Text, true)
-	if scopeItemDetals == nil {
-		// TODO figure out why struct initializers arrive here
-		return ""
-	}
 	return jscg.getIdentifierForNode(scopeItemDetals.DefineIdentifier, ident.Text)
 }
 
@@ -64,7 +60,10 @@ func (jscg *JSCodeGen) write(str string) {
 func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 	nodeInfo := jscg.analyserInfo.FileInfo[jscg.currentFile].NodeInfo[node]
 	switch n := node.(type) {
-	case *ast.Macro, *ast.CallArgument:
+	case *ast.Macro:
+	case *ast.CallArgument:
+		ast.Walk(jscg, n.Expression)
+		return nil
 	case *ast.TupleDeclaration:
 
 		var varName string
@@ -439,12 +438,8 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 
 				var argNames []string
 
-				calleeNodeInfo := jscg.analyserInfo.FileInfo[jscg.currentFile].NodeInfo[n.Identifier]
-				if calleeNodeInfo != nil && calleeNodeInfo.Type != nil {
-					strType := calleeNodeInfo.Type.(*types.StructType)
-					for _, varDef := range strType.Variables {
-						argNames = append(argNames, varDef.Name)
-					}
+				for _, varDef := range structTypeNode.Variables {
+					argNames = append(argNames, varDef.Name.Text)
 				}
 
 				namedArgs := len(n.Arguments) > 0 && n.Arguments[0].Name != nil
