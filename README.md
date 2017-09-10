@@ -9,4 +9,5 @@ My toy programming language, parser and compiler to play around with different i
 
 [Try Orlang](http://orktes.github.io/orlang)
 
-<img width="636" alt="screenshot 2017-09-10 22 59 38" src="https://user-images.githubusercontent.com/606347/30252473-ea16b8c8-967b-11e7-9b6b-399cfe2e08f7.png">
+<img width="724" alt="screenshot 2017-09-10 23 49 39" src="https://user-images.githubusercontent.com/606347/30252874-c20b9770-9682-11e7-9608-89e57ffaa9ab.png">
+
