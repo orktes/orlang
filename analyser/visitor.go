@@ -458,6 +458,15 @@ func (v *visitor) checkAutoComplete(ident *ast.Identifier) {
 			}
 		}
 	default:
+		structParent := v.getParentStructDecl()
+		if structParent != nil {
+			keys = append(keys, AutoCompleteInfo{
+				Label: "this",
+				Type:  v.getTypeForNode(structParent),
+				Kind:  "Variable",
+			})
+		}
+
 		for key, typ := range types.Types {
 			if strings.HasPrefix(key, prefix) {
 				keys = append(keys, AutoCompleteInfo{

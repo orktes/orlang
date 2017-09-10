@@ -87,7 +87,7 @@ func main() {
 			case *types.SignatureType:
 				insertText = fmt.Sprintf("%s(%s)", insertText, strings.Join(t.ArgumentNames, ", "))
 			case *types.StructType:
-				if item.Kind != "Reference" {
+				if item.Kind == "Class" {
 					insertText = fmt.Sprintf("%s{}", insertText)
 				}
 			}
