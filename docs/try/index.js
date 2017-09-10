@@ -26,12 +26,20 @@ struct Point {
   }
 
   fn toString() => string {
-    return "{\\n" +
+    return "{\n" +
            "  x: " + int_to_str(int64(this.x)) +
-           ",\\n" +
+           ",\n" +
            "  y: " + int_to_str(int64(this.y)) +
-           "\\n}"
+           "\n}"
   }
+}
+
+interface Stringer {
+  fn toString() => string
+}
+
+fn toString(str:Stringer) => string {
+  return str.toString()
 }
 
 fn main() {
@@ -40,9 +48,8 @@ fn main() {
 
   var combined = pointA + pointB
 
-  print("Hello world: " + combined.toString())
+  print("Hello world: " + toString(combined))
 }
-
 `;
 
 class App extends React.Component {
