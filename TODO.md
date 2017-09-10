@@ -1,3 +1,4 @@
+- warn about uninitialized variables
 - variable zero values
 - autocomplete
 - type assertion
