@@ -17,18 +17,27 @@ import (
 )
 
 func configureAnalyzer(analsr *analyser.Analyser) {
-	analsr.AddExternalFunc("int_to_str", &types.SignatureType{
-		ArgumentNames: []string{"num"},
-		ArgumentTypes: []types.Type{types.Int64Type},
-		ReturnType:    types.StringType,
-		Extern:        true,
-	})
-
 	analsr.AddExternalFunc("print", &types.SignatureType{
 		ArgumentNames: []string{"str"},
-		ArgumentTypes: []types.Type{types.StringType},
-		ReturnType:    types.VoidType,
-		Extern:        true,
+		ArgumentTypes: []types.Type{&types.InterfaceType{
+			Name: "buildin(stringer)",
+			Functions: []struct {
+				Name string
+				Type *types.SignatureType
+			}{
+				{
+					Name: "toString",
+					Type: &types.SignatureType{
+						ArgumentNames: []string{},
+						ArgumentTypes: []types.Type{},
+						ReturnType:    types.StringType,
+						Extern:        true,
+					},
+				},
+			},
+		}},
+		ReturnType: types.VoidType,
+		Extern:     true,
 	})
 }
 

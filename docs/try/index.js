@@ -5,12 +5,34 @@ import MonacoEditor from 'react-monaco-editor';
 import _ from 'lodash';
 
 var defaultCode =
-`// type your code here (global functions print & int_to_str)
+`// This macro uses build-in function print to print a list of expressions
+macro print {
+  ($a:expr) : (
+    print($a)
+    print("\\n")
+  )
 
+  ($a:expr, $( $b:expr ),*) : (
+    print($a)
+    $(
+      print(" ")
+      print($b)
+    )*
+    print("\\n")
+  )
+}
+
+// Example of an interface that defines a reset function
+interface Resetable {
+  fn reset()
+}
+
+// Example of a struct
 struct Point {
   var x = 0
   var y = 0
 
+  // Example of an operator overload
   fn +(left:Point, right:Point) => Point {
     var newPoint = Point{}
     newPoint.x = left.x + right.x
@@ -18,6 +40,7 @@ struct Point {
     return newPoint
   }
 
+  // Example of an operator overload
   fn -(left:Point, right:Point) => Point {
     var newPoint = Point{}
     newPoint.x = left.x - right.x
@@ -25,32 +48,43 @@ struct Point {
     return newPoint
   }
 
+  // Implement Resetable interface
+  fn reset() {
+    this.x = 0
+    this.y = 0
+  }
+
+  // Implement buildin stringer interface (argument type of the print function)
   fn toString() => string {
     return "{\\n" +
-           "  x: " + int_to_str(int64(this.x)) +
+           "  x: " + this.x.toString() +
            ",\\n" +
-           "  y: " + int_to_str(int64(this.y)) +
+           "  y: " + this.y.toString() +
            "\\n}"
   }
 }
 
-interface Stringer {
-  fn toString() => string
-}
-
-fn toString(str:Stringer) => string {
-  return str.toString()
+fn reset(resetable : Resetable) {
+  resetable.reset()
 }
 
 fn main() {
-  var pointA = Point{10, 10}
+  var pointA : Point
+  pointA = Point{10, 10}
+
+  // Type can be omitted when default value is used
   var pointB = Point{20, 30}
 
+  // This is using the operator overload defined in the Point struct
   var combined = pointA + pointB
 
-  print("Hello world: " + toString(combined))
-}
+  // Use print macro to print the result
+  print!("Hello world:", combined)
 
+  // Example usage of an interface
+  reset(combined)
+  print!("Value after reset:", combined)
+}
 `;
 
 class App extends React.Component {
@@ -83,17 +117,11 @@ class App extends React.Component {
 
   _compileCode = (code) => {
     Compile(code).then((res)=> {
-      var fn = new Function('print', 'printInt', 'int_to_str', res);
+      var fn = new Function('print', res);
       var output = [];
       fn(
         (str)=> {
-          output.push(str);
-        },
-        (val)=> {
-          output.push("" + val)
-        },
-        (val)=> {
-          return "" + val;
+          output.push(str && str.toString());
         }
       );
       this.setState({
@@ -171,9 +199,9 @@ class App extends React.Component {
             })}
             <br />
             {this.state.printOutput.length > 0 ? <div>Output:</div> : null}
-            {this.state.printOutput.map((line, i)=> {
-              return <pre key={i}>{line}</pre>;
-            })}
+            <pre>
+              {this.state.printOutput.join('')}
+            </pre>
         </div>
       </div>
     );
