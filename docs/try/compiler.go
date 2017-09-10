@@ -87,7 +87,9 @@ func main() {
 			case *types.SignatureType:
 				insertText = fmt.Sprintf("%s(%s)", insertText, strings.Join(t.ArgumentNames, ", "))
 			case *types.StructType:
-				insertText = fmt.Sprintf("%s{}", insertText)
+				if item.Kind != "Reference" {
+					insertText = fmt.Sprintf("%s{}", insertText)
+				}
 			}
 
 			items = append(items, map[string]interface{}{

@@ -450,14 +450,10 @@ func (v *visitor) checkAutoComplete(ident *ast.Identifier) {
 		}
 		for key, typ := range v.types {
 			if strings.HasPrefix(key, prefix) {
-				var kind = "Class"
-				if _, ok := typ.(*ast.Interface); ok {
-					kind = "Interface"
-				}
 				keys = append(keys, AutoCompleteInfo{
 					Label: key,
 					Type:  v.getTypeForNode(typ),
-					Kind:  kind,
+					Kind:  "Reference",
 				})
 			}
 		}
@@ -473,14 +469,10 @@ func (v *visitor) checkAutoComplete(ident *ast.Identifier) {
 		}
 		for key, typ := range v.types {
 			if strings.HasPrefix(key, prefix) {
-				var kind = "Class"
-				if _, ok := typ.(*ast.Interface); ok {
-					kind = "Interface"
-				}
 				keys = append(keys, AutoCompleteInfo{
 					Label: key,
 					Type:  v.getTypeForNode(typ),
-					Kind:  kind,
+					Kind:  "Class",
 				})
 			}
 		}
@@ -488,10 +480,7 @@ func (v *visitor) checkAutoComplete(ident *ast.Identifier) {
 		for key, scopeItem := range scopeItems {
 			if strings.HasPrefix(key, prefix) {
 				typ := v.getTypeForNode(scopeItem.ScopeItem)
-				kind := "Reference"
-				if _, ok := typ.(types.TypeWithMembers); ok {
-					kind = "Class"
-				}
+				kind := "Variable"
 				keys = append(keys, AutoCompleteInfo{
 					Label: key,
 					Type:  typ,
