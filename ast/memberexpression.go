@@ -1,14 +1,10 @@
 package ast
 
-import (
-	"fmt"
-
-	"github.com/orktes/orlang/scanner"
-)
+import "fmt"
 
 type MemberExpression struct {
 	Target   Expression
-	Property scanner.Token
+	Property *Identifier
 }
 
 func (me *MemberExpression) StartPos() Position {
@@ -16,7 +12,7 @@ func (me *MemberExpression) StartPos() Position {
 }
 
 func (me *MemberExpression) EndPos() Position {
-	return EndPositionFromToken(me.Property)
+	return me.Property.EndPos()
 }
 
 func (_ *MemberExpression) exprNode() {

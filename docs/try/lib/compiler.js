@@ -3,7 +3,7 @@ var Worker = require("worker-loader!./worker.js");
 function createWorker(type) {
   let globalReject;
   let globalWorker = new Worker();
-  return function Lint(src) {
+  return function Lint(src, options) {
     if (globalWorker) {
       globalReject && globalReject(new Error('Cancelled'));
       globalWorker.terminate();
@@ -25,6 +25,7 @@ function createWorker(type) {
       globalWorker.postMessage({
         type: type,
         code: src,
+        options: options,
       })
     });
   }
@@ -33,3 +34,4 @@ function createWorker(type) {
 export const Lint = createWorker("lint");
 export const Compile = createWorker("compile");
 export const Tokenize = createWorker("tokenize");
+export const AutoComplete = createWorker("autocomplete");

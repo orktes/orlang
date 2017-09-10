@@ -52,6 +52,57 @@ func main() {
 		return errors
 	})
 
+	js.Module.Get("exports").Set("AutoComplete", func(input string, line int, column int) (items []map[string]interface{}) {
+		scanner := scanner.NewScanner(strings.NewReader(input))
+		pars := parser.NewParser(analyser.NewAutoCompleteScanner(scanner, []ast.Position{ast.Position{Line: line, Column: column}}))
+
+		file, err := pars.Parse()
+		if err != nil {
+			panic(err)
+		}
+
+		var result []analyser.AutoCompleteInfo
+		alys, err := analyser.New(file)
+		if err != nil {
+			panic(err)
+		}
+
+		configureAnalyzer(alys)
+
+		alys.AutoCompleteInfoCallback = func(res []analyser.AutoCompleteInfo) {
+			result = res
+		}
+
+		alys.Analyse()
+
+	itemLoop:
+		for _, item := range result {
+			switch item.Label {
+			case "+", "-", "*", "/":
+				continue itemLoop
+			}
+
+			insertText := item.Label
+			switch t := item.Type.(type) {
+			case *types.SignatureType:
+				insertText = fmt.Sprintf("%s(%s)", insertText, strings.Join(t.ArgumentNames, ", "))
+			case *types.StructType:
+				insertText = fmt.Sprintf("%s{}", insertText)
+			}
+
+			items = append(items, map[string]interface{}{
+				"label":         item.Label,
+				"insertText":    insertText,
+				"kind":          item.Kind,
+				"documentation": item.Type.GetName(),
+				"details":       item.Type.GetName(),
+				"type":          fmt.Sprintf("%T", item.Type),
+			})
+		}
+
+		return
+	})
+
 	js.Module.Get("exports").Set("Tokenize", func(input string) []scanner.Token {
 		scan := scanner.NewScanner(strings.NewReader(input))
 

@@ -1,21 +1,19 @@
 package ast
 
-import "github.com/orktes/orlang/scanner"
-
 type TypeReference struct {
-	Token scanner.Token
+	Name *Identifier
 }
 
 func (pt *TypeReference) StartPos() Position {
-	return StartPositionFromToken(pt.Token)
+	return pt.Name.StartPos()
 }
 
 func (pt *TypeReference) EndPos() Position {
-	return EndPositionFromToken(pt.Token)
+	return pt.Name.EndPos()
 }
 
 func (pt *TypeReference) String() string {
-	return pt.Token.Text
+	return pt.Name.Text
 }
 
 func (_ *TypeReference) typeNode() {}

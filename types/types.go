@@ -9,14 +9,14 @@ import (
 var Types map[string]Type = map[string]Type{}
 
 var (
-	Float64Type = registerType(PrimitiveType{"float64"})
-	Int64Type   = registerType(PrimitiveType{"int64"})
-	Float32Type = registerType(PrimitiveType{"float32"})
-	Int32Type   = registerType(PrimitiveType{"int32"})
-	StringType  = registerType(PrimitiveType{"string"})
-	BoolType    = registerType(PrimitiveType{"bool"})
-	VoidType    = registerType(PrimitiveType{"void"})
-	AnyType     = registerType(&InterfaceType{Name: "anything"})
+	Float64Type = registerType("float64", PrimitiveType{"float64"})
+	Int64Type   = registerType("int64", PrimitiveType{"int64"})
+	Float32Type = registerType("float32", PrimitiveType{"float32"})
+	Int32Type   = registerType("int32", PrimitiveType{"int32"})
+	StringType  = registerType("string", PrimitiveType{"string"})
+	BoolType    = registerType("bool", PrimitiveType{"bool"})
+	VoidType    = registerType("void", PrimitiveType{"void"})
+	AnyType     = registerType("anything", &InterfaceType{Name: "anything"})
 )
 
 var buildInMethods = []struct {
@@ -39,8 +39,14 @@ type Type interface {
 	IsEqual(t Type) bool
 }
 
+type Member struct {
+	Name string
+	Type Type
+}
+
 type TypeWithMembers interface {
 	HasMember(member string) (bool, Type)
+	GetMembers() []Member
 }
 
 type TypeWithMethods interface {
@@ -71,6 +77,16 @@ func (pt PrimitiveType) GetName() string {
 
 func (pt PrimitiveType) HasMember(member string) (bool, Type) {
 	return pt.HasFunction(member)
+}
+
+func (PrimitiveType) GetMembers() (members []Member) {
+	for _, v := range buildInMethods {
+		members = append(members, Member{
+			Name: v.Name,
+			Type: v.Type,
+		})
+	}
+	return
 }
 
 func (PrimitiveType) HasFunction(member string) (bool, Type) {
@@ -284,6 +300,22 @@ func (st *StructType) IsEqual(aType Type) bool {
 	return false
 }
 
+func (st *StructType) GetMembers() (members []Member) {
+	for _, v := range st.Variables {
+		members = append(members, Member{
+			Name: v.Name,
+			Type: v.Type,
+		})
+	}
+	for _, v := range st.Functions {
+		members = append(members, Member{
+			Name: v.Name,
+			Type: v.Type,
+		})
+	}
+	return
+}
+
 func (st *StructType) HasMember(member string) (bool, Type) {
 	if has, t := st.HasProperty(member); has {
 		return has, t
@@ -366,6 +398,16 @@ func (st *InterfaceType) HasMember(member string) (bool, Type) {
 	return st.HasFunction(member)
 }
 
+func (st *InterfaceType) GetMembers() (members []Member) {
+	for _, v := range st.Functions {
+		members = append(members, Member{
+			Name: v.Name,
+			Type: v.Type,
+		})
+	}
+	return
+}
+
 func (st *InterfaceType) HasFunction(member string) (bool, Type) {
 	for _, v := range st.Functions {
 		if v.Name == member {
@@ -395,6 +437,14 @@ func (lt LazyType) HasMember(member string) (bool, Type) {
 	return false, nil
 }
 
+func (lt LazyType) GetMembers() []Member {
+	typ := lt.Resolver()
+	if itype, ok := typ.(TypeWithMembers); ok {
+		return itype.GetMembers()
+	}
+	return nil
+}
+
 func LazyResolve(t Type) Type {
 	if t, ok := t.(*LazyType); ok {
 		return t.Resolver()
@@ -402,7 +452,7 @@ func LazyResolve(t Type) Type {
 	return t
 }
 
-func registerType(typ Type) Type {
-	Types[typ.GetName()] = typ
+func registerType(name string, typ Type) Type {
+	Types[name] = typ
 	return typ
 }

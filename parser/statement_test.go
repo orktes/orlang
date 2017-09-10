@@ -26,7 +26,7 @@ func TestParseVariableDeclaration(t *testing.T) {
 		t.Error("Wrong type")
 	}
 
-	if val.Name.Text != "foo" || val.Type.(*ast.TypeReference).Token.Text != "Bar" {
+	if val.Name.Text != "foo" || val.Type.(*ast.TypeReference).Name.Text != "Bar" {
 		t.Error("Type could not be parsed")
 	}
 
@@ -225,7 +225,7 @@ func TestFuncParse(t *testing.T) {
 		t.Error("Wrong argument name")
 	}
 
-	if val.Signature.Arguments[0].Type.(*ast.TypeReference).Token.Text != "int" {
+	if val.Signature.Arguments[0].Type.(*ast.TypeReference).Name.Text != "int" {
 		t.Error("Wrong argument name")
 	}
 
@@ -233,7 +233,7 @@ func TestFuncParse(t *testing.T) {
 		t.Error("Wrong argument name")
 	}
 
-	if val.Signature.Arguments[1].Type.(*ast.TypeReference).Token.Text != "float" {
+	if val.Signature.Arguments[1].Type.(*ast.TypeReference).Name.Text != "float" {
 		t.Error("Wrong argument name")
 	}
 

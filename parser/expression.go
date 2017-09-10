@@ -45,7 +45,7 @@ func (p *Parser) parseMemberExpression(target ast.Expression) (node *ast.MemberE
 
 	node = &ast.MemberExpression{
 		Target:   target,
-		Property: token,
+		Property: &ast.Identifier{Token: token},
 	}
 
 	return

@@ -68,6 +68,23 @@ func (s *Scope) UnusedScopeItems() (scopeItems []*ScopeItemDetails) {
 	return
 }
 
+func (s *Scope) GetScopeItems(parent bool) (scopeItems map[string]*ScopeItemDetails) {
+	scopeItems = map[string]*ScopeItemDetails{}
+
+	for key, scopeItemInfo := range s.items {
+		scopeItems[key] = scopeItemInfo
+	}
+	if parent && s.parent != nil {
+		parentItems := s.parent.GetScopeItems(true)
+		for key, scopeItemInfo := range parentItems {
+			if _, ok := scopeItems[key]; !ok {
+				scopeItems[key] = scopeItemInfo
+			}
+		}
+	}
+	return
+}
+
 func (s *Scope) GetDefiningScope(indentifier string) *Scope {
 	if _, ok := s.items[indentifier]; ok {
 		return s

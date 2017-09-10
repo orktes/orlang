@@ -94,8 +94,9 @@ func Walk(v Visitor, node Node) {
 		// TODO macro
 	case *MemberExpression:
 		Walk(v, n.Target)
+		Walk(v, n.Property)
 	case *TypeReference:
-		// Nothing to do
+		Walk(v, n.Name)
 	case *UnaryExpression:
 		Walk(v, n.Expression)
 	case *VariableDeclaration:

@@ -1,4 +1,4 @@
-import {Lint, Compile} from './lib/compiler';
+import {Lint, Compile, AutoComplete} from './lib/compiler';
 import React from 'react';
 import { render } from 'react-dom';
 import MonacoEditor from 'react-monaco-editor';
@@ -168,6 +168,52 @@ class App extends React.Component {
     this._lintCode();
   }
 
+  editorWillMount = (monaco) => {
+    monaco.languages.register({ id: 'orlang' });
+    monaco.languages.setLanguageConfiguration('orlang', {
+    	wordPattern: /(-?\d*\.\d\w*)|([^\`\~\!\#\%\^\&\*\(\)\-\=\+\[\{\]\}\\\|\;\:\'\"\,\.\<\>\/\?\s]+)/g,
+    	comments: {
+    		lineComment: '//',
+    		blockComment: ['/*', '*/'],
+    	},
+    	brackets: [
+    		['{', '}'],
+    		['[', ']'],
+    		['(', ')'],
+    	],
+    	autoClosingPairs: [
+    		{ open: '{', close: '}' },
+    		{ open: '[', close: ']' },
+    		{ open: '(', close: ')' },
+    		{ open: '"', close: '"' },
+    		{ open: '\'', close: '\'' },
+    	],
+    	surroundingPairs: [
+    		{ open: '{', close: '}' },
+    		{ open: '[', close: ']' },
+    		{ open: '(', close: ')' },
+    		{ open: '"', close: '"' },
+    		{ open: '\'', close: '\'' },
+    		{ open: '<', close: '>' },
+    	]
+    })
+    monaco.languages.registerCompletionItemProvider('orlang', {
+      provideCompletionItems: (model, position) => {
+        return AutoComplete(this.state.code, {
+          line: position.lineNumber - 1,
+          column: position.column - 1
+        }).then((res)=> {
+          return res.map((item)=> {
+            return {
+              ...item,
+              kind: monaco.languages.CompletionItemKind[item.Kind] || monaco.languages.CompletionItemKind.Function
+            };
+          })
+        })
+      }
+    });
+  }
+
   editorDidMount = (editor, monaco) => {
     this._editor = editor;
     this._monaco = monaco;
@@ -180,9 +226,10 @@ class App extends React.Component {
         <div style={{width: "100%", height: "70%"}}>
           <MonacoEditor
             theme="vs-dark"
-            language="text"
+            language="orlang"
             value={this.state.code}
             editorDidMount={this.editorDidMount}
+            editorWillMount={this.editorWillMount}
             onChange={this.onChange}
             options={{fontSize: 14}}
           />

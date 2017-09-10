@@ -13,6 +13,11 @@ var TokenChannelSize = 10
 
 const eof = rune(0)
 
+type ScannerInterface interface {
+	Scan() (token Token)
+	SetErrorCallback(func(msg string))
+}
+
 // Scanner scans given io.Reader for tokens
 type Scanner struct {
 	r       *bufio.Reader
@@ -48,6 +53,11 @@ func (s *Scanner) ScanChannel() (token <-chan Token) {
 	}(c)
 
 	return c
+}
+
+// SetErrorCallback sets the error callback
+func (s *Scanner) SetErrorCallback(errcb func(string)) {
+	s.Error = errcb
 }
 
 // Scan returns next token

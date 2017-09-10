@@ -1,4 +1,4 @@
-import {Compile, Lint, Tokenize} from 'gopherjs-loader!../compiler.go';
+import {Compile, Lint, Tokenize, AutoComplete} from 'gopherjs-loader!../compiler.go';
 
  self.addEventListener('message', function(event){
    const data = event.data;
@@ -17,6 +17,11 @@ import {Compile, Lint, Tokenize} from 'gopherjs-loader!../compiler.go';
      postMessage({
        id: data.id,
        result: Tokenize(data.code),
+     });
+     case "autocomplete":
+     postMessage({
+       id: data.id,
+       result: AutoComplete(data.code, data.options.line, data.options.column),
      });
    }
  });

@@ -7,9 +7,10 @@ import (
 )
 
 type Analyser struct {
-	main  *ast.File
-	scope *Scope
-	Error func(node ast.Node, msg string, fatal bool)
+	main                     *ast.File
+	scope                    *Scope
+	Error                    func(node ast.Node, msg string, fatal bool)
+	AutoCompleteInfoCallback func([]AutoCompleteInfo)
 }
 
 func New(file *ast.File) (analyser *Analyser, err error) {
@@ -42,10 +43,11 @@ func (analyser *Analyser) Analyse() (info *Info, err error) {
 	info.FileInfo[analyser.main] = fileInfo
 
 	visitor := &visitor{
-		scope: analyser.scope,
-		node:  analyser.main,
-		info:  fileInfo,
-		types: map[string]ast.Node{},
+		scope:          analyser.scope,
+		node:           analyser.main,
+		info:           fileInfo,
+		types:          map[string]ast.Node{},
+		autocompleteCb: analyser.AutoCompleteInfoCallback,
 		errorCb: func(node ast.Node, err string, fatal bool) {
 			if analyser.Error != nil {
 				analyser.Error(node, err, fatal)

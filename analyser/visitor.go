@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strings"
 
 	"github.com/orktes/orlang/ast"
 	"github.com/orktes/orlang/scanner"
@@ -11,16 +12,25 @@ import (
 )
 
 type visitor struct {
-	node    ast.Node
-	scope   *Scope
-	info    *FileInfo
-	parent  *visitor
-	types   map[string]ast.Node
-	errorCb func(node ast.Node, msg string, fatal bool)
+	node           ast.Node
+	scope          *Scope
+	info           *FileInfo
+	parent         *visitor
+	types          map[string]ast.Node
+	errorCb        func(node ast.Node, msg string, fatal bool)
+	autocompleteCb func([]AutoCompleteInfo)
 }
 
 func (v *visitor) subVisitor(node ast.Node, scope *Scope) *visitor {
-	return &visitor{info: v.info, types: v.types, parent: v, node: node, scope: scope, errorCb: v.errorCb}
+	return &visitor{
+		info:           v.info,
+		types:          v.types,
+		parent:         v,
+		node:           node,
+		scope:          scope,
+		errorCb:        v.errorCb,
+		autocompleteCb: v.autocompleteCb,
+	}
 }
 
 func (v *visitor) emitError(node ast.Node, err string, fatal bool) {
@@ -93,7 +103,7 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 	case *ast.ComparisonExpression:
 		return types.BoolType
 	case *ast.TypeReference:
-		return v.getTypeForTypeName(n.Token.Text)
+		return v.getTypeForTypeName(n.Name.Text)
 	case *ast.ValueExpression:
 		switch n.Token.Type {
 		case scanner.TokenTypeNumber:
@@ -400,6 +410,95 @@ func (v *visitor) validateTypeConversion(call *ast.FunctionCall) bool {
 	return true
 }
 
+func (v *visitor) checkAutoComplete(ident *ast.Identifier) {
+	if !strings.Contains(ident.Text, "#") {
+		// Ident doesnt have an autocomplete marker
+		return
+	}
+	prefix := ident.Text[:strings.Index(ident.Text, "#")]
+	keys := []AutoCompleteInfo{}
+
+	switch parent := v.node.(type) {
+	case *ast.MemberExpression:
+		targetType := v.getTypeForNode(parent.Target)
+		if targeType, targeTypeOk := targetType.(types.TypeWithMembers); targeTypeOk {
+			members := targeType.GetMembers()
+			for _, mem := range members {
+				if strings.HasPrefix(mem.Name, prefix) {
+					var kind = "Property"
+					if _, ok := mem.Type.(*types.SignatureType); ok {
+						kind = "Method"
+					}
+
+					keys = append(keys, AutoCompleteInfo{
+						Label: mem.Name,
+						Type:  mem.Type,
+						Kind:  kind,
+					})
+				}
+			}
+		}
+	case *ast.TypeReference:
+		for key, typ := range types.Types {
+			if strings.HasPrefix(key, prefix) {
+				keys = append(keys, AutoCompleteInfo{
+					Label: key,
+					Type:  typ,
+					Kind:  "Reference",
+				})
+			}
+		}
+		for key, typ := range v.types {
+			if strings.HasPrefix(key, prefix) {
+				var kind = "Class"
+				if _, ok := typ.(*ast.Interface); ok {
+					kind = "Interface"
+				}
+				keys = append(keys, AutoCompleteInfo{
+					Label: key,
+					Type:  v.getTypeForNode(typ),
+					Kind:  kind,
+				})
+			}
+		}
+	default:
+		for key, typ := range types.Types {
+			if strings.HasPrefix(key, prefix) {
+				keys = append(keys, AutoCompleteInfo{
+					Label: key,
+					Type:  typ,
+					Kind:  "Reference",
+				})
+			}
+		}
+		for key, typ := range v.types {
+			if strings.HasPrefix(key, prefix) {
+				var kind = "Class"
+				if _, ok := typ.(*ast.Interface); ok {
+					kind = "Interface"
+				}
+				keys = append(keys, AutoCompleteInfo{
+					Label: key,
+					Type:  v.getTypeForNode(typ),
+					Kind:  kind,
+				})
+			}
+		}
+		scopeItems := v.scope.GetScopeItems(true)
+		for key, scopeItem := range scopeItems {
+			if strings.HasPrefix(key, prefix) {
+				keys = append(keys, AutoCompleteInfo{
+					Label: key,
+					Type:  v.getTypeForNode(scopeItem.ScopeItem),
+					Kind:  "Variable",
+				})
+			}
+		}
+	}
+
+	v.autocompleteCb(keys)
+}
+
 func (v *visitor) Visit(node ast.Node) ast.Visitor {
 	nodeInfo := v.getNodeInfo(node)
 	nodeInfo.Scope = v.scope
@@ -415,12 +514,20 @@ typeCheck:
 			break
 		}
 
+		if v.autocompleteCb != nil {
+			v.checkAutoComplete(n)
+		}
+
 		switch n := v.node.(type) {
 		case *ast.TupleDeclaration:
 			// Just continue as normal
 		case *ast.CallArgument:
 			// Identifier is call argument name
 			if n.Name == node {
+				break typeCheck
+			}
+		case *ast.MemberExpression:
+			if n.Property == node {
 				break typeCheck
 			}
 		case *ast.FunctionCall:
@@ -431,7 +538,7 @@ typeCheck:
 					break typeCheck
 				}
 			}
-		case ast.Declaration, *ast.StructExpression, *ast.Struct, *ast.Interface:
+		case ast.Declaration, *ast.StructExpression, *ast.Struct, *ast.Interface, *ast.TypeReference:
 			break typeCheck
 		}
 

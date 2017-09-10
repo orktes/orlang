@@ -35,7 +35,7 @@ func (p *Parser) parseTypeReference() (typ ast.Type, ok bool) {
 		p.error(reservedKeywordError(token))
 	}
 
-	typ = &ast.TypeReference{Token: token}
+	typ = &ast.TypeReference{Name: &ast.Identifier{Token: token}}
 
 	return
 }

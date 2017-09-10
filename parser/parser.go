@@ -9,7 +9,7 @@ import (
 )
 
 type Parser struct {
-	s                *scanner.Scanner
+	s                scanner.ScannerInterface
 	tokenBuffer      []scanner.Token
 	lastTokens       []scanner.Token
 	parserError      string
@@ -27,7 +27,7 @@ type Parser struct {
 }
 
 // NewParser return new Parser for a given scanner
-func NewParser(s *scanner.Scanner) *Parser {
+func NewParser(s scanner.ScannerInterface) *Parser {
 	return &Parser{
 		s:            s,
 		nodeComments: map[ast.Node][]ast.Comment{},
@@ -43,7 +43,7 @@ func Parse(reader io.Reader) (file *ast.File, err error) {
 // Parse source code
 func (p *Parser) Parse() (file *ast.File, err error) {
 	file = &ast.File{}
-	p.s.Error = p.error
+	p.s.SetErrorCallback(p.error)
 
 loop:
 	for {

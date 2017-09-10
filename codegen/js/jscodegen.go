@@ -554,7 +554,7 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 
 		ast.Walk(jscg, n.Target)
 		jscg.write(".")
-		jscg.writeWithPosition(ast.StartPositionFromToken(n.Property), ast.EndPositionFromToken(n.Property), n.Property.Text)
+		jscg.writeWithNodePosition(n.Property, n.Property.Text)
 
 		return nil
 	default:
