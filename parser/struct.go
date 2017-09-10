@@ -90,3 +90,42 @@ func (p *Parser) parseStructExpression(expr ast.Expression) (node *ast.StructExp
 	}
 	return
 }
+
+func (p *Parser) parseInterface() (node *ast.Interface, ok bool) {
+	token := p.read()
+	if token.Type == scanner.TokenTypeIdent && token.Text == keywordInterface {
+		ok = true
+
+		node = &ast.Interface{}
+
+		identifier, _ := p.parseIdentfier()
+		node.Name = identifier
+
+		if leftBrace, leftBraceOk := p.expectToken(scanner.TokenTypeLBRACE); leftBraceOk {
+			node.Start = ast.StartPositionFromToken(leftBrace)
+		} else {
+			p.error(unexpectedToken(leftBrace, scanner.TokenTypeLBRACE))
+			return
+		}
+
+		for {
+			if funcSig, funcSigOk := p.parseFuncSignature(); funcSigOk {
+				node.Functions = append(node.Functions, funcSig)
+			} else {
+				break
+			}
+		}
+
+		if rightBrace, rightBraceOk := p.expectToken(scanner.TokenTypeRBRACE); rightBraceOk {
+			node.End = ast.StartPositionFromToken(rightBrace)
+		} else {
+			p.error(unexpectedToken(rightBrace, scanner.TokenTypeRBRACE))
+			return
+		}
+
+	} else {
+		p.unread()
+	}
+
+	return
+}

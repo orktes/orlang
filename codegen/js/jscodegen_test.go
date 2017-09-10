@@ -103,6 +103,10 @@ func TestSimple(t *testing.T) {
 			}
 		}
 
+		interface Incrementer {
+			fn incrementBar()
+		}
+
     fn getData() => (int32, int32) {
       return createTuple!(1, 2)
     }
@@ -163,6 +167,11 @@ func TestSimple(t *testing.T) {
 			var incrementBar = structVal.incrementBar
 			incrementBar()
 
+			var incrementer : Incrementer = structVal
+			incrementer.incrementBar()
+			incrementBar = incrementer.incrementBar
+			incrementBar()
+
       if true {
         print!(
           "result is:",
@@ -196,7 +205,7 @@ func TestSimple(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res != "result is: 2 and -1 and -25 and 10 and 102 and 0 and 110 and 100 and 5" {
+	if res != "result is: 2 and -1 and -25 and 10 and 102 and 0 and 110 and 100 and 7" {
 		t.Error("Wrong result received", res)
 	}
 }

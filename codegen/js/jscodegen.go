@@ -434,6 +434,38 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 		}
 
 		return nil
+	case *ast.Interface:
+		if n.Name == nil {
+			break
+		}
+
+		name := jscg.getIdentifierForNode(n, n.Name.Text)
+		jscg.types[n.Name.Text] = n
+
+		jscg.writeWithNodePosition(n.Name, fmt.Sprintf("function %s (val) {};", name))
+
+		for _, signature := range n.Functions {
+			var start ast.Position
+			var end ast.Position
+			var funcName string
+			if signature.Identifier != nil {
+				funcName = signature.Identifier.Text
+				start = signature.Identifier.StartPos()
+				end = signature.Identifier.EndPos()
+			} else if signature.Operator != nil {
+				// Here be dragons
+				// TODO decide what to do here. Most likely analyzer should trough an error
+			}
+
+			jscg.writeWithPosition(start, end, fmt.Sprintf(
+				"%s.prototype.%s = function () { return this.%s.apply(this, arguments); };",
+				name,
+				funcName,
+				funcName,
+			))
+		}
+
+		return nil
 	case *ast.StructExpression:
 		if typeNode := jscg.types[n.Identifier.Text]; typeNode != nil {
 			if structTypeNode, ok := typeNode.(*ast.Struct); ok {
@@ -483,31 +515,38 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 	case *ast.MemberExpression:
 		// TODO clean this up
 		targetType := jscg.getNodeInfo(n.Target).Type
-		if structType, structTypeOk := targetType.(*types.StructType); structTypeOk {
+		if structType, structTypeOk := targetType.(types.TypeWithMethods); structTypeOk {
 			// Is property a method
 			if ok, _ := structType.HasFunction(n.Property.Text); ok {
 				// Is it a function call
 				if _, parentIsFunctionCall := nodeInfo.Parent.Node.(*ast.FunctionCall); !parentIsFunctionCall {
 					// Get targetet struct
-					if typeNode := jscg.types[structType.Name]; typeNode != nil {
-						if structTypeNode, ok := typeNode.(*ast.Struct); ok {
-							name := jscg.getIdentifierForNode(structTypeNode, structTypeNode.Name.Text)
 
-							jscg.writeWithPosition(
-								node.StartPos(),
-								node.StartPos(),
-								fmt.Sprintf(
-									"%s.prototype.%s.bind(",
-									name,
-									n.Property.Text,
-								),
-							)
+					name := ""
+					switch typ := structType.(type) {
+					case *types.StructType:
+						name = typ.Name
+					case *types.InterfaceType:
+						name = typ.Name
+					}
 
-							ast.Walk(jscg, n.Target)
-							jscg.write(")")
+					if typeNode := jscg.types[name]; typeNode != nil {
+						name := jscg.getIdentifierForNode(typeNode, name)
+						jscg.writeWithPosition(
+							node.StartPos(),
+							node.StartPos(),
+							fmt.Sprintf(
+								"%s.prototype.%s.bind(",
+								name,
+								n.Property.Text,
+							),
+						)
 
-							return nil
-						}
+						ast.Walk(jscg, n.Target)
+						jscg.write(")")
+
+						return nil
+
 					}
 				}
 			}

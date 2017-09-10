@@ -241,10 +241,30 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 		}
 
 		return typ
+	case *ast.Interface:
+		typ := &types.InterfaceType{}
+		if n.Name != nil {
+			typ.Name = n.Name.Text
+		}
+
+		for _, signature := range n.Functions {
+			var name string
+			if signature.Identifier != nil {
+				name = signature.Identifier.Text
+			} else if signature.Operator != nil {
+				name = signature.Operator.Text
+			}
+			typ.Functions = append(typ.Functions, struct {
+				Name string
+				Type *types.SignatureType
+			}{name, v.getTypeForNode(signature).(*types.SignatureType)})
+		}
+
+		return typ
 	case *ast.MemberExpression:
 		targetType := v.getTypeForNode(n.Target)
-		if indexedType, ok := targetType.(types.IndexedType); ok {
-			if ok, typ := indexedType.HasMember(n.Property.Text); ok {
+		if typeWithMembersType, ok := targetType.(types.TypeWithMembers); ok {
+			if ok, typ := typeWithMembersType.HasMember(n.Property.Text); ok {
 				return typ
 			}
 		}
@@ -411,7 +431,7 @@ typeCheck:
 					break typeCheck
 				}
 			}
-		case ast.Declaration, *ast.StructExpression, *ast.Struct:
+		case ast.Declaration, *ast.StructExpression, *ast.Struct, *ast.Interface:
 			break typeCheck
 		}
 
@@ -836,14 +856,23 @@ typeCheck:
 		}
 	case *ast.Struct:
 		nodeInfo.Type = v.getTypeForNode(node)
+		// TODO check that it is not redeclared
+		// TODO check that no property or function is double declared
+		if n.Name != nil {
+			v.types[n.Name.Text] = n
+		}
+	case *ast.Interface:
+		// TODO check that it is not redeclared
+		// TODO check that no property or function is double declared
+		nodeInfo.Type = v.getTypeForNode(node)
 		if n.Name != nil {
 			v.types[n.Name.Text] = n
 		}
 	case *ast.MemberExpression:
 		nodeInfo.Type = v.getTypeForNode(node)
 		targetType := v.getTypeForNode(n.Target)
-		if indexedType, ok := targetType.(types.IndexedType); ok {
-			if ok, _ := indexedType.HasMember(n.Property.Text); ok {
+		if typeWithMembersType, ok := targetType.(types.TypeWithMembers); ok {
+			if ok, _ := typeWithMembersType.HasMember(n.Property.Text); ok {
 				break
 			}
 		}

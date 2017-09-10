@@ -58,6 +58,7 @@ loop:
 		case check(p.parseFuncDecl()):
 		case check(p.parseVarDecl()):
 		case check(p.parseStruct()):
+		case check(p.parseInterface()):
 		case check(p.parseImportDecl()):
 		case check(p.parseExportDecl()):
 		case p.eof():

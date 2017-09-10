@@ -148,6 +148,11 @@ func Walk(v Visitor, node Node) {
 		for _, nb := range n.Arguments {
 			Walk(v, nb)
 		}
+	case *Interface:
+		Walk(v, n.Name)
+		for _, fn := range n.Functions {
+			Walk(v, fn)
+		}
 	default:
 		panic(fmt.Errorf("Unknown node type: %s", reflect.TypeOf(n)))
 	}

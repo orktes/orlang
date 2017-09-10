@@ -107,6 +107,28 @@ func TestParseStruct(t *testing.T) {
 	}
 }
 
+func TestParseInterface(t *testing.T) {
+	file, err := Parse(strings.NewReader(`
+		interface Foobar {
+			fn hello()
+			fn foobar()
+		}
+	`))
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	val, ok := file.Body[0].(*ast.Interface)
+	if !ok {
+		t.Error("Wrong type")
+	}
+
+	if len(val.Functions) != 2 {
+		t.Error("Wrong number of functions")
+	}
+}
+
 func TestParseIfElseIfCondition(t *testing.T) {
 	_, err := Parse(strings.NewReader(`
 		fn foobar() {

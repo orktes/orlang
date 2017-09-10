@@ -16,6 +16,7 @@ var (
 	StringType  = registerType(PrimitiveType{"string"})
 	BoolType    = registerType(PrimitiveType{"bool"})
 	VoidType    = registerType(PrimitiveType{"void"})
+	AnyType     = registerType(&InterfaceType{Name: "anything"})
 )
 
 type Type interface {
@@ -23,8 +24,12 @@ type Type interface {
 	IsEqual(t Type) bool
 }
 
-type IndexedType interface {
+type TypeWithMembers interface {
 	HasMember(member string) (bool, Type)
+}
+
+type TypeWithMethods interface {
+	HasFunction(member string) (bool, Type)
 }
 
 type EntendedType interface {
@@ -281,6 +286,83 @@ func (st *StructType) HasFunction(member string) (bool, Type) {
 	return false, nil
 }
 
+type InterfaceType struct {
+	Name      string
+	Functions []struct {
+		Name string
+		Type *SignatureType
+	}
+}
+
+func (st *InterfaceType) GetName() string {
+	var name = "interace"
+	if st.Name != "" {
+		name = name + " " + st.Name
+	}
+
+	names := []string{}
+
+	for _, v := range st.Functions {
+		names = append(names, v.Name+": "+v.Type.GetName())
+	}
+
+	return fmt.Sprintf("%s { %s }", name, strings.Join(names, ", "))
+}
+
+func (st *InterfaceType) IsEqual(aType Type) bool {
+	aType = LazyResolve(aType)
+
+	if st == aType {
+		return true
+	}
+
+	if len(st.Functions) == 0 {
+		// Empty interface will match anything
+		return true
+	}
+
+	if structType, ok := aType.(*StructType); ok {
+		if len(st.Functions) > len(structType.Functions) {
+			return false
+		}
+
+		for _, v := range st.Functions {
+			if ok, typ := structType.HasFunction(v.Name); !ok || !v.Type.IsEqual(typ) {
+				return false
+			}
+		}
+
+		return true
+	} else if interfaceType, ok := aType.(*InterfaceType); ok {
+		if len(st.Functions) > len(interfaceType.Functions) {
+			return false
+		}
+
+		for _, v := range st.Functions {
+			if ok, typ := interfaceType.HasFunction(v.Name); !ok || !v.Type.IsEqual(typ) {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	return false
+}
+
+func (st *InterfaceType) HasMember(member string) (bool, Type) {
+	return st.HasFunction(member)
+}
+
+func (st *InterfaceType) HasFunction(member string) (bool, Type) {
+	for _, v := range st.Functions {
+		if v.Name == member {
+			return true, v.Type
+		}
+	}
+	return false, nil
+}
+
 type LazyType struct {
 	Resolver func() Type
 }
@@ -295,7 +377,7 @@ func (lt LazyType) IsEqual(t Type) bool {
 
 func (lt LazyType) HasMember(member string) (bool, Type) {
 	typ := lt.Resolver()
-	if itype, ok := typ.(IndexedType); ok {
+	if itype, ok := typ.(TypeWithMembers); ok {
 		return itype.HasMember(member)
 	}
 	return false, nil

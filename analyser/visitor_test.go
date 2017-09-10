@@ -459,6 +459,51 @@ func TestVisitorErrors(t *testing.T) {
 				foobar{i:1, o: 0}
 			}
 		`, ""},
+		{`
+			struct foobar {
+				fn foo() => string {
+					return "foo"
+				}
+			}
+
+			interface Fooer {
+				fn foo() => string
+			}
+
+			fn main() {
+				var foo : Fooer = foobar{}
+				foo.foo()
+			}
+		`, ""},
+		{`
+			struct foobar {
+				fn foo() => string {
+					return "foo"
+				}
+				fn bar() => string {
+					return "bar"
+				}
+			}
+
+			interface Fooer {
+				fn foo() => string
+			}
+
+			interface FooerAndSomethingElse {
+				fn foo() => string
+				fn bar() => string
+			}
+
+			fn main() {
+				var foo : Fooer = foobar{}
+				foo.foo()
+
+				var bar : FooerAndSomethingElse = foobar{}
+				bar.bar()
+
+				bar = foo
+			}
+		`, "27:11 cannot use foo (type interace Fooer { foo: () -> string }) as type interace FooerAndSomethingElse { foo: () -> string, bar: () -> string } in assigment expression"},
 	}
 
 	for _, test := range tests {
