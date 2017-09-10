@@ -487,10 +487,15 @@ func (v *visitor) checkAutoComplete(ident *ast.Identifier) {
 		scopeItems := v.scope.GetScopeItems(true)
 		for key, scopeItem := range scopeItems {
 			if strings.HasPrefix(key, prefix) {
+				typ := v.getTypeForNode(scopeItem.ScopeItem)
+				kind := "Reference"
+				if _, ok := typ.(types.TypeWithMembers); ok {
+					kind = "Class"
+				}
 				keys = append(keys, AutoCompleteInfo{
 					Label: key,
-					Type:  v.getTypeForNode(scopeItem.ScopeItem),
-					Kind:  "Variable",
+					Type:  typ,
+					Kind:  kind,
 				})
 			}
 		}

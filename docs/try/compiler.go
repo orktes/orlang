@@ -95,7 +95,7 @@ func main() {
 				"insertText":    insertText,
 				"kind":          item.Kind,
 				"documentation": item.Type.GetName(),
-				"details":       item.Type.GetName(),
+				"detail":        item.Type.GetName(),
 				"type":          fmt.Sprintf("%T", item.Type),
 			})
 		}
