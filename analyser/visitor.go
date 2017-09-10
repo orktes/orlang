@@ -467,6 +467,18 @@ func (v *visitor) checkAutoComplete(ident *ast.Identifier) {
 			})
 		}
 
+		v.scope.Traverse(true, func(key string, scopeItem *ScopeItemDetails) {
+			if strings.HasPrefix(key, prefix) {
+				typ := v.getTypeForNode(scopeItem.ScopeItem)
+				kind := "Variable"
+				keys = append(keys, AutoCompleteInfo{
+					Label: key,
+					Type:  typ,
+					Kind:  kind,
+				})
+			}
+		})
+
 		for key, typ := range types.Types {
 			if strings.HasPrefix(key, prefix) {
 				keys = append(keys, AutoCompleteInfo{
@@ -482,18 +494,6 @@ func (v *visitor) checkAutoComplete(ident *ast.Identifier) {
 					Label: key,
 					Type:  v.getTypeForNode(typ),
 					Kind:  "Class",
-				})
-			}
-		}
-		scopeItems := v.scope.GetScopeItems(true)
-		for key, scopeItem := range scopeItems {
-			if strings.HasPrefix(key, prefix) {
-				typ := v.getTypeForNode(scopeItem.ScopeItem)
-				kind := "Variable"
-				keys = append(keys, AutoCompleteInfo{
-					Label: key,
-					Type:  typ,
-					Kind:  kind,
 				})
 			}
 		}

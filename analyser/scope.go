@@ -85,6 +85,24 @@ func (s *Scope) GetScopeItems(parent bool) (scopeItems map[string]*ScopeItemDeta
 	return
 }
 
+func (s *Scope) traverseScope(parent bool, foundItems map[string]*ScopeItemDetails, visitor func(key string, info *ScopeItemDetails)) {
+	if foundItems == nil {
+		foundItems = map[string]*ScopeItemDetails{}
+	}
+
+	for key, scopeItemInfo := range s.items {
+		foundItems[key] = scopeItemInfo
+		visitor(key, scopeItemInfo)
+	}
+	if parent && s.parent != nil {
+		s.parent.traverseScope(parent, foundItems, visitor)
+	}
+}
+
+func (s *Scope) Traverse(parent bool, visitor func(key string, info *ScopeItemDetails)) {
+	s.traverseScope(parent, nil, visitor)
+}
+
 func (s *Scope) GetDefiningScope(indentifier string) *Scope {
 	if _, ok := s.items[indentifier]; ok {
 		return s
