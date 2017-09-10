@@ -191,7 +191,7 @@ func TestSimple(t *testing.T) {
 					"and",
 					foobarValue,
 					"and",
-					structVal.bar
+					structVal.bar.toString()
         )
       } else if false {
         print("Will not ever be here")

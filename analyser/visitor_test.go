@@ -504,6 +504,17 @@ func TestVisitorErrors(t *testing.T) {
 				bar = foo
 			}
 		`, "27:11 cannot use foo (type interace Fooer { foo: () -> string }) as type interace FooerAndSomethingElse { foo: () -> string, bar: () -> string } in assigment expression"},
+		{`
+			interface Stringer {
+				fn toString() => string
+			}
+
+			fn main() {
+				var stringer : Stringer = 1
+				var str : string = stringer.toString()
+				str.toString()
+			}
+		`, ""},
 	}
 
 	for _, test := range tests {

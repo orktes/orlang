@@ -19,6 +19,21 @@ var (
 	AnyType     = registerType(&InterfaceType{Name: "anything"})
 )
 
+var buildInMethods = []struct {
+	Name string
+	Type *SignatureType
+}{
+	{
+		Name: "toString",
+		Type: &SignatureType{
+			ArgumentNames: []string{},
+			ArgumentTypes: []Type{},
+			ReturnType:    StringType,
+			Extern:        true,
+		},
+	},
+}
+
 type Type interface {
 	GetName() string
 	IsEqual(t Type) bool
@@ -52,6 +67,19 @@ type PrimitiveType struct {
 
 func (pt PrimitiveType) GetName() string {
 	return string(pt.Type)
+}
+
+func (pt PrimitiveType) HasMember(member string) (bool, Type) {
+	return pt.HasFunction(member)
+}
+
+func (PrimitiveType) HasFunction(member string) (bool, Type) {
+	for _, v := range buildInMethods {
+		if v.Name == member {
+			return true, v.Type
+		}
+	}
+	return false, nil
 }
 
 func (pt PrimitiveType) IsEqual(t Type) bool {
@@ -321,25 +349,9 @@ func (st *InterfaceType) IsEqual(aType Type) bool {
 		return true
 	}
 
-	if structType, ok := aType.(*StructType); ok {
-		if len(st.Functions) > len(structType.Functions) {
-			return false
-		}
-
+	if typWithMethods, ok := aType.(TypeWithMethods); ok {
 		for _, v := range st.Functions {
-			if ok, typ := structType.HasFunction(v.Name); !ok || !v.Type.IsEqual(typ) {
-				return false
-			}
-		}
-
-		return true
-	} else if interfaceType, ok := aType.(*InterfaceType); ok {
-		if len(st.Functions) > len(interfaceType.Functions) {
-			return false
-		}
-
-		for _, v := range st.Functions {
-			if ok, typ := interfaceType.HasFunction(v.Name); !ok || !v.Type.IsEqual(typ) {
+			if ok, typ := typWithMethods.HasFunction(v.Name); !ok || !v.Type.IsEqual(typ) {
 				return false
 			}
 		}
