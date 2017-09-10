@@ -203,7 +203,6 @@ class App extends React.Component {
           line: position.lineNumber - 1,
           column: position.column - 1
         }).then((res)=> {
-          console.log(res);
           return res.map((item)=> {
             return {
               ...item,
