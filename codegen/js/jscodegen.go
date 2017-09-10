@@ -481,6 +481,7 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 
 		return nil
 	case *ast.MemberExpression:
+		// TODO clean this up
 		targetType := jscg.getNodeInfo(n.Target).Type
 		if structType, structTypeOk := targetType.(*types.StructType); structTypeOk {
 			// Is property a method
