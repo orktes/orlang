@@ -1,10 +1,11 @@
 - variable zero values
+- autocomplete
+- type assertion
 - interfaces containing other interfaces
 - make macros hygienic
 - make variadic arguments work (required for INLINE_JS and other compiler instructions)
 - pass by value (pointers?)?
 - import and export statements
-- type assertion. related to ^
 - JSCodegen numbertypes?
 - Proper extern support
 - LLVM codegen
