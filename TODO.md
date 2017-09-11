@@ -1,11 +1,11 @@
 - warn about uninitialized variables
+- pass by value (pointers?)?
 - variable zero values
 - autocomplete
 - type assertion
 - interfaces containing other interfaces
 - make macros hygienic
 - make variadic arguments work (required for INLINE_JS and other compiler instructions)
-- pass by value (pointers?)?
 - import and export statements
 - JSCodegen numbertypes?
 - Proper extern support
