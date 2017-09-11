@@ -1,7 +1,7 @@
 - warn about uninitialized variables
 - pass by value (pointers?)?
 - variable zero values
-- autocomplete
+- templated string literals
 - type assertion
 - interfaces containing other interfaces
 - make macros hygienic
