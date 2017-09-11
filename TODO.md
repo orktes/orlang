@@ -1,15 +1,17 @@
 - warn about uninitialized variables
 - pass by value (pointers?)?
 - variable zero values
+- interfaces containing other interfaces
 - templated string literals
 - type assertion
-- interfaces containing other interfaces
+- closures and escape analysis
+- ARC
+- Make JSCodegen fake "heap" allocation to an global object to better test closures, arc and stack escape.
 - make macros hygienic
 - make variadic arguments work (required for INLINE_JS and other compiler instructions)
 - import and export statements
 - JSCodegen numbertypes?
 - Proper extern support
 - LLVM codegen
-- ARC
 - IR?
 - VM?
