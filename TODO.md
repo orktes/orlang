@@ -5,6 +5,7 @@
 - templated string literals
 - type assertion
 - closures and escape analysis
+- implicit returns
 - ARC
 - Make JSCodegen fake "heap" allocation to an global object to better test closures, arc and stack escape.
 - make macros hygienic
