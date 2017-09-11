@@ -411,11 +411,19 @@ func (v *visitor) validateTypeConversion(call *ast.FunctionCall) bool {
 }
 
 func (v *visitor) checkAutoComplete(ident *ast.Identifier) {
-	if !strings.Contains(ident.Text, "#") {
+
+	if ident.Value == nil {
 		// Ident doesnt have an autocomplete marker
 		return
 	}
-	prefix := ident.Text[:strings.Index(ident.Text, "#")]
+
+	value, valueOk := ident.Value.(string)
+	if !valueOk || !strings.Contains(value, "#") {
+		// Ident doesnt have an autocomplete marker
+		return
+	}
+
+	prefix := value[:strings.Index(value, "#")]
 	keys := []AutoCompleteInfo{}
 
 	switch parent := v.node.(type) {

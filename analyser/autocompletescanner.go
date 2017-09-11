@@ -32,12 +32,12 @@ func (acs *autoCompleteScanner) Scan() (tok scanner.Token) {
 			((pos.Line == tok.EndLine && tok.EndColumn >= pos.Column) || pos.Line < tok.EndLine) {
 			if tok.Type == scanner.TokenTypeIdent {
 				offset := pos.Column - tok.StartColumn
-				tok.Text = tok.Text[0:offset] + "#" + tok.Text[offset:]
+				tok.Value = tok.Text[0:offset] + "#" + tok.Text[offset:]
 			} else if tok.Type != scanner.TokenTypeWhitespace {
 				// Likely a member expression so lets add it after the next token
 				acs.nextToken = &scanner.Token{
 					Text:        "#",
-					Value:       nil,
+					Value:       "#",
 					Type:        scanner.TokenTypeIdent,
 					StartColumn: pos.Column,
 					EndColumn:   pos.Column + 1,
@@ -48,7 +48,7 @@ func (acs *autoCompleteScanner) Scan() (tok scanner.Token) {
 				acs.nextToken = &tok
 				tok = scanner.Token{
 					Text:        "#",
-					Value:       nil,
+					Value:       "#",
 					Type:        scanner.TokenTypeIdent,
 					StartColumn: pos.Column,
 					EndColumn:   pos.Column + 1,
