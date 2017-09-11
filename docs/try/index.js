@@ -198,6 +198,7 @@ class App extends React.Component {
     	]
     })
     monaco.languages.registerCompletionItemProvider('orlang', {
+      triggerCharacters: ['.'],
       provideCompletionItems: (model, position) => {
         return AutoComplete(this.state.code, {
           line: position.lineNumber - 1,
