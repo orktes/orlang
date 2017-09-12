@@ -1,5 +1,7 @@
 - warn about uninitialized variables
 - pass by value (pointers?)?
+- map type
+- JSCodegen map support
 - variable zero values
 - interfaces containing other interfaces
 - templated string literals
