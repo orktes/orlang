@@ -9,10 +9,16 @@ import (
 var Types map[string]Type = map[string]Type{}
 
 var (
-	Float64Type = registerType("float64", PrimitiveType{"float64"})
 	Int64Type   = registerType("int64", PrimitiveType{"int64"})
-	Float32Type = registerType("float32", PrimitiveType{"float32"})
 	Int32Type   = registerType("int32", PrimitiveType{"int32"})
+	Int16Type   = registerType("int16", PrimitiveType{"int16"})
+	Int8Type    = registerType("int8", PrimitiveType{"int8"})
+	UInt64Type  = registerType("uint64", PrimitiveType{"uint64"})
+	UInt32Type  = registerType("uint32", PrimitiveType{"uint32"})
+	UInt16Type  = registerType("uint16", PrimitiveType{"uint16"})
+	UInt8Type   = registerType("uint8", PrimitiveType{"uint8"})
+	Float64Type = registerType("float64", PrimitiveType{"float64"})
+	Float32Type = registerType("float32", PrimitiveType{"float32"})
 	StringType  = registerType("string", PrimitiveType{"string"})
 	BoolType    = registerType("bool", PrimitiveType{"bool"})
 	VoidType    = registerType("void", PrimitiveType{"void"})
