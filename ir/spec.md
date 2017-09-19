@@ -68,7 +68,7 @@ label0:
   var %temp3 : ptr<Foo>
   %temp3 = alloc Foo
 
-  store %temp3, %temp1
+  store %temp3, %temp2
   store %temp3, %y, 1
 
   return %temp3
