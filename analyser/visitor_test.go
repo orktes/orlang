@@ -66,6 +66,10 @@ func TestVisitor(t *testing.T) {
 			var funcType : (int32) => void
 			funcType(1)
 
+			funcType = fn (a:int32) => void {
+				strVal = a.toString()
+			}
+
 			return
 		}
   `))
@@ -77,7 +81,6 @@ func TestVisitor(t *testing.T) {
 		scope: NewScope(file),
 		node:  file,
 		info:  NewFileInfo(),
-		types: map[string]ast.Node{},
 		errorCb: func(node ast.Node, msg string, fatal bool) {
 			if !fatal {
 				return
@@ -527,7 +530,6 @@ func TestVisitorErrors(t *testing.T) {
 		visitor := &visitor{
 			scope: NewScope(file),
 			node:  file,
-			types: map[string]ast.Node{},
 			info:  NewFileInfo(),
 			errorCb: func(node ast.Node, msg string, _ bool) {
 				if errStr != "" {

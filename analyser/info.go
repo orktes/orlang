@@ -14,15 +14,20 @@ type NodeInfo struct {
 	Scope               *Scope
 	TypeCast            bool
 	OverloadedOperation *ast.FunctionDeclaration
+	Closures            []*Closure
 }
 
 type FileInfo struct {
 	NodeInfo map[ast.Node]*NodeInfo
+	Types    map[string]ast.Node
+	Closures []*Closure
 }
 
 func NewFileInfo() *FileInfo {
 	return &FileInfo{
 		NodeInfo: map[ast.Node]*NodeInfo{},
+		Types:    map[string]ast.Node{},
+		Closures: []*Closure{},
 	}
 }
 

@@ -16,7 +16,6 @@ type visitor struct {
 	scope          *Scope
 	info           *FileInfo
 	parent         *visitor
-	types          map[string]ast.Node
 	errorCb        func(node ast.Node, msg string, fatal bool)
 	autocompleteCb func([]AutoCompleteInfo)
 }
@@ -24,7 +23,6 @@ type visitor struct {
 func (v *visitor) subVisitor(node ast.Node, scope *Scope) *visitor {
 	return &visitor{
 		info:           v.info,
-		types:          v.types,
 		parent:         v,
 		node:           node,
 		scope:          scope,
@@ -60,12 +58,12 @@ func (v *visitor) getTypeForTypeName(typName string) types.Type {
 		return typ
 	}
 
-	if typNode := v.types[typName]; typNode != nil {
+	if typNode := v.info.Types[typName]; typNode != nil {
 		return v.getTypeForNode(typNode)
 	}
 
 	return &types.LazyType{Resolver: func() types.Type {
-		if typNode := v.types[typName]; typNode != nil {
+		if typNode := v.info.Types[typName]; typNode != nil {
 			return v.getTypeForNode(typNode)
 		}
 
@@ -151,7 +149,7 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 				for i, fun := range structType.Functions {
 					if fun.Name == n.Operator.Text {
 						if fun.Type.ArgumentTypes[0].IsEqual(leftType) && fun.Type.ArgumentTypes[1].IsEqual(rightType) {
-							operatorOverload = v.types[structType.Name].(*ast.Struct).Functions[i]
+							operatorOverload = v.info.Types[structType.Name].(*ast.Struct).Functions[i]
 							break leftRight
 						}
 					}
@@ -456,7 +454,7 @@ func (v *visitor) checkAutoComplete(ident *ast.Identifier) {
 				})
 			}
 		}
-		for key, typ := range v.types {
+		for key, typ := range v.info.Types {
 			if strings.HasPrefix(key, prefix) {
 				keys = append(keys, AutoCompleteInfo{
 					Label: key,
@@ -496,7 +494,7 @@ func (v *visitor) checkAutoComplete(ident *ast.Identifier) {
 				})
 			}
 		}
-		for key, typ := range v.types {
+		for key, typ := range v.info.Types {
 			if strings.HasPrefix(key, prefix) {
 				keys = append(keys, AutoCompleteInfo{
 					Label: key,
@@ -774,7 +772,7 @@ typeCheck:
 				for i, fun := range structType.Functions {
 					if fun.Name == n.Operator.Text {
 						if fun.Type.ArgumentTypes[0].IsEqual(aType) && fun.Type.ArgumentTypes[1].IsEqual(bType) {
-							operatorOverload = v.types[structType.Name].(*ast.Struct).Functions[i]
+							operatorOverload = v.info.Types[structType.Name].(*ast.Struct).Functions[i]
 							break leftRight
 						}
 					}
@@ -865,6 +863,7 @@ typeCheck:
 			}
 
 			v.scope.Set(n.Signature.Identifier, n)
+
 		} else if n.Signature.Operator != nil {
 			argCount := len(n.Signature.Arguments)
 			if argCount != 2 {
@@ -977,14 +976,14 @@ typeCheck:
 		// TODO check that it is not redeclared
 		// TODO check that no property or function is double declared
 		if n.Name != nil {
-			v.types[n.Name.Text] = n
+			v.info.Types[n.Name.Text] = n
 		}
 	case *ast.Interface:
 		// TODO check that it is not redeclared
 		// TODO check that no property or function is double declared
 		nodeInfo.Type = v.getTypeForNode(node)
 		if n.Name != nil {
-			v.types[n.Name.Text] = n
+			v.info.Types[n.Name.Text] = n
 		}
 	case *ast.MemberExpression:
 		nodeInfo.Type = v.getTypeForNode(node)
@@ -1006,6 +1005,13 @@ typeCheck:
 	return v.subVisitor(node, v.scope)
 }
 
+func (v *visitor) isRootLevel() (ok bool) {
+	if v.parent != nil {
+		_, ok = v.parent.node.(*ast.File)
+	}
+	return
+}
+
 func (v *visitor) isMainFuncion(info ScopeItem) bool {
 	if _, ok := v.node.(*ast.File); ok {
 		if funcDecl, ok := info.(*ast.FunctionDeclaration); ok {
@@ -1017,19 +1023,46 @@ func (v *visitor) isMainFuncion(info ScopeItem) bool {
 	return false
 }
 
+func (v *visitor) processUnusedVariables() {
+	unusedScopeItems := v.scope.UnusedScopeItems()
+	for _, scopeItemInfo := range unusedScopeItems {
+		if v.isMainFuncion(scopeItemInfo.ScopeItem) {
+			break
+		}
+
+		v.emitError(scopeItemInfo.DefineIdentifier,
+			fmt.Sprintf("%s declared but not used", scopeItemInfo.DefineIdentifier.Text),
+			false)
+
+	}
+}
+
 func (v *visitor) Leave(node ast.Node) {
 	switch node.(type) {
-	case *ast.Block, *ast.File:
-		unusedScopeItems := v.scope.UnusedScopeItems()
-		for _, scopeItemInfo := range unusedScopeItems {
-			if v.isMainFuncion(scopeItemInfo.ScopeItem) {
-				break
+	case *ast.Block:
+		if !v.isRootLevel() {
+			if n, ok := v.node.(*ast.FunctionDeclaration); ok {
+				closure := &Closure{
+					FunctionDeclaration: n,
+				}
+
+				for scopeItem, refs := range v.scope.GetReferencedItems() {
+					ref := refs[0]
+					definingScope := v.scope.GetDefiningScope(ref.Text)
+					if _, ok := definingScope.node.(*ast.File); !ok {
+						// Not defined in root scope so reference needed
+						closure.Env = append(closure.Env, scopeItem)
+					}
+
+					nodeInfo := v.getNodeInfo(scopeItem)
+					nodeInfo.Closures = append([]*Closure{closure}, nodeInfo.Closures...)
+				}
+
+				v.info.Closures = append([]*Closure{closure}, v.info.Closures...)
 			}
-
-			v.emitError(scopeItemInfo.DefineIdentifier,
-				fmt.Sprintf("%s declared but not used", scopeItemInfo.DefineIdentifier.Text),
-				false)
-
 		}
+		v.processUnusedVariables()
+	case *ast.File:
+		v.processUnusedVariables()
 	}
 }

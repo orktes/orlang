@@ -46,7 +46,6 @@ func (analyser *Analyser) Analyse() (info *Info, err error) {
 		scope:          analyser.scope,
 		node:           analyser.main,
 		info:           fileInfo,
-		types:          map[string]ast.Node{},
 		autocompleteCb: analyser.AutoCompleteInfoCallback,
 		errorCb: func(node ast.Node, err string, fatal bool) {
 			if analyser.Error != nil {

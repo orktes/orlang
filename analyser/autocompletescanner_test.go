@@ -109,7 +109,6 @@ func TestAutoComplete(t *testing.T) {
 		visitor := &visitor{
 			scope: NewScope(file),
 			node:  file,
-			types: map[string]ast.Node{},
 			info:  NewFileInfo(),
 			autocompleteCb: func(res []AutoCompleteInfo) {
 				result = res

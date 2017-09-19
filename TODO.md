@@ -1,6 +1,9 @@
 - warn about uninitialized variables
+- tuple member access expressions
+- tuple extract in assignments
 - pass by value (pointers?)?
 - map type
+- IR?
 - JSCodegen map support
 - variable zero values
 - interfaces containing other interfaces
@@ -16,5 +19,4 @@
 - JSCodegen numbertypes?
 - Proper extern support
 - LLVM codegen
-- IR?
 - VM?

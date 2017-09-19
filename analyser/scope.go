@@ -27,7 +27,9 @@ type Scope struct {
 	items             map[string]*ScopeItemDetails
 	operatorOverloads []OperatorOverload
 	usage             map[ScopeItem][]*ast.Identifier
+	references        map[ScopeItem][]*ast.Identifier
 	node              ast.Node
+	subScopes         []*Scope
 }
 
 func NewScope(node ast.Node) *Scope {
@@ -35,6 +37,7 @@ func NewScope(node ast.Node) *Scope {
 		node:              node,
 		items:             map[string]*ScopeItemDetails{},
 		usage:             map[ScopeItem][]*ast.Identifier{},
+		references:        map[ScopeItem][]*ast.Identifier{},
 		operatorOverloads: []OperatorOverload{},
 	}
 }
@@ -42,6 +45,7 @@ func NewScope(node ast.Node) *Scope {
 func (s *Scope) SubScope(node ast.Node) *Scope {
 	scope := NewScope(node)
 	scope.parent = s
+	s.subScopes = append(s.subScopes, scope)
 	return scope
 }
 
@@ -51,11 +55,35 @@ func (s *Scope) MarkUsage(si ScopeItem, ident *ast.Identifier) {
 		return
 	}
 
+	if s != scope {
+		// Not defined in this scope
+		references := s.references[si]
+		references = append(references, ident)
+		s.references[si] = references
+	}
+
 	if scope.items[ident.Text].DefineIdentifier != ident {
 		usages := scope.usage[si]
 		usages = append(usages, ident)
 		scope.usage[si] = usages
 	}
+}
+
+func (s *Scope) GetReferencedItems() (items map[ScopeItem][]*ast.Identifier) {
+	items = map[ScopeItem][]*ast.Identifier{}
+
+	for item, refs := range s.references {
+		items[item] = append(items[item], refs...)
+	}
+
+	for _, subScope := range s.subScopes {
+		references := subScope.GetReferencedItems()
+		for item, refs := range references {
+			items[item] = append(items[item], refs...)
+		}
+	}
+
+	return
 }
 
 func (s *Scope) UnusedScopeItems() (scopeItems []*ScopeItemDetails) {
