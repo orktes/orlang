@@ -10,7 +10,7 @@
 - Tuples as structs
 
 # types
-- structs with no props {int64,float64}
+- structs with no prop names {int64,float64}. Referred by index
 - int32, int64, int16, int8, uint32, uint64, uint16, uint8,
 - float32, float64
 - bool
