@@ -1,10 +1,7 @@
-package parser
+package ir
 
 import (
-	"io"
-
 	"github.com/orktes/orlang/ast"
-
 	"github.com/orktes/orlang/scanner"
 )
 
@@ -18,98 +15,23 @@ type Parser struct {
 	ContinueOnErrors bool
 	snapshots        [][]scanner.Token
 	readTokens       int
-	// comments attaching
-	nodeComments          map[ast.Node][]ast.Comment
-	comments              []ast.Comment
-	commentAfterNodeCheck ast.Node
-	// macros
-	macros map[string]*ast.Macro
 }
 
-// NewParser return new Parser for a given scanner
-func NewParser(s scanner.ScannerInterface) *Parser {
-	return &Parser{
-		s:            s,
-		nodeComments: map[ast.Node][]ast.Comment{},
-		macros:       map[string]*ast.Macro{},
-	}
-}
-
-// Parse source code from io.Reader
-func Parse(reader io.Reader) (file *ast.File, err error) {
-	return NewParser(scanner.NewScanner(reader)).Parse()
-}
-
-// Parse source code
-func (p *Parser) Parse() (file *ast.File, err error) {
-	file = &ast.File{}
-	p.s.SetErrorCallback(p.error)
-
-loop:
-	for {
-		var node ast.Node
-		var check = func(n ast.Node, ok bool) bool {
-			if ok {
-				node = n
-			}
-			return ok
-		}
-		switch {
-		case check(p.parseFuncDecl()):
-		case check(p.parseVarDecl()):
-		case check(p.parseStruct()):
-		case check(p.parseInterface()):
-		case check(p.parseImportDecl()):
-		case check(p.parseExportDecl()):
-		case p.eof():
-			break loop
-		case check(p.parseMacro()):
-			if node != nil {
-				macro, isMacro := node.(*ast.Macro)
-				if isMacro && macro != nil {
-					p.macros[macro.Name.Text] = macro
-				}
-			}
-		default:
-			token := p.read()
-			p.error(unexpectedToken(token))
-		}
-
-		if node != nil {
-			file.AppendNode(node)
-		}
-
-		if p.parserError != "" {
-			token := p.errorToken
-			posError := &PosError{Position: ast.StartPositionFromToken(token), Message: p.parserError}
-			p.parserError = ""
-			if !p.ContinueOnErrors {
-				err = posError
-				break loop
-			}
-		}
+func NewParser(scanner scanner.ScannerInterface) (parser *Parser) {
+	parser = &Parser{
+		s: scanner,
 	}
 
-	file.Comments = p.comments
-	file.NodeComments = p.nodeComments
-	file.Macros = p.macros
-
+	scanner.SetErrorCallback(parser.error)
 	return
 }
 
-func (p *Parser) parseStatementOrExpression(block bool) (node ast.Node, ok bool) {
-	if node, ok = p.parseStatement(block); !ok {
-		node, ok = p.parseExpression()
-	}
-	return
+func Parse(scanner scanner.ScannerInterface) error {
+	return NewParser(scanner).Parse()
 }
 
-func (p *Parser) parseImportDecl() (node ast.Node, ok bool) {
-	return
-}
-
-func (p *Parser) parseExportDecl() (node ast.Node, ok bool) {
-	return
+func (p *Parser) Parse() error {
+	return nil
 }
 
 func (p *Parser) eof() (ok bool) {
@@ -144,8 +66,7 @@ func (p *Parser) expectToken(tokenTypes ...scanner.TokenType) (token scanner.Tok
 	return
 }
 
-func (p *Parser) readToken(expandMacros bool) (token scanner.Token) {
-readToken:
+func (p *Parser) read() (token scanner.Token) {
 	if len(p.tokenBuffer) > 0 {
 		token = p.tokenBuffer[0]
 		p.tokenBuffer = p.tokenBuffer[1:]
@@ -154,7 +75,8 @@ readToken:
 			tok := p.s.Scan()
 			// TODO convert NEWLINES to semicolons on some scenarios
 			if tok.Type == scanner.TokenTypeComment {
-				p.processComment(tok)
+				// TODO process IR comments
+				//p.processComment(tok)
 			} else if tok.Type != scanner.TokenTypeWhitespace {
 				token = tok
 				p.readTokens++
@@ -169,19 +91,7 @@ readToken:
 		p.snapshots[len(p.snapshots)-1] = append(p.snapshots[len(p.snapshots)-1], token)
 	}
 
-	if expandMacros && token.Type == scanner.TokenTypeMacroCallIdent {
-		if p.parseMacroCall(token) {
-			goto readToken
-		} else {
-			// TODO throw error or something here
-		}
-	}
-
 	return
-}
-
-func (p *Parser) read() (token scanner.Token) {
-	return p.readToken(true)
 }
 
 func (p *Parser) unread() {
