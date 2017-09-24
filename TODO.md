@@ -3,6 +3,7 @@
 - tuple extract in assignments
 - pass by value (pointers?)?
 - map type
+- code formatting utility
 - IR?
 - JSCodegen map support
 - variable zero values
