@@ -85,10 +85,18 @@ func main() {
 			insertText := item.Label
 			switch t := item.Type.(type) {
 			case *types.SignatureType:
-				insertText = fmt.Sprintf("%s(%s)", insertText, strings.Join(t.ArgumentNames, ", "))
+				args := make([]string, len(t.ArgumentNames))
+				for i, arg := range t.ArgumentNames {
+					args[i] = fmt.Sprintf("%s: ${%d:%s}", arg, i+1, arg)
+				}
+				insertText = fmt.Sprintf("%s(%s)", insertText, strings.Join(args, ", "))
 			case *types.StructType:
 				if item.Kind == "Class" {
-					insertText = fmt.Sprintf("%s{}", insertText)
+					args := make([]string, len(t.Variables))
+					for i, v := range t.Variables {
+						args[i] = fmt.Sprintf("%s: ${%d:%s}", v.Name, i+1, v.Name)
+					}
+					insertText = fmt.Sprintf("%s{%s}", insertText, strings.Join(args, ", "))
 				}
 			}
 

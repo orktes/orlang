@@ -207,6 +207,9 @@ class App extends React.Component {
           return res.map((item)=> {
             return {
               ...item,
+              insertText: {
+                value: item.insertText
+              },
               kind: monaco.languages.CompletionItemKind[item.Kind] || monaco.languages.CompletionItemKind.Function
             };
           })
