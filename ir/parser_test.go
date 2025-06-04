@@ -153,7 +153,7 @@ func TestParseFunctionDefinition(t *testing.T) {
 type Foo {}
 fn my_func(%a : int32, %b : ptr<Foo>) : bool {
   label_entry:
-  var %x : int32
+  // var %x : int32 // This line is removed
   %y = alloc Foo
   return %a
 }
@@ -169,7 +169,7 @@ fn my_func(%a : int32, %b : ptr<Foo>) : bool {
 		t.Fatalf("expected function 'my_func' not found")
 	}
 
-	fooStruct := program.Structs["Foo"]
+	fooStruct := program.Structs["Foo"] // Will be resolved to the actual *StructTypeDefinition
 	expectedParams := []Variable{
 		{Name: "a", Type: &SimpleType{Name: "int32"}},
 		{Name: "b", Type: &PointerType{Element: fooStruct}},
@@ -179,8 +179,6 @@ fn my_func(%a : int32, %b : ptr<Foo>) : bool {
 		t.Fatalf("param length mismatch: expected %d, got %d", len(expectedParams), len(f.Parameters))
 	}
 	for i := range expectedParams {
-		// Normalize expected param types based on program context for fair comparison
-		// (though in this case, fooStruct is already from program context)
 		normalizedExpectedParamType := normalizeTypeInProgram(program, expectedParams[i].Type)
 		if f.Parameters[i].Name != expectedParams[i].Name {
 			t.Errorf("Param %d name: expected %s, got %s", i, expectedParams[i].Name, f.Parameters[i].Name)
@@ -194,10 +192,46 @@ fn my_func(%a : int32, %b : ptr<Foo>) : bool {
 		t.Errorf("expected return type 'bool', got %s", f.ReturnType.String())
 	}
 
-	if len(f.Body) != 4 {
-		t.Fatalf("expected 4 instructions in body, got %d", len(f.Body))
+	// Expected instructions: label_entry, %y = alloc Foo, return %a
+	if len(f.Body) != 3 {
+		t.Fatalf("expected 3 instructions in body, got %d. Body:\n%s", len(f.Body), f.StringAllInstructions())
 	}
-	// Further checks on instruction details can be added here, similar to TestParseInstructions
+
+	// Check instruction 0: label_entry
+	if label, ok := f.Body[0].(*Label); !ok || label.Name != "label_entry" {
+		t.Errorf("Expected instruction 0 to be Label 'label_entry', got %T with text '%s'", f.Body[0], f.Body[0].String())
+	}
+
+	// Check instruction 1: %y = alloc Foo
+	if allocInstr, ok := f.Body[1].(*AllocInstruction); !ok {
+		t.Errorf("Expected instruction 1 to be AllocInstruction, got %T", f.Body[1])
+	} else {
+		if allocInstr.Dest.Name != "y" {
+			t.Errorf("Expected AllocInstruction dest to be 'y', got '%s'", allocInstr.Dest.Name)
+		}
+		// Ensure the type allocated is the resolved Foo struct
+		if !reflect.DeepEqual(allocInstr.Type, fooStruct) {
+			t.Errorf("Expected AllocInstruction type to be '%s', got '%s'", fooStruct.Name, allocInstr.Type.String())
+		}
+		// Check if %y was added to localVars
+		if v, exists := f.localVars["y"]; !exists {
+			t.Errorf("Expected %%y to be declared in localVars after alloc instruction")
+		} else {
+			expectedVarType := &PointerType{Element: fooStruct}
+			if !reflect.DeepEqual(v.Type, expectedVarType) {
+				t.Errorf("Expected %%y in localVars to have type %s, got %s", expectedVarType.String(), v.Type.String())
+			}
+		}
+	}
+
+	// Check instruction 2: return %a
+	if returnInstr, ok := f.Body[2].(*ReturnInstruction); !ok {
+		t.Errorf("Expected instruction 2 to be ReturnInstruction, got %T", f.Body[2])
+	} else {
+		if retVar, ok := returnInstr.Value.(*Variable); !ok || retVar.Name != "a" {
+			t.Errorf("Expected ReturnInstruction value to be '%%a', got '%s'", returnInstr.Value.String())
+		}
+	}
 }
 
 func TestParseInstructions(t *testing.T) {
@@ -253,10 +287,12 @@ func TestParseInstructions(t *testing.T) {
 			if !reflect.DeepEqual(parsedInstr, normalizedExpectedInstr) {
 				t.Errorf("Instruction mismatch for '%s':\nExpected: %#v\nGot:      %#v", tt.instrStr, normalizedExpectedInstr, parsedInstr)
 				// Log sub-field differences if useful
-				if تخصيص, ok := parsedInstr.(*AllocInstruction); ok {
-					exp تخصيص := normalizedExpectedInstr.(*AllocInstruction)
-					if !reflect.DeepEqual(تخصيص.Dest.Type, exp تخصيص.Dest.Type) {
-						t.Logf("Alloc Dest Type Diff:\nExp: %#v\nGot: %#v", exp تخصيص.Dest.Type, تخصيص.Dest.Type)
+				if allocInstr, ok := parsedInstr.(*AllocInstruction); ok {
+					expectedAllocInstr, okExpected := normalizedExpectedInstr.(*AllocInstruction)
+					if okExpected { // Ensure the expected instruction is also an AllocInstruction
+						if !reflect.DeepEqual(allocInstr.Dest.Type, expectedAllocInstr.Dest.Type) {
+							t.Logf("Alloc Dest Type Diff:\nExp: %#v\nGot: %#v", expectedAllocInstr.Dest.Type, allocInstr.Dest.Type)
+						}
 					}
 				}
 			}
