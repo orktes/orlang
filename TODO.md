@@ -19,5 +19,5 @@
 - import and export statements
 - JSCodegen numbertypes?
 - Proper extern support
-- LLVM codegen
+- [x] LLVM codegen
 - VM?

@@ -1,0 +1,83 @@
+extern puts(s: string)
+
+// This macro uses build-in function print to print a list of expressions
+macro print {
+  ($a:expr) : (
+    puts($a)
+    print("\n")
+  )
+
+  ($a:expr, $( $b:expr ),*) : (
+    print($a)
+    $(
+      print(" ")
+      print($b)
+    )*
+    print("\n")
+  )
+}
+
+// Example of an interface that defines a reset function
+interface Resetable {
+  fn reset()
+}
+
+// Example of a struct
+struct Point {
+  var x = 0
+  var y = 0
+
+  // Example of an operator overload
+  fn +(left:Point, right:Point) => Point {
+    var newPoint = Point{}
+    newPoint.x = left.x + right.x
+    newPoint.y = left.y + right.y
+    return newPoint
+  }
+
+  // Example of an operator overload
+  fn -(left:Point, right:Point) => Point {
+    var newPoint = Point{}
+    newPoint.x = left.x - right.x
+    newPoint.y = left.y - right.y
+    return newPoint
+  }
+
+  // Implement Resetable interface
+  fn reset() {
+    this.x = 0
+    this.y = 0
+  }
+
+  // Implement buildin stringer interface (argument type of the print function)
+  fn toString() => string {
+    return "{\n" +
+           "  x: " + this.x.toString() +
+           ",\n" +
+           "  y: " + this.y.toString() +
+           "\n}"
+  }
+}
+
+fn reset(resetable : Resetable) {
+  resetable.reset()
+}
+
+fn main() {
+  var pointA : Point
+  pointA = Point{10, 10}
+
+  // Type can be omitted when default value is used
+  var pointB = Point{20, 30}
+
+  // This is using the operator overload defined in the Point struct
+  var combined = pointA + pointB
+
+  // Use print macro to print the result
+  // print!("Hello world:", combined) 
+  // Commented out macro usage for now as we need to implement structs/vars first
+  
+  // Example usage of an interface
+  reset(combined)
+  // print!("Value after reset:", combined)
+}

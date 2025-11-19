@@ -21,6 +21,7 @@ import (
 
 	"github.com/orktes/orlang/analyser"
 	"github.com/orktes/orlang/codegen/js"
+	"github.com/orktes/orlang/codegen/llvm"
 	"github.com/orktes/orlang/parser"
 	"github.com/spf13/cobra"
 )
@@ -62,6 +63,15 @@ var buildCmd = &cobra.Command{
 				ext := path.Ext(filePath)
 				outfile := filePath[0:len(filePath)-len(ext)] + ".js"
 				err := ioutil.WriteFile(outfile, code, 0644)
+				if err != nil {
+					panic(err)
+				}
+			case "llvm":
+				llvmcg := llvm.New(fileInfo)
+				code := llvmcg.Generate(fileNode)
+				ext := path.Ext(filePath)
+				outfile := filePath[0:len(filePath)-len(ext)] + ".ll"
+				err := ioutil.WriteFile(outfile, []byte(code), 0644)
 				if err != nil {
 					panic(err)
 				}
