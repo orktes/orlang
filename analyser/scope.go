@@ -13,6 +13,7 @@ type ScopeItem interface {
 type ScopeItemDetails struct {
 	ScopeItem
 	DefineIdentifier *ast.Identifier
+	Initialized      bool
 }
 
 type OperatorOverload struct {
@@ -169,6 +170,16 @@ func (s *Scope) SetWithName(name string, identifier *ast.Identifier, node ast.No
 	s.items[name] = &ScopeItemDetails{
 		ScopeItem:        node,
 		DefineIdentifier: identifier,
+	}
+}
+
+func (s *Scope) SetInitialized(name string, initialized bool) {
+	if info, ok := s.items[name]; ok {
+		info.Initialized = initialized
+		return
+	}
+	if s.parent != nil {
+		s.parent.SetInitialized(name, initialized)
 	}
 }
 

@@ -325,7 +325,7 @@ func (v *visitor) getParentFuncDecl() *ast.FunctionDeclaration {
 		if funDecl, ok := parent.node.(*ast.FunctionDeclaration); ok {
 			return funDecl
 		}
-		return parent.getParentFuncDecl()
+		parent = parent.parent
 	}
 
 	return nil
@@ -548,7 +548,16 @@ typeCheck:
 				}
 			}
 		case ast.Declaration, *ast.StructExpression, *ast.Struct, *ast.Interface, *ast.TypeReference:
-			break typeCheck
+			shouldCheck := false
+			if varDecl, ok := v.node.(*ast.VariableDeclaration); ok {
+				if varDecl.DefaultValue == node {
+					shouldCheck = true
+				}
+			}
+
+			if !shouldCheck {
+				break typeCheck
+			}
 		}
 
 		if n.Text == "this" {
@@ -565,6 +574,14 @@ typeCheck:
 		}
 
 		v.scope.MarkUsage(scopeItem, n)
+
+		if details := v.scope.GetDetails(n.Text, true); details != nil {
+			if _, ok := details.ScopeItem.(*ast.VariableDeclaration); ok {
+				if !details.Initialized {
+					v.emitError(n, fmt.Sprintf("variable %s used before initialized", n), false)
+				}
+			}
+		}
 	case *ast.FunctionCall:
 		// Check if function call is a typecast
 		if ident, ok := n.Callee.(*ast.Identifier); ok {
@@ -961,6 +978,9 @@ typeCheck:
 		}
 
 		v.scope.Set(n.Name, n)
+		if n.DefaultValue != nil {
+			v.scope.SetInitialized(n.Name.Text, true)
+		}
 	case *ast.Assigment:
 		equal, leftType, rightType := v.isEqualType(n.Left, n.Right)
 		if !equal {
@@ -970,6 +990,10 @@ typeCheck:
 				rightType.GetName(),
 				leftType.GetName(),
 			), true)
+		}
+
+		if ident, ok := n.Left.(*ast.Identifier); ok {
+			v.scope.SetInitialized(ident.Text, true)
 		}
 	case *ast.Struct:
 		nodeInfo.Type = v.getTypeForNode(node)
