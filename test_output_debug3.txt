@@ -1,0 +1,11 @@
+=== RUN   TestLLVME2E
+DEBUG: val is nil for s
+    llvm_test.go:79: clang failed: exit status 1
+        /var/folders/6y/k7rystrx6sbcksb6b3b0kk980000gn/T/orlang_llvm_e2e416194299/test.ll:29:5: error: expected type
+                br %!s(<nil>), label %6, label %8
+                   ^
+        1 error generated.
+--- FAIL: TestLLVME2E (0.22s)
+FAIL
+FAIL	github.com/orktes/orlang/e2e	0.433s
+FAIL

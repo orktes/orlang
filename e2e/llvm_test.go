@@ -25,16 +25,51 @@ func TestLLVME2E(t *testing.T) {
 	code := `
 	extern puts(s: string)
 
-	fn add(a: int32, b: int32) {
-		var res = a + b
-		return res
+	interface Resetable {
+		fn reset()
+	}
+
+	struct Point {
+		var x = 0
+		var y = 0
+		
+		fn sum() => int32 {
+			return this.x + this.y
+		}
+
+		fn reset() {
+			this.x = 0
+			this.y = 0
+		}
+	}
+
+	fn reset(resetable : Resetable) {
+		resetable.reset()
 	}
 
 	fn main() {
-		var x = 40
-		var y = 2
-		puts("Hello World")
-		return add(x, y)
+		var p = Point{10, 20}
+		var s = p.sum()
+		
+		if s == 30 {
+			puts("Sum is 30")
+		}
+
+		p.x = 100
+		p.y = 200
+		s = p.sum()
+		if s != 300 {
+			puts("Sum is not 300")
+		}
+		
+		reset(p)
+
+		s = p.sum()
+		if s != 0 {
+			puts("Point was not reset")
+		}
+
+		return s + 12
 	}
 	`
 
@@ -58,6 +93,8 @@ func TestLLVME2E(t *testing.T) {
 	codegen := llvm.New(info)
 	ir := codegen.Generate(file)
 
+	println(ir)
+
 	// 5. Write IR to file
 	llPath := filepath.Join(tmpDir, "test.ll")
 	if err := ioutil.WriteFile(llPath, []byte(ir), 0644); err != nil {
@@ -76,8 +113,8 @@ func TestLLVME2E(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 
 	// 8. Check output
-	if !strings.Contains(string(out), "Hello World") {
-		t.Errorf("Expected output to contain 'Hello World', got: %s", out)
+	if !strings.Contains(string(out), "Sum is 30") {
+		t.Errorf("Expected output to contain 'Sum is 30', got: %s", out)
 	}
 
 	// 9. Check exit code

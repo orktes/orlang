@@ -1,0 +1,60 @@
+=== RUN   TestLLVME2E
+DEBUG: visitBinaryExpression set val for 0x140001ce0e0 (op 12:17 ADD(+))
+DEBUG: Visit ValueExpression 0x140001fd680
+DEBUG: visitValueExpression token type: NUMBER, value: 0
+DEBUG: Visit ValueExpression 0x140001febe0
+DEBUG: visitValueExpression token type: NUMBER, value: 0
+DEBUG: Visit ValueExpression 0x140002032c0
+DEBUG: visitValueExpression token type: NUMBER, value: 10
+DEBUG: Visit ValueExpression 0x14000203bd0
+DEBUG: visitValueExpression token type: NUMBER, value: 20
+DEBUG: visitIdentifier loaded s from i32* %0
+DEBUG: Visit ValueExpression 0x14000206550
+DEBUG: visitValueExpression token type: NUMBER, value: 30
+DEBUG: visitFunctionCall processing arg 0, type *ast.CallArgument, expr type *ast.ValueExpression
+DEBUG: Arg 0 is nil for call to puts
+DEBUG: visitFunctionCall processing arg 0, type *ast.CallArgument, expr type *ast.Identifier
+--- FAIL: TestLLVME2E (0.00s)
+panic: runtime error: invalid memory address or nil pointer dereference [recovered]
+	panic: runtime error: invalid memory address or nil pointer dereference
+[signal SIGSEGV: segmentation violation code=0x2 addr=0x28 pc=0x1002feefc]
+
+goroutine 19 [running]:
+testing.tRunner.func1.2({0x100386ec0, 0x1004c7f60})
+	/usr/local/go/src/testing/testing.go:1632 +0x1bc
+testing.tRunner.func1()
+	/usr/local/go/src/testing/testing.go:1635 +0x334
+panic({0x100386ec0?, 0x1004c7f60?})
+	/usr/local/go/src/runtime/panic.go:785 +0x124
+github.com/orktes/orlang/codegen/llvm.(*LLVMCodeGen).createInterfaceCast(0x140002193b0, {0x0, 0x0}, {0x1003bb250, 0x140001b7080}, 0x1400019e9c0)
+	/Users/jaakkolukkari/Development/orlang/codegen/llvm/interface.go:32 +0xdc
+github.com/orktes/orlang/codegen/llvm.(*LLVMCodeGen).castIfNeeded(0x1003867a0?, {0x0?, 0x0?}, {0x1003bb250?, 0x140001b7080?}, {0x1003bb520?, 0x1400019e9c0?})
+	/Users/jaakkolukkari/Development/orlang/codegen/llvm/cast.go:20 +0x68
+github.com/orktes/orlang/codegen/llvm.(*LLVMCodeGen).visitFunctionCall(0x140002193b0, 0x140001b6c40)
+	/Users/jaakkolukkari/Development/orlang/codegen/llvm/llvmcodegen.go:796 +0x81c
+github.com/orktes/orlang/codegen/llvm.(*LLVMCodeGen).Visit(0x140002193b0, {0x1003bb110?, 0x140001b6c40})
+	/Users/jaakkolukkari/Development/orlang/codegen/llvm/llvmcodegen.go:299 +0x294
+github.com/orktes/orlang/ast.Walk({0x1003bab80?, 0x140002193b0?}, {0x1003bb110, 0x140001b6c40})
+	/Users/jaakkolukkari/Development/orlang/ast/walk.go:29 +0xcc
+github.com/orktes/orlang/codegen/llvm.(*LLVMCodeGen).Visit(0x140002193b0, {0x1003baff8?, 0x140001b6b00})
+	/Users/jaakkolukkari/Development/orlang/codegen/llvm/llvmcodegen.go:279 +0x378
+github.com/orktes/orlang/ast.Walk({0x1003bab80?, 0x140002193b0?}, {0x1003baff8, 0x140001b6b00})
+	/Users/jaakkolukkari/Development/orlang/ast/walk.go:29 +0xcc
+github.com/orktes/orlang/codegen/llvm.(*LLVMCodeGen).visitFunctionDeclaration(0x140002193b0, 0x1400018e3d0)
+	/Users/jaakkolukkari/Development/orlang/codegen/llvm/llvmcodegen.go:536 +0xb38
+github.com/orktes/orlang/codegen/llvm.(*LLVMCodeGen).Visit(0x140002193b0, {0x1003bb020?, 0x1400018e3d0})
+	/Users/jaakkolukkari/Development/orlang/codegen/llvm/llvmcodegen.go:275 +0xc8
+github.com/orktes/orlang/ast.Walk({0x1003bab80?, 0x140002193b0?}, {0x1003bb020, 0x1400018e3d0})
+	/Users/jaakkolukkari/Development/orlang/ast/walk.go:29 +0xcc
+github.com/orktes/orlang/ast.Walk({0x1003bab80?, 0x140002193b0?}, {0x1003bae90, 0x140001c00f0})
+	/Users/jaakkolukkari/Development/orlang/ast/walk.go:58 +0xc64
+github.com/orktes/orlang/codegen/llvm.(*LLVMCodeGen).Generate(0x140002193b0, 0x140001d0060?)
+	/Users/jaakkolukkari/Development/orlang/codegen/llvm/llvmcodegen.go:45 +0x5c
+github.com/orktes/orlang/e2e.TestLLVME2E(0x140001ba680)
+	/Users/jaakkolukkari/Development/orlang/e2e/llvm_test.go:87 +0x380
+testing.tRunner(0x140001ba680, 0x1003b9060)
+	/usr/local/go/src/testing/testing.go:1690 +0xe4
+created by testing.(*T).Run in goroutine 1
+	/usr/local/go/src/testing/testing.go:1743 +0x314
+FAIL	github.com/orktes/orlang/e2e	0.196s
+FAIL

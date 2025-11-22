@@ -31,28 +31,28 @@ var buildCmd = &cobra.Command{
 	Use:   "build",
 	Short: "Build Orlang application",
 	Long:  `Build Orlang application`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		files := args
 
 		for _, filePath := range files {
 			file, err := os.Open(filePath)
 			if err != nil {
-				panic(err)
+				return err
 			}
 
 			fileNode, err := parser.Parse(file)
 			if err != nil {
-				panic(err)
+				return err
 			}
 
 			an, err := analyser.New(fileNode)
 			if err != nil {
-				panic(err)
+				return err
 			}
 
 			fileInfo, err := an.Analyse()
 			if err != nil {
-				panic(err)
+				return err
 			}
 
 			target := cmd.Flag("target").Value.String()
@@ -64,7 +64,7 @@ var buildCmd = &cobra.Command{
 				outfile := filePath[0:len(filePath)-len(ext)] + ".js"
 				err := ioutil.WriteFile(outfile, code, 0644)
 				if err != nil {
-					panic(err)
+					return err
 				}
 			case "llvm":
 				llvmcg := llvm.New(fileInfo)
@@ -73,10 +73,12 @@ var buildCmd = &cobra.Command{
 				outfile := filePath[0:len(filePath)-len(ext)] + ".ll"
 				err := ioutil.WriteFile(outfile, []byte(code), 0644)
 				if err != nil {
-					panic(err)
+					return err
 				}
 			}
 		}
+
+		return nil
 	},
 }
 

@@ -1,0 +1,40 @@
+=== RUN   TestLLVME2E
+DEBUG: visitBinaryExpression set val for 0x140000c40e0 (op 12:17 ADD(+))
+DEBUG: Arg 0 is nil for call to puts
+DEBUG: Arg 0 is nil for call to reset
+DEBUG: Arg 0 is nil for call to puts
+DEBUG: visitBinaryExpression set val for 0x140000c4230 (op 40:11 ADD(+))
+--- FAIL: TestLLVME2E (0.00s)
+panic: runtime error: invalid memory address or nil pointer dereference [recovered]
+	panic: runtime error: invalid memory address or nil pointer dereference
+[signal SIGSEGV: segmentation violation code=0x2 addr=0x20 pc=0x102222e88]
+
+goroutine 3 [running]:
+testing.tRunner.func1.2({0x1022b2ec0, 0x1023f3f60})
+	/usr/local/go/src/testing/testing.go:1632 +0x1bc
+testing.tRunner.func1()
+	/usr/local/go/src/testing/testing.go:1635 +0x334
+panic({0x1022b2ec0?, 0x1023f3f60?})
+	/usr/local/go/src/runtime/panic.go:785 +0x124
+github.com/llir/llvm/ir.(*InstCall).LLString(0x1400018c1c0)
+	/Users/jaakkolukkari/Development/go-workspace/pkg/mod/github.com/llir/llvm@v0.3.6/ir/inst_other.go:486 +0x5d8
+github.com/llir/llvm/ir.(*Block).LLString(0x14000182be0)
+	/Users/jaakkolukkari/Development/go-workspace/pkg/mod/github.com/llir/llvm@v0.3.6/ir/block.go:66 +0x100
+github.com/llir/llvm/ir.bodyString(0x14000184f20)
+	/Users/jaakkolukkari/Development/go-workspace/pkg/mod/github.com/llir/llvm@v0.3.6/ir/func.go:295 +0xf8
+github.com/llir/llvm/ir.(*Func).LLString(0x14000184f20)
+	/Users/jaakkolukkari/Development/go-workspace/pkg/mod/github.com/llir/llvm@v0.3.6/ir/func.go:148 +0x3b4
+github.com/llir/llvm/ir.(*Module).WriteTo(0x14000184840, {0x1022e6808?, 0x140000c6a40?})
+	/Users/jaakkolukkari/Development/go-workspace/pkg/mod/github.com/llir/llvm@v0.3.6/ir/module.go:159 +0x6f8
+github.com/llir/llvm/ir.(*Module).String(0x14000184840)
+	/Users/jaakkolukkari/Development/go-workspace/pkg/mod/github.com/llir/llvm@v0.3.6/ir/module.go:72 +0x44
+github.com/orktes/orlang/codegen/llvm.(*LLVMCodeGen).Generate(0x140001873b0, 0x140000c6060?)
+	/Users/jaakkolukkari/Development/orlang/codegen/llvm/llvmcodegen.go:46 +0x68
+github.com/orktes/orlang/e2e.TestLLVME2E(0x140000b4680)
+	/Users/jaakkolukkari/Development/orlang/e2e/llvm_test.go:87 +0x380
+testing.tRunner(0x140000b4680, 0x1022e5060)
+	/usr/local/go/src/testing/testing.go:1690 +0xe4
+created by testing.(*T).Run in goroutine 1
+	/usr/local/go/src/testing/testing.go:1743 +0x314
+FAIL	github.com/orktes/orlang/e2e	0.211s
+FAIL
