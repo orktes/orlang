@@ -247,6 +247,23 @@ func (at *ArrayType) IsEqual(aType Type) bool {
 	return false
 }
 
+// PointerType represents a pointer to another type
+type PointerType struct {
+	Type Type // The pointed-to type
+}
+
+func (p *PointerType) GetName() string {
+	return "&" + p.Type.GetName()
+}
+
+func (p *PointerType) IsEqual(typ Type) bool {
+	otherPtr, ok := typ.(*PointerType)
+	if !ok {
+		return false
+	}
+	return p.Type.IsEqual(otherPtr.Type)
+}
+
 type StructType struct {
 	Name      string
 	Variables []struct {

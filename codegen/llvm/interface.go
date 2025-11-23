@@ -53,9 +53,17 @@ func (lcg *LLVMCodeGen) createInterfaceCast(val value.Value, sourceTyp ortypes.T
 
 // getOrCreateItable generates the itable for a specific concrete type implementing an interface
 func (lcg *LLVMCodeGen) getOrCreateItable(sourceTyp ortypes.Type, targetTyp *ortypes.InterfaceType) value.Value {
+	// Resolve source type (unwrap pointer)
+	sourceTyp = ortypes.LazyResolve(sourceTyp)
+
+	if ptr, ok := sourceTyp.(*ortypes.PointerType); ok {
+		sourceTyp = ortypes.LazyResolve(ptr.Type)
+	}
+
 	// Name for the itable global
 	sourceName := sourceTyp.GetName()
 	targetName := targetTyp.GetName()
+
 	itableName := fmt.Sprintf("__itable_%s_to_%s", sourceName, targetName)
 
 	// Check if already exists

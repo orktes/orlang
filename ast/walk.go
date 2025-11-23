@@ -90,8 +90,6 @@ func Walk(v Visitor, node Node) {
 		if n.Else != nil {
 			Walk(v, n.Else)
 		}
-	case *Macro:
-		// TODO macro
 	case *MemberExpression:
 		Walk(v, n.Target)
 		Walk(v, n.Property)
@@ -125,6 +123,8 @@ func Walk(v Visitor, node Node) {
 		Walk(v, n.Pattern)
 		Walk(v, n.Type)
 		Walk(v, n.DefaultValue)
+	case *Macro:
+		// TODO macro
 	case *ArrayExpression:
 		Walk(v, n.Type)
 		for _, e := range n.Expressions {
@@ -135,6 +135,10 @@ func Walk(v Visitor, node Node) {
 			Walk(v, n.Length)
 		}
 		Walk(v, n.Type)
+	case *PointerType:
+		if n.Type != nil {
+			Walk(v, n.Type)
+		}
 
 	case *Struct:
 		Walk(v, n.Name)

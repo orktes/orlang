@@ -370,12 +370,20 @@ loop:
 				buf.Write(t)
 				continue loop
 
-			case 'x':
+			case 'x': // Scan hexadecimal
 				buf.WriteRune(next)
 				t, v := s.scanDigits(16, 2)
 				checkRune(v)
 				buf.Write(t)
-				continue loop
+
+			case 'n':
+				val.WriteRune('\n')
+
+			case 't':
+				val.WriteRune('\t')
+
+			case 'r':
+				val.WriteRune('\r')
 
 			case 'u':
 				buf.WriteRune(next)

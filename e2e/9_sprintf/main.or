@@ -1,0 +1,11 @@
+extern malloc(size: int64) => &int8
+extern free(ptr: &int8)
+extern sprintf(buf: &int8, format: string, args: ...anything) => int64
+extern puts(str: string) => int64
+
+fn main() {
+	var buf = malloc(100)
+	sprintf(buf, "Hello, World %d!", 42)
+	puts(buf)
+	free(buf)
+}

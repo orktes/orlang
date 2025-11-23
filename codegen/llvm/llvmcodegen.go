@@ -82,6 +82,15 @@ func (lcg *LLVMCodeGen) getLLVMTypeFromSemantic(t ortypes.Type) types.Type {
 		if t.Type == "int64" {
 			return types.I64
 		}
+		if t.Type == "int8" {
+			return types.I8
+		}
+		if t.Type == "float32" {
+			return types.Float
+		}
+		if t.Type == "float64" {
+			return types.Double
+		}
 		// Check if it's actually a struct type name
 		if s, ok := lcg.structs[t.Type]; ok {
 			return types.NewPointer(s)
@@ -98,6 +107,15 @@ func (lcg *LLVMCodeGen) getLLVMTypeFromSemantic(t ortypes.Type) types.Type {
 		}
 		if t.Type == "int64" {
 			return types.I64
+		}
+		if t.Type == "int8" {
+			return types.I8
+		}
+		if t.Type == "float32" {
+			return types.Float
+		}
+		if t.Type == "float64" {
+			return types.Double
 		}
 		// Check if it's actually a struct type name
 		if s, ok := lcg.structs[t.Type]; ok {
@@ -117,35 +135,46 @@ func (lcg *LLVMCodeGen) getLLVMTypeFromSemantic(t ortypes.Type) types.Type {
 }
 
 func (lcg *LLVMCodeGen) getLLVMType(t ast.Type) types.Type {
-	if t == nil {
-		return types.I32
-	}
-
-	// Try to use semantic info first
-	if lcg.currentFile != nil {
-		nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[t]
-		if nodeInfo != nil && nodeInfo.Type != nil {
+	switch typ := t.(type) {
+	case *ast.TypeReference:
+		// For type references, we don't know the exact type.
+		// We need to look it up.
+		name := typ.Name.Text
+		if nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[typ]; nodeInfo != nil {
 			return lcg.getLLVMTypeFromSemantic(nodeInfo.Type)
-		} else {
 		}
-	}
 
-	if typeRef, ok := t.(*ast.TypeReference); ok {
-		if typeRef.Name.Text == "string" {
+		switch name {
+		case "int", "int32":
+			return types.I32
+		case "int64":
+			return types.I64
+		case "string":
 			return types.I8Ptr
+		case "bool":
+			return types.I1
+		case "float", "float32":
+			return types.Float
+		case "float64":
+			return types.Double
+			// Add more primitive types here if needed.
 		}
-		if s, ok := lcg.structs[typeRef.Name.Text]; ok {
-			return types.NewPointer(s)
-		} else {
-		}
-		// Check if it's an interface
-		// We don't have a map of interfaces in lcg yet, but we can check if it's NOT a struct?
-		// Or we should rely on semantic analysis.
-		// For now, if it's not in structs, assume it might be interface if we can resolve it?
-		// But getLLVMType takes ast.Type, which is just a name.
-		// We should probably look up in analyser info.
 
-		// If we can't find it in structs, let's try to see if it's in the analyser types
+		// But getLLVMType takes ast.Type, which is just a name.
+		// We can't resolve struct or interface types from ast.Type alone.
+		// We need to lookup from semantic info.
+		// But we don't always have semantic info here (e.g. for params in function declarations before analysis?)
+		// Actually, when we're generating code, we always have semantic info.
+		// But getLLVMType is used when we declare variables etc.
+		// If we have semantic info, we should prefer getLLVMTypeFromSemantic.
+		// For now, let's just return I32 as a fallback.
+		// return types.I32
+		return types.I8Ptr
+	case *ast.PointerType:
+		// Get the base type and return a pointer to it
+		baseType := lcg.getLLVMType(typ.Type)
+		return types.NewPointer(baseType)
+	case *ast.ArrayType:
 		// But here we only have the name.
 		// Let's assume for now that if we are here, we might need to look it up differently.
 		// But wait, getLLVMType is used when we declare variables etc.
@@ -539,15 +568,36 @@ func (lcg *LLVMCodeGen) visitBinaryExpression(n *ast.BinaryExpression) {
 		}
 	}
 
+	isFloat := false
+	if leftVal.Type().Equal(types.Float) || leftVal.Type().Equal(types.Double) {
+		isFloat = true
+	}
+
 	switch n.Operator.Text {
 	case "+":
-		val = lcg.currentBlock.NewAdd(leftVal, rightVal)
+		if isFloat {
+			val = lcg.currentBlock.NewFAdd(leftVal, rightVal)
+		} else {
+			val = lcg.currentBlock.NewAdd(leftVal, rightVal)
+		}
 	case "-":
-		val = lcg.currentBlock.NewSub(leftVal, rightVal)
+		if isFloat {
+			val = lcg.currentBlock.NewFSub(leftVal, rightVal)
+		} else {
+			val = lcg.currentBlock.NewSub(leftVal, rightVal)
+		}
 	case "*":
-		val = lcg.currentBlock.NewMul(leftVal, rightVal)
+		if isFloat {
+			val = lcg.currentBlock.NewFMul(leftVal, rightVal)
+		} else {
+			val = lcg.currentBlock.NewMul(leftVal, rightVal)
+		}
 	case "/":
-		val = lcg.currentBlock.NewSDiv(leftVal, rightVal)
+		if isFloat {
+			val = lcg.currentBlock.NewFDiv(leftVal, rightVal)
+		} else {
+			val = lcg.currentBlock.NewSDiv(leftVal, rightVal)
+		}
 	}
 
 	if val == nil {
@@ -897,6 +947,39 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 		return
 	}
 
+	// Check if it's a type cast
+	if ident, ok := n.Callee.(*ast.Identifier); ok {
+		// Check for primitive types
+		if ident.Text == "float32" || ident.Text == "int32" || ident.Text == "int64" || ident.Text == "float64" {
+			// It's a cast
+			if len(n.Arguments) != 1 {
+				panic("Type cast must have exactly one argument")
+			}
+			arg := n.Arguments[0]
+			ast.Walk(lcg, arg)
+			val := lcg.values[arg.Expression]
+
+			// Perform cast
+			// We need target type
+			var targetType types.Type
+			switch ident.Text {
+			case "float32":
+				targetType = types.Float
+			case "float64":
+				targetType = types.Double
+			case "int32":
+				targetType = types.I32
+			case "int64":
+				targetType = types.I64
+			}
+
+			// Cast val to targetType
+			castVal := lcg.castValue(val, targetType)
+			lcg.values[n] = castVal
+			return
+		}
+	}
+
 	fn, ok := lcg.functions[name]
 	if !ok {
 		// Function not found - this shouldn't happen if analyzer did its job
@@ -908,93 +991,127 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 		panic(fmt.Sprintf("function %s is nil in lcg.functions", name))
 	}
 
+	// Resolve function signature to handle named arguments and type casting
+	var signature *ortypes.SignatureType
+	if ident, ok := n.Callee.(*ast.Identifier); ok {
+		nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[ident]
+		if nodeInfo != nil {
+			signature, _ = nodeInfo.Type.(*ortypes.SignatureType)
+		}
+	} else if member, ok := n.Callee.(*ast.MemberExpression); ok {
+		// Method call resolution
+		nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[member.Target]
+		if nodeInfo != nil && nodeInfo.Type != nil {
+			targetObjTyp := nodeInfo.Type
+			if typeWithMethods, ok := targetObjTyp.(ortypes.TypeWithMethods); ok {
+				if has, typ := typeWithMethods.HasFunction(member.Property.Text); has {
+					signature, _ = typ.(*ortypes.SignatureType)
+				}
+			}
+		}
+	}
+
+	// Prepare arguments slice with correct size
+	// If variadic, we might have more arguments than params
+	preArgsCount := len(args)
+	numArgs := len(n.Arguments) + preArgsCount
+	if len(fn.Params) > numArgs {
+		numArgs = len(fn.Params)
+	}
+
+	// We need to store evaluated values in the correct order
+	// Initialize with nil
+	orderedArgs := make([]value.Value, numArgs)
+
+	// Copy pre-filled args (e.g. 'this')
+	for i, v := range args {
+		orderedArgs[i] = v
+	}
+
+	// Track which indices are filled (for variadic handling)
+	filledIndices := make(map[int]bool)
+
 	for i, arg := range n.Arguments {
 		ast.Walk(lcg, arg)
 		val := lcg.values[arg.Expression]
 
-		// Only do type casting for defined parameters (not variadic args)
-		if i < len(fn.Params) {
-			// Cast argument if needed
-			// We need expected type from function signature
-			// fn.Params[i] has the type, but it's LLVM type.
-			// We need semantic type to know if it's interface.
-			// But we don't have easy access to semantic signature here unless we look it up.
-			// We can look up the function declaration in analyser info?
-			// Or we can check if the LLVM param type is interface type (struct { i8*, i8* })?
-			// Checking LLVM type is easier but less robust if we have multiple structs with same layout.
-			// But interface type is specific.
+		targetIndex := i
 
-			param := fn.Params[i]
-			if param.Type().Equal(lcg.getInterfaceType()) {
-				// Target is interface.
-				// Check source type.
-				var sourceTyp ortypes.Type
-				nodeInfoArg := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[arg.Expression]
-				if nodeInfoArg != nil {
-					sourceTyp = nodeInfoArg.Type
-				}
-
-				// We need target interface type to generate itable.
-				// We can't easily get it from LLVM type.
-				// We MUST look up the function signature from semantic info.
-
-				// Try to find function definition in semantic info
-				// n.Callee is Identifier or MemberExpression
-				// If Identifier, we can look it up.
-
-				var targetTyp ortypes.Type
-
-				if ident, ok := n.Callee.(*ast.Identifier); ok {
-					nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[ident]
-					if nodeInfo != nil {
-						// This gives us the function type?
-						// Or the definition?
-						// nodeInfo.Type should be SignatureType
-						if sig, ok := nodeInfo.Type.(*ortypes.SignatureType); ok {
-							if i < len(sig.ArgumentTypes) {
-								targetTyp = sig.ArgumentTypes[i]
-							}
-						}
-					}
-				} else if member, ok := n.Callee.(*ast.MemberExpression); ok {
-					// Method call
-					// We need to find the method signature
-					// We can look up the property node info?
-					// Or the target type and then find method.
-
-					// Let's try property node info?
-					// Usually analyser doesn't store info for property identifier directly maybe?
-					// Let's try target type.
-					targetAddr := lcg.getAddress(member.Target)
-					if targetAddr != nil {
-						var targetObjTyp ortypes.Type
-						nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[member.Target]
-						if nodeInfo != nil {
-							targetObjTyp = nodeInfo.Type
-						}
-
-						if targetObjTyp != nil {
-							if has, typ := targetObjTyp.(ortypes.TypeWithMethods).HasFunction(member.Property.Text); has {
-								if sig, ok := typ.(*ortypes.SignatureType); ok {
-									if i < len(sig.ArgumentTypes) {
-										targetTyp = sig.ArgumentTypes[i]
-									}
-								}
-							}
-						}
-					}
-				}
-
-				if targetTyp != nil {
-					val = lcg.castIfNeeded(val, sourceTyp, targetTyp)
+		// If named argument, find the index in signature
+		if arg.Name != nil && signature != nil {
+			for idx, name := range signature.ArgumentNames {
+				if name == arg.Name.Text {
+					targetIndex = idx
+					break
 				}
 			}
 		}
 
-		args = append(args, val)
+		// Shift index by preArgsCount (to account for 'this')
+		realIndex := targetIndex + preArgsCount
+
+		filledIndices[realIndex] = true
+
+		// Handle casting
+		if realIndex < len(fn.Params) {
+			// Resolve source and target types for casting
+			var sourceTyp ortypes.Type
+			nodeInfoArg := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[arg.Expression]
+			if nodeInfoArg != nil {
+				sourceTyp = nodeInfoArg.Type
+			}
+
+			var targetTyp ortypes.Type
+			if signature != nil && targetIndex < len(signature.ArgumentTypes) {
+				targetTyp = signature.ArgumentTypes[targetIndex]
+			}
+
+			// Perform cast if we have type info
+			if sourceTyp != nil && targetTyp != nil {
+				val = lcg.castIfNeeded(val, sourceTyp, targetTyp)
+			} else {
+				// Fallback to simple bitcast
+				param := fn.Params[realIndex]
+				if val.Type() != param.Type() {
+					val = lcg.currentBlock.NewBitCast(val, param.Type())
+				}
+			}
+		} else {
+			// Variadic argument
+			// Promote float to double for C compatibility (printf etc)
+			if val.Type().Equal(types.Float) {
+				val = lcg.currentBlock.NewFPExt(val, types.Double)
+			}
+		}
+
+		// Resize orderedArgs if needed (for variadic args that go beyond initial size)
+		if realIndex >= len(orderedArgs) {
+			newArgs := make([]value.Value, realIndex+1)
+			copy(newArgs, orderedArgs)
+			orderedArgs = newArgs
+		}
+
+		orderedArgs[realIndex] = val
 	}
 
-	val := lcg.currentBlock.NewCall(fn, args...)
+	// Filter out nil values (shouldn't happen for valid calls, but good for safety)
+	// Actually, for variadic calls, we just pass all orderedArgs.
+	// But we need to make sure we don't have holes if user skipped args (which analyzer should catch).
+
+	// Construct the final args list for LLVM call
+	var finalArgs []value.Value
+	for i, v := range orderedArgs {
+		if v != nil {
+			finalArgs = append(finalArgs, v)
+		} else {
+			// This might happen if we have optional args (not supported yet) or bug.
+			// For now, panic or ignore?
+			// If it's a variadic function, and we have holes, that's weird.
+			panic(fmt.Sprintf("Missing argument at index %d for call to %s", i, name))
+		}
+	}
+
+	val := lcg.currentBlock.NewCall(fn, finalArgs...)
 	lcg.values[n] = val
 }
 

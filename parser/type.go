@@ -6,7 +6,10 @@ import (
 )
 
 func (p *Parser) parseType() (typ ast.Type, ok bool) {
-	if typ, ok = p.parseTypeReference(); ok {
+	// Try pointer type first
+	if typ, ok = p.parsePointerType(); ok {
+		return
+	} else if typ, ok = p.parseTypeReference(); ok {
 		return
 	} else if typ, ok = p.parseTupleOrSignatureType(); ok {
 		if tuple, tupleOk := typ.(*ast.TupleType); tupleOk {
@@ -20,6 +23,27 @@ func (p *Parser) parseType() (typ ast.Type, ok bool) {
 		return
 	}
 
+	return
+}
+
+func (p *Parser) parsePointerType() (typ ast.Type, ok bool) {
+	ampToken, ampOk := p.expectToken(scanner.TokenTypeAMPERSAND)
+	if !ampOk {
+		p.unread()
+		return
+	}
+
+	baseType, typeOk := p.parseType()
+	if !typeOk {
+		p.error(unexpected(p.read().StringValue(), "type after &"))
+		return
+	}
+
+	ok = true
+	typ = &ast.PointerType{
+		Ampersand: ampToken,
+		Type:      baseType,
+	}
 	return
 }
 

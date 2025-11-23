@@ -288,8 +288,12 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 		), true)
 	case *CustomTypeResolvingScopeItem:
 		return n.ResolvedType
+	case *ast.PointerType:
+		// Resolve the pointed-to type
+		pointedType := v.getTypeForNode(n.Type)
+		return &types.PointerType{Type: pointedType}
 	default:
-		panic(fmt.Errorf("Could not resolve type for %s", reflect.TypeOf(node)))
+		panic("Could not resolve type for " + reflect.TypeOf(n).String())
 	}
 
 	return types.UnknownType("undefined")
@@ -646,6 +650,36 @@ typeCheck:
 					fnArgType := signType.ArgumentTypes[i]
 					exprType := v.getTypeForNode(callArg.Expression)
 					equal := fnArgType.IsEqual(exprType)
+
+					// Allow &int8 to be passed as string (C-style strings)
+					if !equal {
+						if ptrType, ok := exprType.(*types.PointerType); ok {
+							if primitive, ok := ptrType.Type.(types.PrimitiveType); ok {
+								if primitive.Type == "int8" && fnArgType.GetName() == "string" {
+									equal = true
+								}
+							}
+						}
+					}
+
+					// Allow string to be passed as &int8
+					if !equal {
+						if ptrType, ok := fnArgType.(*types.PointerType); ok {
+							if primitive, ok := ptrType.Type.(types.PrimitiveType); ok {
+								if primitive.Type == "int8" && exprType.GetName() == "string" {
+									equal = true
+								}
+							}
+						}
+					}
+
+					// Allow int literal to be promoted to int64
+					if !equal && exprType.GetName() == "int32" && fnArgType.GetName() == "int64" {
+						if _, ok := callArg.Expression.(*ast.ValueExpression); ok {
+							// It's a literal (simplification, ideally check value range)
+							equal = true
+						}
+					}
 
 					if !equal {
 						v.emitError(callArg.Expression, fmt.Sprintf(

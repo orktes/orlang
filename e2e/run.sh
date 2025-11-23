@@ -3,17 +3,15 @@
 set -e
 
 
-
-
 (cd ../ && go install .)
 
 function run_test {
   dir=$1
   echo "Running test $dir"
   pushd $dir
-    echo "Linting"
+    echo "Linting $dir"
     orlang lint main.or
-    echo "Building"
+    echo "Building $dir"
     
     # Check if there are any .or files other than main.or (for imports)
     shopt -s nullglob
@@ -37,23 +35,30 @@ function run_test {
     # Compile main.or
     orlang build main.or --target llvm
     clang -c -o main.o main.ll
-    rm main.ll
     
     # Link all object files
+    echo "Linking"
     clang -Wno-override-module -o main main.o "${object_files[@]}"
     rm main.o "${object_files[@]}"
     
+    echo "Running"
+    # Temporarily allow errors so we can capture output even if main crashes
+    set +e
     if [ -f args.txt ]; then
-      output="$(./main \"$(<args.txt)\")"
+      output="$(./main "$(<args.txt)" 2>&1 | tee /dev/stderr)"
     else
-      output="$(./main)"
+      output="$(./main 2>&1 | tee /dev/stderr)"
     fi
-    rm ./main
+    set -e
+    
     if [ "$output" = "$(cat expected.txt)" ];
     then
       echo "Test produced expected result"
+      rm main.ll
+      rm main
     else
-      echo "Invalid output $output"
+      echo "Invalid output $output expected $(cat expected.txt)"
+      echo "Leaving main.ll and main for debugging"
       exit 1
     fi
   popd
