@@ -461,6 +461,10 @@ func (s *Scanner) scanIdent() (t TokenType, text string, val interface{}) {
 		t = TokenTypeExport
 	case "from":
 		t = TokenTypeFrom
+	case "include":
+		t = TokenTypeInclude
+	case "as":
+		t = TokenTypeAs
 	}
 
 	return

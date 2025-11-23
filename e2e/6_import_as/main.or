@@ -1,0 +1,9 @@
+import { foo as biz } from "lib.or"
+import { foo as biz2 } from "lib2.or"
+
+extern puts(format: string) => int64
+
+fn main() {
+  puts(biz())
+  puts(biz2())
+}

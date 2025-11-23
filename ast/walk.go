@@ -155,12 +155,17 @@ func Walk(v Visitor, node Node) {
 			Walk(v, fn)
 		}
 	case *ImportStatement:
-		for _, ident := range n.Imports {
-			Walk(v, ident)
+		for _, item := range n.Items {
+			Walk(v, item.Name)
+			if item.Alias != nil {
+				Walk(v, item.Alias)
+			}
 		}
 		Walk(v, n.Path)
 	case *ExportStatement:
 		Walk(v, n.Declaration)
+	case *IncludeStatement:
+		Walk(v, n.Path)
 	default:
 		panic(fmt.Errorf("Unknown node type: %s", reflect.TypeOf(n)))
 	}

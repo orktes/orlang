@@ -21,6 +21,7 @@ type LLVMCodeGen struct {
 	currentFile       *ast.File
 	currentStruct     *types.StructType
 	currentStructName string
+	moduleName        string // Name of the current module being compiled (e.g., "lib", "main")
 	values            map[ast.Node]value.Value
 	functions         map[string]*ir.Func
 	structs           map[string]types.Type
@@ -40,10 +41,22 @@ func New(info *analyser.Info) *LLVMCodeGen {
 	}
 }
 
+func (lcg *LLVMCodeGen) SetModuleName(name string) {
+	lcg.moduleName = name
+}
+
 func (lcg *LLVMCodeGen) Generate(file *ast.File) string {
 	lcg.currentFile = file
 	ast.Walk(lcg, file)
 	return lcg.module.String()
+}
+
+func getKeys(m map[string]*ir.Func) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 func (lcg *LLVMCodeGen) getLLVMTypeFromSemantic(t ortypes.Type) types.Type {
@@ -353,6 +366,9 @@ func (lcg *LLVMCodeGen) Visit(node ast.Node) ast.Visitor {
 	case *ast.ExportStatement:
 		lcg.visitExportStatement(n)
 		return nil
+	case *ast.IncludeStatement:
+		lcg.visitIncludeStatement(n)
+		return nil
 	case *ast.Struct:
 		lcg.visitStruct(n)
 		return nil
@@ -542,17 +558,37 @@ func (lcg *LLVMCodeGen) visitBinaryExpression(n *ast.BinaryExpression) {
 }
 
 func (lcg *LLVMCodeGen) visitFunctionDeclaration(n *ast.FunctionDeclaration) {
-	name := "main"
+	// Generate function name
+	var name string
 	if n.Signature.Identifier != nil {
 		name = n.Signature.Identifier.Text
 	} else if n.Signature.Operator != nil {
-		// Handle operator overloads - use a mangled name
+		// This case should ideally be handled within method mangling for operators
+		// or as a global operator function if that's supported.
+		// For now, fallback to a generic operator name.
 		name = "op_" + n.Signature.Operator.Text
+	} else {
+		// Default name for functions without identifier (e.g., main)
+		name = "main"
 	}
 
-	// Mangle method name
+	// Check if this is a method (inside a struct)
 	if lcg.currentStruct != nil {
-		name = lcg.currentStructName + "_" + name
+		// Method: mangle with struct name
+		if n.Signature.Operator != nil {
+			// Operator overload
+			name = lcg.currentStructName + "_op_" + n.Signature.Operator.Text
+		} else {
+			name = lcg.currentStructName + "_" + name
+		}
+	} else if lcg.isExported(n) && lcg.moduleName != "" && lcg.moduleName != "main" {
+		// Exported function from a library module: mangle with module name
+		name = lcg.moduleName + "__" + name
+	}
+
+	// Check if already declared
+	if _, ok := lcg.functions[name]; ok {
+		return
 	}
 
 	var params []*ir.Param
@@ -855,8 +891,13 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 
 	fn, ok := lcg.functions[name]
 	if !ok {
-		// TODO: Handle undefined function
-		return
+		// Function not found - this shouldn't happen if analyzer did its job
+		// But we should handle it gracefully
+		panic(fmt.Sprintf("undefined function: %s (available: %v)", name, getKeys(lcg.functions)))
+	}
+
+	if fn == nil {
+		panic(fmt.Sprintf("function %s is nil in lcg.functions", name))
 	}
 
 	for i, arg := range n.Arguments {
@@ -1015,7 +1056,12 @@ func (lcg *LLVMCodeGen) addStringConstant(str string) value.Value {
 	// Add null terminator
 	str += "\x00"
 	c := constant.NewCharArrayFromString(str)
-	g := lcg.module.NewGlobalDef("", c)
+	// Use module-specific name for the global to avoid conflicts
+	globalName := ""
+	if lcg.moduleName != "" && lcg.moduleName != "main" {
+		globalName = lcg.moduleName + "_str"
+	}
+	g := lcg.module.NewGlobalDef(globalName, c)
 	g.Immutable = true
 
 	// Get pointer to first element

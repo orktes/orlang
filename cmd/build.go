@@ -81,8 +81,12 @@ var buildCmd = &cobra.Command{
 				}
 			case "llvm":
 				llvmcg := llvm.New(fileInfo)
-				code := llvmcg.Generate(fileNode)
+				// Extract module name from file path (e.g., "lib.or" -> "lib")
 				ext := path.Ext(filePath)
+				baseName := path.Base(filePath)
+				moduleName := baseName[0 : len(baseName)-len(ext)]
+				llvmcg.SetModuleName(moduleName)
+				code := llvmcg.Generate(fileNode)
 				outfile := filePath[0:len(filePath)-len(ext)] + ".ll"
 				err := ioutil.WriteFile(outfile, []byte(code), 0644)
 				if err != nil {

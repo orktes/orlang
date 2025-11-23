@@ -61,6 +61,7 @@ loop:
 		case check(p.parseInterface()):
 		case check(p.parseImportDecl()):
 		case check(p.parseExportDecl()):
+		case check(p.parseIncludeDecl()):
 		case p.eof():
 			break loop
 		case check(p.parseMacro()):
@@ -124,10 +125,24 @@ func (p *Parser) parseImportDecl() (node ast.Node, ok bool) {
 			p.error(unexpectedToken(p.read(), scanner.TokenTypeIdent))
 			return
 		}
-		importStmt.Imports = append(importStmt.Imports, ident)
 
-		// Peek next token
+		item := &ast.ImportItem{Name: ident}
+
+		// Check for "as alias"
 		tok := p.read()
+		if tok.Type == scanner.TokenTypeAs {
+			var alias *ast.Identifier
+			if alias, ok = p.parseIdentfier(); !ok {
+				p.error(unexpectedToken(p.read(), scanner.TokenTypeIdent))
+				return
+			}
+			item.Alias = alias
+			// Read next token after alias
+			tok = p.read()
+		}
+
+		importStmt.Items = append(importStmt.Items, item)
+
 		if tok.Type == scanner.TokenTypeCOMMA {
 			// Continue to next identifier
 			continue
@@ -173,6 +188,21 @@ func (p *Parser) parseExportDecl() (node ast.Node, ok bool) {
 	}
 
 	return &ast.ExportStatement{Declaration: decl}, true
+}
+
+func (p *Parser) parseIncludeDecl() (node ast.Node, ok bool) {
+	if _, ok = p.expectToken(scanner.TokenTypeInclude); !ok {
+		p.unread()
+		return
+	}
+
+	var path ast.Node
+	if path, ok = p.parseValueExpression(); !ok {
+		p.error(unexpectedToken(p.read(), scanner.TokenTypeString))
+		return
+	}
+
+	return &ast.IncludeStatement{Path: path.(*ast.ValueExpression)}, true
 }
 
 func (p *Parser) eof() (ok bool) {

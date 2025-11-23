@@ -890,28 +890,36 @@ typeCheck:
 
 		// Import symbols
 		importedScope := importedAnalyser.scope
-		for _, importIdent := range n.Imports {
-			details := importedScope.GetDetails(importIdent.Text, true)
+		for _, item := range n.Items {
+			importName := item.Name.Text
+			localName := importName
+			if item.Alias != nil {
+				localName = item.Alias.Text
+			}
+
+			details := importedScope.GetDetails(importName, true)
 			if details == nil {
-				v.emitError(importIdent, fmt.Sprintf("symbol %s not found in %s", importIdent.Text, path), true)
+				v.emitError(item.Name, fmt.Sprintf("symbol %s not found in %s", importName, path), true)
 				continue
 			}
 
 			if !details.Exported {
-				v.emitError(importIdent, fmt.Sprintf("symbol %s is not exported from %s", importIdent.Text, path), true)
+				v.emitError(item.Name, fmt.Sprintf("symbol %s is not exported from %s", importName, path), true)
 				continue
 			}
 
-			// Add to current scope
-			// We need to add it as if it was defined here, but pointing to the external item.
-			// Or we can just set it.
-			v.scope.Set(importIdent, details.ScopeItem)
+			// Add to current scope using the alias (or original name if no alias)
+			localIdent := item.Name
+			if item.Alias != nil {
+				localIdent = item.Alias
+			}
+			v.scope.Set(localIdent, details.ScopeItem)
 			// Mark as initialized since it comes from another file
-			v.scope.GetDetails(importIdent.Text, false).Initialized = true
+			v.scope.GetDetails(localName, false).Initialized = true
 
 			// Populate NodeInfo
 			typ := v.getTypeForNode(details.ScopeItem)
-			v.info.NodeInfo[importIdent] = &NodeInfo{Type: typ}
+			v.info.NodeInfo[localIdent] = &NodeInfo{Type: typ}
 		}
 
 	case *ast.ExportStatement:
@@ -936,6 +944,11 @@ typeCheck:
 				details.Exported = true
 			}
 		}
+
+	case *ast.IncludeStatement:
+		// For now, we don't validate include statements
+		// The functions will be declared as extern by codegen
+		break
 
 	case *ast.Block:
 		if _, fundeclOk := v.node.(*ast.FunctionDeclaration); fundeclOk {

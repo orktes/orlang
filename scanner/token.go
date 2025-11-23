@@ -101,6 +101,10 @@ const (
 	TokenTypeExport
 	// TokenTypeFrom from
 	TokenTypeFrom
+	// TokenTypeInclude include
+	TokenTypeInclude
+	// TokenTypeAs as
+	TokenTypeAs
 )
 
 var tokenNames = [...]string{
@@ -160,6 +164,8 @@ var tokenNames = [...]string{
 	TokenTypeImport:   "IMPORT",
 	TokenTypeExport:   "EXPORT",
 	TokenTypeFrom:     "FROM",
+	TokenTypeInclude:  "INCLUDE",
+	TokenTypeAs:       "AS",
 }
 
 func (typ TokenType) String() string {
