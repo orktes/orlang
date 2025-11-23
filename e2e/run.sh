@@ -2,11 +2,18 @@
 
 set -e
 
+
+
+
 (cd ../ && go install .)
 
-for dir in */; do
+function run_test {
+  dir=$1
   echo "Running test $dir"
   pushd $dir
+    echo "Linting"
+    orlang lint main.or
+    echo "Building"
     orlang build main.or --target llvm
     clang -Wno-override-module -o main main.ll
     rm main.ll
@@ -24,4 +31,17 @@ for dir in */; do
       exit 1
     fi
   popd
-done
+}
+
+
+if [ -z "$1" ]; then  
+  for dir in */; do
+    # Skip if dir ends with _skip
+    if [[ $dir == */_skip/ ]]; then
+      continue
+    fi
+    run_test $dir
+  done
+else
+  run_test $1
+fi

@@ -13,6 +13,10 @@ func (lcg *LLVMCodeGen) visitComparisonExpression(n *ast.ComparisonExpression) {
 	leftVal := lcg.values[n.Left]
 	rightVal := lcg.values[n.Right]
 
+	if leftVal == nil || rightVal == nil {
+		return
+	}
+
 	var val value.Value
 
 	switch n.Operator.Text {

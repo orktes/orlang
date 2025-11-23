@@ -1,0 +1,6 @@
+include "./header.h"
+
+fn main() => int32 {
+    puts("foobar")
+    return 0
+}

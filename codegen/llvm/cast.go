@@ -10,6 +10,14 @@ func (lcg *LLVMCodeGen) castIfNeeded(val value.Value, sourceTyp ortypes.Type, ta
 		return val
 	}
 
+	// Resolve LazyTypes
+	if lazy, ok := sourceTyp.(*ortypes.LazyType); ok {
+		sourceTyp = lazy.Resolver()
+	}
+	if lazy, ok := targetTyp.(*ortypes.LazyType); ok {
+		targetTyp = lazy.Resolver()
+	}
+
 	// Check if casting to interface
 	if targetIface, ok := targetTyp.(*ortypes.InterfaceType); ok {
 		// If source is struct (or pointer to struct), cast to interface

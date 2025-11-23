@@ -51,12 +51,46 @@ func (lcg *LLVMCodeGen) getLLVMTypeFromSemantic(t ortypes.Type) types.Type {
 		return types.I32
 	}
 
+	// Resolve LazyType first
+	if lazyType, ok := t.(*ortypes.LazyType); ok {
+		resolvedType := lazyType.Resolver()
+		return lcg.getLLVMTypeFromSemantic(resolvedType)
+	}
+
 	switch t := t.(type) {
-	case *ortypes.PrimitiveType:
+	case ortypes.PrimitiveType:
+		// Handle value type
 		if t.Type == "string" {
 			return types.I8Ptr
 		}
-		// TODO: Handle other primitives
+		if t.Type == "void" {
+			return types.Void
+		}
+		if t.Type == "int64" {
+			return types.I64
+		}
+		// Check if it's actually a struct type name
+		if s, ok := lcg.structs[t.Type]; ok {
+			return types.NewPointer(s)
+		}
+		// Default for other primitives (int32, bool, etc.)
+		return types.I32
+	case *ortypes.PrimitiveType:
+		// Handle pointer type
+		if t.Type == "string" {
+			return types.I8Ptr
+		}
+		if t.Type == "void" {
+			return types.Void
+		}
+		if t.Type == "int64" {
+			return types.I64
+		}
+		// Check if it's actually a struct type name
+		if s, ok := lcg.structs[t.Type]; ok {
+			return types.NewPointer(s)
+		}
+		// Default for other primitives
 		return types.I32
 	case *ortypes.StructType:
 		if s, ok := lcg.structs[t.Name]; ok {
@@ -79,16 +113,17 @@ func (lcg *LLVMCodeGen) getLLVMType(t ast.Type) types.Type {
 		nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[t]
 		if nodeInfo != nil && nodeInfo.Type != nil {
 			return lcg.getLLVMTypeFromSemantic(nodeInfo.Type)
+		} else {
 		}
 	}
 
 	if typeRef, ok := t.(*ast.TypeReference); ok {
-		fmt.Printf("DEBUG: getLLVMType TypeReference '%s'\n", typeRef.Name.Text)
 		if typeRef.Name.Text == "string" {
 			return types.I8Ptr
 		}
 		if s, ok := lcg.structs[typeRef.Name.Text]; ok {
 			return types.NewPointer(s)
+		} else {
 		}
 		// Check if it's an interface
 		// We don't have a map of interfaces in lcg yet, but we can check if it's NOT a struct?
@@ -145,6 +180,7 @@ func (lcg *LLVMCodeGen) visitStructExpression(n *ast.StructExpression) {
 }
 
 func (lcg *LLVMCodeGen) visitMemberExpression(n *ast.MemberExpression) {
+
 	// Get address of target
 	addr := lcg.getAddress(n.Target)
 	if addr == nil {
@@ -165,16 +201,15 @@ func (lcg *LLVMCodeGen) visitMemberExpression(n *ast.MemberExpression) {
 		ptrType = elemPtrType
 	}
 
-	structName := ptrType.ElemType.Name()
+	// Get struct name from the final element type
+	var structName string
+	if namedType, ok := ptrType.ElemType.(*types.StructType); ok {
+		structName = namedType.Name()
+	} else {
+		structName = ptrType.ElemType.Name()
+	}
+
 	if structName == "" {
-		// Try to cast to StructType directly if it's anonymous
-		if st, ok := ptrType.ElemType.(*types.StructType); ok {
-			// Anonymous struct, we can't look up by name easily unless we have a way to map it back.
-			// But we rely on named structs for methods and fields via structFields map.
-			// If we have anonymous struct here, we might be in trouble if we rely on name.
-			// But for now let's assume named structs.
-			_ = st
-		}
 		return
 	}
 
@@ -210,8 +245,11 @@ func (lcg *LLVMCodeGen) getAddress(n ast.Node) value.Value {
 			if details != nil {
 				if val, ok := lcg.values[details.DefineIdentifier]; ok {
 					return val
+				} else {
 				}
+			} else {
 			}
+		} else {
 		}
 		// Check if it's 'this'
 		if ident.Text == "this" {
@@ -422,6 +460,15 @@ func (lcg *LLVMCodeGen) visitAssigment(n *ast.Assigment) {
 
 	val = lcg.castIfNeeded(val, sourceTyp, targetTyp)
 
+	if val == nil {
+		fmt.Printf("ERROR: Assignment value is nil for left=%T, right=%T\n", n.Left, n.Right)
+		return
+	}
+	if addr == nil {
+		fmt.Printf("ERROR: Assignment addr is nil for left=%T\n", n.Left)
+		return
+	}
+
 	lcg.currentBlock.NewStore(val, addr)
 }
 
@@ -437,7 +484,38 @@ func (lcg *LLVMCodeGen) visitBinaryExpression(n *ast.BinaryExpression) {
 	leftVal := lcg.values[n.Left]
 	rightVal := lcg.values[n.Right]
 
+	if leftVal == nil || rightVal == nil {
+		return
+	}
+
 	var val value.Value
+
+	// Check for operator overloading
+	nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n]
+	if nodeInfo != nil && nodeInfo.OverloadedOperation != nil {
+		// Get struct name from left operand type
+		var structName string
+		if ptrType, ok := leftVal.Type().(*types.PointerType); ok {
+			if namedType, ok := ptrType.ElemType.(*types.StructType); ok {
+				structName = namedType.Name()
+			} else {
+				structName = ptrType.ElemType.Name()
+			}
+		}
+
+		if structName != "" {
+			fnName := structName + "_op_" + n.Operator.Text
+			if fn, ok := lcg.functions[fnName]; ok {
+				// Call the overloaded operator
+				// Arguments: this (left), left, right
+				// Note: The operator function is defined as fn +(left:Point, right:Point) inside struct Point
+				// So it has 3 arguments: this, left, right
+				val = lcg.currentBlock.NewCall(fn, leftVal, leftVal, rightVal)
+				lcg.values[n] = val
+				return
+			}
+		}
+	}
 
 	switch n.Operator.Text {
 	case "+":
@@ -451,9 +529,7 @@ func (lcg *LLVMCodeGen) visitBinaryExpression(n *ast.BinaryExpression) {
 	}
 
 	if val == nil {
-		fmt.Printf("DEBUG: visitBinaryExpression val is nil for op %s\n", n.Operator)
 	} else {
-		fmt.Printf("DEBUG: visitBinaryExpression set val for %p (op %s)\n", n, n.Operator)
 	}
 
 	lcg.values[n] = val
@@ -463,6 +539,9 @@ func (lcg *LLVMCodeGen) visitFunctionDeclaration(n *ast.FunctionDeclaration) {
 	name := "main"
 	if n.Signature.Identifier != nil {
 		name = n.Signature.Identifier.Text
+	} else if n.Signature.Operator != nil {
+		// Handle operator overloads - use a mangled name
+		name = "op_" + n.Signature.Operator.Text
 	}
 
 	// Mangle method name
@@ -479,20 +558,22 @@ func (lcg *LLVMCodeGen) visitFunctionDeclaration(n *ast.FunctionDeclaration) {
 	}
 
 	for _, arg := range n.Signature.Arguments {
-		fmt.Printf("DEBUG: visitFunctionDeclaration arg %s type %T\n", arg.Name.Text, arg.Type)
 		paramType := lcg.getLLVMType(arg.Type)
-		fmt.Printf("DEBUG: paramType for %s: %v\n", arg.Name.Text, paramType)
 		param := ir.NewParam(arg.Name.Text, paramType)
 		params = append(params, param)
 		lcg.values[arg.Name] = param
 	}
 
-	var returnType types.Type = types.Void
-	if n.Signature.ReturnType != nil {
+	var returnType types.Type
+	if name == "main" {
+		// main should always return i32 for compatibility
+		returnType = types.I32
+	} else if n.Signature.ReturnType != nil {
 		returnType = lcg.getLLVMType(n.Signature.ReturnType)
+	} else {
+		returnType = types.Void
 	}
 	fn := lcg.module.NewFunc(name, returnType, params...)
-	fmt.Printf("DEBUG: Created function %s: %s\n", name, fn.LLString())
 	lcg.functions[name] = fn
 
 	if n.Signature.Extern {
@@ -552,8 +633,68 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 	var name string
 	var args []value.Value
 
+	// Check if this is a type cast (e.g., int64(x), int32(y))
 	if ident, ok := n.Callee.(*ast.Identifier); ok {
 		name = ident.Text
+
+		// Check if name is a type name
+		isPrimitiveCast := false
+		var targetType types.Type
+
+		switch name {
+		case "int32":
+			isPrimitiveCast = true
+			targetType = types.I32
+		case "int64":
+			isPrimitiveCast = true
+			targetType = types.I64
+		case "int8":
+			isPrimitiveCast = true
+			targetType = types.I8
+		case "int16":
+			isPrimitiveCast = true
+			targetType = types.I16
+		}
+
+		if isPrimitiveCast && len(n.Arguments) == 1 {
+			// This is a type cast, not a function call
+			ast.Walk(lcg, n.Arguments[0])
+			sourceVal := lcg.values[n.Arguments[0].Expression]
+
+			if sourceVal == nil {
+				fmt.Printf("ERROR: sourceVal is nil for type cast %s\n", name)
+				return
+			}
+
+			sourceType := sourceVal.Type()
+
+			// Generate appropriate cast instruction
+			var castVal value.Value
+
+			// Get bit widths
+			var sourceBits, targetBits uint64
+			if intType, ok := sourceType.(*types.IntType); ok {
+				sourceBits = intType.BitSize
+			}
+			if intType, ok := targetType.(*types.IntType); ok {
+				targetBits = intType.BitSize
+			}
+
+			if sourceBits == targetBits {
+				// Same size, no cast needed
+				castVal = sourceVal
+			} else if sourceBits < targetBits {
+				// Sign extend for widening
+				castVal = lcg.currentBlock.NewSExt(sourceVal, targetType)
+			} else {
+				// Truncate for narrowing
+				castVal = lcg.currentBlock.NewTrunc(sourceVal, targetType)
+			}
+
+			lcg.values[n] = castVal
+			return
+		}
+
 		// Check if it's a method call on 'this' implicitly?
 		// Or just a global function.
 		// If we are in a method, and 'name' is a method of current struct, we should treat it as this.name()
@@ -660,12 +801,6 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 
 				// 7. Call
 				if fnPtr == nil {
-					fmt.Printf("DEBUG: fnPtr is nil for interface call %s\n", member.Property.Text)
-				}
-				for i, v := range callArgs {
-					if v == nil {
-						fmt.Printf("DEBUG: Interface call arg %d is nil for %s\n", i, member.Property.Text)
-					}
 				}
 
 				call := lcg.currentBlock.NewCall(fnPtr, callArgs...)
@@ -801,16 +936,6 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 		args = append(args, val)
 	}
 
-	for i, v := range args {
-		if v == nil {
-			fmt.Printf("DEBUG: Arg %d is nil for call to %s\n", i, name)
-		}
-	}
-
-	if fn == nil {
-		fmt.Printf("DEBUG: fn is nil for call to %s\n", name)
-	}
-
 	val := lcg.currentBlock.NewCall(fn, args...)
 	lcg.values[n] = val
 }
@@ -821,15 +946,18 @@ func (lcg *LLVMCodeGen) visitIdentifier(n *ast.Identifier) {
 	}
 	nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n]
 	if nodeInfo == nil {
+		// nodeInfo is nil
 		return
 	}
 
 	details := nodeInfo.Scope.GetDetails(n.Text, true)
 	if details == nil {
+		// details is nil
 		return
 	}
 
 	if val, ok := lcg.values[details.DefineIdentifier]; ok {
+
 		// If it's an alloca (pointer), load it
 		if ptrType, isPtr := val.Type().(*types.PointerType); isPtr {
 			// Check if it's a function parameter (which is also a value but not a pointer to stack usually in this impl)
@@ -838,14 +966,11 @@ func (lcg *LLVMCodeGen) visitIdentifier(n *ast.Identifier) {
 			if _, isInst := val.(ir.Instruction); isInst {
 				load := lcg.currentBlock.NewLoad(ptrType.ElemType, val)
 				lcg.values[n] = load
-				fmt.Printf("DEBUG: visitIdentifier loaded %s from %s\n", n.Text, val)
 				return
 			}
 		}
 		lcg.values[n] = val
-		fmt.Printf("DEBUG: visitIdentifier set val for %s\n", n.Text)
-	} else {
-		fmt.Printf("DEBUG: visitIdentifier val not found for %s\n", n.Text)
+
 	}
 }
 

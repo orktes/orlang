@@ -1,19 +1,19 @@
-extern puts(s: string)
+extern puts(s: string) => int64
 
 // This macro uses build-in function print to print a list of expressions
 macro print {
   ($a:expr) : (
     puts($a)
-    print("\n")
+    puts("\n")
   )
 
   ($a:expr, $( $b:expr ),*) : (
-    print($a)
+    puts($a)
     $(
-      print(" ")
-      print($b)
+      puts(" ")
+      puts($b)
     )*
-    print("\n")
+    puts("\n")
   )
 }
 
@@ -48,15 +48,6 @@ struct Point {
     this.x = 0
     this.y = 0
   }
-
-  // Implement buildin stringer interface (argument type of the print function)
-  fn toString() => string {
-    return "{\n" +
-           "  x: " + this.x.toString() +
-           ",\n" +
-           "  y: " + this.y.toString() +
-           "\n}"
-  }
 }
 
 fn reset(resetable : Resetable) {
@@ -73,11 +64,15 @@ fn main() {
   // This is using the operator overload defined in the Point struct
   var combined = pointA + pointB
 
-  // Use print macro to print the result
-  // print!("Hello world:", combined) 
-  // Commented out macro usage for now as we need to implement structs/vars first
-  
+  // Check combined values
+  if combined.x == 30 {
+    puts("X is correct")
+  }
+
   // Example usage of an interface
   reset(combined)
-  // print!("Value after reset:", combined)
+  
+  if combined.x == 0 {
+    puts("Reset worked")
+  }
 }

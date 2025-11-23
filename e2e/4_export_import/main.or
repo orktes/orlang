@@ -1,0 +1,6 @@
+import { foo } from "lib.or"
+
+fn main() => int32 {
+  puts(foo())
+  return 0
+}

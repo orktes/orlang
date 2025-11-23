@@ -1,0 +1,48 @@
+extern puts(s: string) => int64
+
+interface Resetable {
+	fn reset()
+}
+
+struct Point {
+	var x = 0
+	var y = 0
+	
+	fn sum() => int32 {
+		return this.x + this.y
+	}
+
+	fn reset() {
+		this.x = 0
+		this.y = 0
+	}
+}
+
+fn reset(resetable : Resetable) {
+	resetable.reset()
+}
+
+fn main() => int32 {
+	var p = Point{10, 20}
+	var s = p.sum()
+	
+	if s == 30 {
+		puts("Sum is 30")
+	}
+
+	p.x = 100
+	p.y = 200
+	s = p.sum()
+	if s != 300 {
+		puts("Sum is not 300")
+	}
+	
+	reset(p)
+
+	s = p.sum()
+	if s != 0 {
+		puts("Point was not reset")
+	}
+
+	return 0
+}

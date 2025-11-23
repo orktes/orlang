@@ -59,7 +59,8 @@ func (v *visitor) getTypeForTypeName(typName string) types.Type {
 	}
 
 	if typNode := v.info.Types[typName]; typNode != nil {
-		return v.getTypeForNode(typNode)
+		resolvedType := v.getTypeForNode(typNode)
+		return resolvedType
 	}
 
 	return &types.LazyType{Resolver: func() types.Type {
