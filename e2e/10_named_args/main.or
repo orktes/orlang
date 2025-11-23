@@ -1,6 +1,5 @@
 extern printf(format: string, args: ...anything) => int64
 
-
 fn div(a: float32, b: int32) => float32 {
 	return a / float32(b)
 }

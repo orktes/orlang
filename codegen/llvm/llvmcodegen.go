@@ -2,6 +2,7 @@ package llvm
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/constant"
@@ -91,6 +92,18 @@ func (lcg *LLVMCodeGen) getLLVMTypeFromSemantic(t ortypes.Type) types.Type {
 		if t.Type == "float64" {
 			return types.Double
 		}
+		if t.Type == "int16" || t.Type == "uint16" {
+			return types.I16
+		}
+		if t.Type == "uint64" {
+			return types.I64
+		}
+		if t.Type == "uint32" {
+			return types.I32
+		}
+		if t.Type == "uint8" {
+			return types.I8
+		}
 		// Check if it's actually a struct type name
 		if s, ok := lcg.structs[t.Type]; ok {
 			return types.NewPointer(s)
@@ -116,6 +129,18 @@ func (lcg *LLVMCodeGen) getLLVMTypeFromSemantic(t ortypes.Type) types.Type {
 		}
 		if t.Type == "float64" {
 			return types.Double
+		}
+		if t.Type == "int16" || t.Type == "uint16" {
+			return types.I16
+		}
+		if t.Type == "uint64" {
+			return types.I64
+		}
+		if t.Type == "uint32" {
+			return types.I32
+		}
+		if t.Type == "uint8" {
+			return types.I8
 		}
 		// Check if it's actually a struct type name
 		if s, ok := lcg.structs[t.Type]; ok {
@@ -145,10 +170,14 @@ func (lcg *LLVMCodeGen) getLLVMType(t ast.Type) types.Type {
 		}
 
 		switch name {
-		case "int", "int32":
+		case "int", "int32", "uint32":
 			return types.I32
-		case "int64":
+		case "int64", "uint64":
 			return types.I64
+		case "int16", "uint16":
+			return types.I16
+		case "int8", "uint8":
+			return types.I8
 		case "string":
 			return types.I8Ptr
 		case "bool":
@@ -737,64 +766,6 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 	if ident, ok := n.Callee.(*ast.Identifier); ok {
 		name = ident.Text
 
-		// Check if name is a type name
-		isPrimitiveCast := false
-		var targetType types.Type
-
-		switch name {
-		case "int32":
-			isPrimitiveCast = true
-			targetType = types.I32
-		case "int64":
-			isPrimitiveCast = true
-			targetType = types.I64
-		case "int8":
-			isPrimitiveCast = true
-			targetType = types.I8
-		case "int16":
-			isPrimitiveCast = true
-			targetType = types.I16
-		}
-
-		if isPrimitiveCast && len(n.Arguments) == 1 {
-			// This is a type cast, not a function call
-			ast.Walk(lcg, n.Arguments[0])
-			sourceVal := lcg.values[n.Arguments[0].Expression]
-
-			if sourceVal == nil {
-				fmt.Printf("ERROR: sourceVal is nil for type cast %s\n", name)
-				return
-			}
-
-			sourceType := sourceVal.Type()
-
-			// Generate appropriate cast instruction
-			var castVal value.Value
-
-			// Get bit widths
-			var sourceBits, targetBits uint64
-			if intType, ok := sourceType.(*types.IntType); ok {
-				sourceBits = intType.BitSize
-			}
-			if intType, ok := targetType.(*types.IntType); ok {
-				targetBits = intType.BitSize
-			}
-
-			if sourceBits == targetBits {
-				// Same size, no cast needed
-				castVal = sourceVal
-			} else if sourceBits < targetBits {
-				// Sign extend for widening
-				castVal = lcg.currentBlock.NewSExt(sourceVal, targetType)
-			} else {
-				// Truncate for narrowing
-				castVal = lcg.currentBlock.NewTrunc(sourceVal, targetType)
-			}
-
-			lcg.values[n] = castVal
-			return
-		}
-
 		// Check if it's a method call on 'this' implicitly?
 		// Or just a global function.
 		// If we are in a method, and 'name' is a method of current struct, we should treat it as this.name()
@@ -950,7 +921,13 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 	// Check if it's a type cast
 	if ident, ok := n.Callee.(*ast.Identifier); ok {
 		// Check for primitive types
-		if ident.Text == "float32" || ident.Text == "int32" || ident.Text == "int64" || ident.Text == "float64" {
+		isCast := false
+		switch ident.Text {
+		case "float32", "float64", "int64", "int32", "int16", "int8", "uint64", "uint32", "uint16", "uint8":
+			isCast = true
+		}
+
+		if isCast {
 			// It's a cast
 			if len(n.Arguments) != 1 {
 				panic("Type cast must have exactly one argument")
@@ -967,14 +944,33 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 				targetType = types.Float
 			case "float64":
 				targetType = types.Double
-			case "int32":
-				targetType = types.I32
-			case "int64":
+			case "int64", "uint64":
 				targetType = types.I64
+			case "int32", "uint32":
+				targetType = types.I32
+			case "int16", "uint16":
+				targetType = types.I16
+			case "int8", "uint8":
+				targetType = types.I8
 			}
 
 			// Cast val to targetType
-			castVal := lcg.castValue(val, targetType)
+			targetIsSigned := true
+			switch ident.Text {
+			case "uint8", "uint16", "uint32", "uint64":
+				targetIsSigned = false
+			}
+
+			sourceIsSigned := true
+			nodeInfoArg := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[arg.Expression]
+			if nodeInfoArg != nil && nodeInfoArg.Type != nil {
+				typeName := nodeInfoArg.Type.GetName()
+				if strings.HasPrefix(typeName, "uint") {
+					sourceIsSigned = false
+				}
+			}
+
+			castVal := lcg.castValue(val, targetType, sourceIsSigned, targetIsSigned)
 			lcg.values[n] = castVal
 			return
 		}
@@ -1174,6 +1170,21 @@ func (lcg *LLVMCodeGen) visitValueExpression(n *ast.ValueExpression) {
 				intVal = 1
 			}
 			val = constant.NewInt(types.I1, intVal)
+		} else if f, ok := n.Token.Value.(float64); ok {
+			// Default to float32 unless it's too big?
+			// Analyzer logic:
+			// if n.Token.Value.(float64) > math.MaxFloat32 { return types.Float64Type }
+			// return types.Float32Type
+
+			// For now, let's default to Float (float32) to match analyzer default
+			// If it's larger than MaxFloat32, we should use Double.
+			// But constant.NewFloat takes float64.
+
+			// We can check semantic info if available?
+			// But visitValueExpression doesn't look up semantic info usually.
+
+			// Let's use Float (32-bit) as default.
+			val = constant.NewFloat(types.Float, f)
 		}
 	}
 

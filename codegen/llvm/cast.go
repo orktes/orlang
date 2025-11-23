@@ -66,32 +66,50 @@ func (lcg *LLVMCodeGen) castIfNeeded(val value.Value, sourceTyp, targetTyp ortyp
 }
 
 // castValue performs explicit casting between LLVM types
-func (lcg *LLVMCodeGen) castValue(val value.Value, targetType types.Type) value.Value {
+// castValue performs explicit casting between LLVM types
+func (lcg *LLVMCodeGen) castValue(val value.Value, targetType types.Type, sourceIsSigned, targetIsSigned bool) value.Value {
 	sourceType := val.Type()
 
 	if sourceType.Equal(targetType) {
 		return val
 	}
 
+	// Helper to check if type is Int
+	isInt := func(t types.Type) bool {
+		_, ok := t.(*types.IntType)
+		return ok
+	}
+
+	// Helper to check if type is Float
+	isFloat := func(t types.Type) bool {
+		_, ok := t.(*types.FloatType)
+		return ok
+	}
+
 	// Int -> Float
-	if sourceType.Equal(types.I32) || sourceType.Equal(types.I64) {
-		if targetType.Equal(types.Float) || targetType.Equal(types.Double) {
+	if isInt(sourceType) && isFloat(targetType) {
+		if sourceIsSigned {
 			return lcg.currentBlock.NewSIToFP(val, targetType)
 		}
+		return lcg.currentBlock.NewUIToFP(val, targetType)
 	}
 
 	// Float -> Int
-	if sourceType.Equal(types.Float) || sourceType.Equal(types.Double) {
-		if targetType.Equal(types.I32) || targetType.Equal(types.I64) {
+	if isFloat(sourceType) && isInt(targetType) {
+		if targetIsSigned {
 			return lcg.currentBlock.NewFPToSI(val, targetType)
 		}
+		return lcg.currentBlock.NewFPToUI(val, targetType)
 	}
 
 	// Int -> Int (Extension/Truncation)
 	if srcInt, ok := sourceType.(*types.IntType); ok {
 		if dstInt, ok := targetType.(*types.IntType); ok {
 			if srcInt.BitSize < dstInt.BitSize {
-				return lcg.currentBlock.NewSExt(val, targetType)
+				if sourceIsSigned {
+					return lcg.currentBlock.NewSExt(val, targetType)
+				}
+				return lcg.currentBlock.NewZExt(val, targetType)
 			} else if srcInt.BitSize > dstInt.BitSize {
 				return lcg.currentBlock.NewTrunc(val, targetType)
 			}
@@ -102,7 +120,6 @@ func (lcg *LLVMCodeGen) castValue(val value.Value, targetType types.Type) value.
 	if srcFloat, ok := sourceType.(*types.FloatType); ok {
 		if dstFloat, ok := targetType.(*types.FloatType); ok {
 			// Float is 32, Double is 64
-			// We can check Kind or assume standard sizes
 			if srcFloat.Kind == types.FloatKindFloat && dstFloat.Kind == types.FloatKindDouble {
 				return lcg.currentBlock.NewFPExt(val, targetType)
 			} else if srcFloat.Kind == types.FloatKindDouble && dstFloat.Kind == types.FloatKindFloat {

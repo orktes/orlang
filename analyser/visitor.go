@@ -390,9 +390,9 @@ func (v *visitor) validateTypeConversion(call *ast.FunctionCall) bool {
 
 			conversionOk := false
 			switch exprType {
-			case types.Float32Type, types.Float64Type, types.Int32Type, types.Int64Type:
+			case types.Float32Type, types.Float64Type, types.Int32Type, types.Int64Type, types.Int16Type, types.Int8Type, types.UInt64Type, types.UInt32Type, types.UInt16Type, types.UInt8Type:
 				switch typ {
-				case types.Float32Type, types.Float64Type, types.Int32Type, types.Int64Type:
+				case types.Float32Type, types.Float64Type, types.Int32Type, types.Int64Type, types.Int16Type, types.Int8Type, types.UInt64Type, types.UInt32Type, types.UInt16Type, types.UInt8Type:
 					conversionOk = true
 				}
 			}
