@@ -84,6 +84,14 @@ const (
 	// TokenTypeGreaterOrEqual >=
 	TokenTypeGreaterOrEqual
 
+	// TokenTypeIs is (type assertion)
+	TokenTypeIs
+
+	// TokenTypeOr logical OR ||
+	TokenTypeOr
+	// TokenTypeAnd logical AND &&
+	TokenTypeAnd
+
 	// TokenTypeIncrement ++
 	TokenTypeIncrement
 	// TokenTypeDecrement --
@@ -155,6 +163,9 @@ var tokenNames = [...]string{
 	TokenTypeNotEqual:       "NOTEQUAL",
 	TokenTypeLessOrEqual:    "LESSOREQUAL",
 	TokenTypeGreaterOrEqual: "GREATEROREQUAL",
+	TokenTypeIs:             "IS",
+	TokenTypeOr:             "OR",
+	TokenTypeAnd:            "AND",
 
 	TokenTypeIncrement: "INCREMENT",
 	TokenTypeDecrement: "DECREMENT",

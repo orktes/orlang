@@ -292,6 +292,9 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 		// Resolve the pointed-to type
 		pointedType := v.getTypeForNode(n.Type)
 		return &types.PointerType{Type: pointedType}
+	case *ast.TypeAssertionExpression:
+		// Type assertions always return bool
+		return types.BoolType
 	default:
 		panic("Could not resolve type for " + reflect.TypeOf(n).String())
 	}

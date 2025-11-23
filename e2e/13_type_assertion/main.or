@@ -1,0 +1,20 @@
+extern printf(format: string, args: ...anything) => int64
+
+fn print(v: anything) {
+	if v is int32 {
+		printf("%d\n", v)
+	} else if v is float32 {
+		printf("%f\n", v)
+	} else if v is string {
+		printf("%s\n", v)
+	} else if v is bool {
+		printf("%d\n", v)
+	}
+}
+
+fn main() {
+	print(123)
+	print(123.456)
+	print("string")
+	print(true)
+}

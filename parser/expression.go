@@ -280,6 +280,9 @@ func (p *Parser) parseComparisonExpression(left ast.Expression) (node ast.Expres
 		scanner.TokenTypeGreater,
 		scanner.TokenTypeLessOrEqual,
 		scanner.TokenTypeGreaterOrEqual,
+		scanner.TokenTypeIs,
+		scanner.TokenTypeOr,
+		scanner.TokenTypeAnd,
 	)
 
 	if !ok {
@@ -287,6 +290,24 @@ func (p *Parser) parseComparisonExpression(left ast.Expression) (node ast.Expres
 		return
 	}
 
+	// Handle type assertion (is operator)
+	if token.Type == scanner.TokenTypeIs {
+		typ, typeOk := p.parseType()
+		if !typeOk {
+			p.error(unexpected(p.read().StringValue(), "type"))
+			return
+		}
+
+		node = &ast.TypeAssertionExpression{
+			Expression: left,
+			IsToken:    token,
+			Type:       typ,
+		}
+		ok = true
+		return
+	}
+
+	// Handle regular comparison
 	right, expressionOk := p.parseExpression()
 	if !expressionOk {
 		p.error(unexpected(p.read().StringValue(), "expression"))

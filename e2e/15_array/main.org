@@ -1,0 +1,13 @@
+extern puts(s: string) => int64
+
+fn print_array(arr: []string) {
+    for var i = 0; i < len(arr); i++ {
+        puts(arr[i])
+    }
+}
+
+
+fn main() {
+	var arr = [3]string{"foo", "bar", "baz"}
+	print_array(arr)
+}

@@ -73,13 +73,13 @@ func (lcg *LLVMCodeGen) getOrCreateItable(sourceTyp ortypes.Type, targetTyp *ort
 		}
 	}
 
-	// Create itable type: array of function pointers
-	// For simplicity, we'll use an array of i8* and cast them when calling.
-	// Or we can try to be more specific, but function signatures vary.
-	// So [N x i8*] is safest.
+	// Create itable type: {i32 typeID, [N x i8*] methods}
+	// First field: Type ID for runtime type checking
+	// Remaining fields: Function pointers
 
 	numMethods := len(targetTyp.Functions)
-	itableType := types.NewArray(uint64(numMethods), types.I8Ptr)
+	methodArrayType := types.NewArray(uint64(numMethods), types.I8Ptr)
+	itableType := types.NewStruct(types.I32, methodArrayType)
 
 	var methodPtrs []constant.Constant
 
@@ -111,7 +111,12 @@ func (lcg *LLVMCodeGen) getOrCreateItable(sourceTyp ortypes.Type, targetTyp *ort
 		}
 	}
 
-	itableConst := constant.NewArray(itableType, methodPtrs...)
+	// Get type ID for the source type
+	typeID := lcg.getTypeID(sourceName)
+
+	// Create itable constant: {typeID, [methods...]}
+	methodArray := constant.NewArray(methodArrayType, methodPtrs...)
+	itableConst := constant.NewStruct(itableType, constant.NewInt(types.I32, int64(typeID)), methodArray)
 
 	g := lcg.module.NewGlobalDef(itableName, itableConst)
 	g.Immutable = true

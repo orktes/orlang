@@ -179,6 +179,12 @@ func (s *Scanner) Scan() (token Token) {
 	case ch == '&':
 		t = TokenTypeAMPERSAND
 		text = string(ch)
+		if s.read() == '&' {
+			t = TokenTypeAnd
+			text = "&&"
+		} else {
+			s.unread()
+		}
 
 	case ch == '(':
 		t = TokenTypeLPAREN
@@ -252,6 +258,16 @@ func (s *Scanner) Scan() (token Token) {
 		} else if next == '>' {
 			t = TokenTypeArrow
 			text = "=>"
+		} else {
+			s.unread()
+		}
+
+	case ch == '|':
+		t = TokenTypeUnknown // Single pipe not used yet
+		text = string(ch)
+		if s.read() == '|' {
+			t = TokenTypeOr
+			text = "||"
 		} else {
 			s.unread()
 		}
@@ -473,6 +489,8 @@ func (s *Scanner) scanIdent() (t TokenType, text string, val interface{}) {
 		t = TokenTypeInclude
 	case "as":
 		t = TokenTypeAs
+	case "is":
+		t = TokenTypeIs
 	}
 
 	return

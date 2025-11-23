@@ -28,6 +28,8 @@ type LLVMCodeGen struct {
 	structs           map[string]types.Type
 	structDefinitions map[string]*types.StructType
 	structFields      map[string]map[string]int
+	typeIDs           map[string]int32 // Type name -> Type ID for runtime type checking
+	nextTypeID        int32            // Next available type ID
 }
 
 func New(info *analyser.Info) *LLVMCodeGen {
@@ -39,6 +41,8 @@ func New(info *analyser.Info) *LLVMCodeGen {
 		structs:           make(map[string]types.Type),
 		structDefinitions: make(map[string]*types.StructType),
 		structFields:      make(map[string]map[string]int),
+		typeIDs:           make(map[string]int32),
+		nextTypeID:        1, // Start from 1, reserve 0 for unknown/nil
 	}
 }
 
@@ -455,6 +459,9 @@ func (lcg *LLVMCodeGen) Visit(node ast.Node) ast.Visitor {
 		return nil
 	case *ast.TupleDeclaration:
 		lcg.visitTupleDeclaration(n)
+		return nil
+	case *ast.TypeAssertionExpression:
+		lcg.visitTypeAssertionExpression(n)
 		return nil
 	}
 	return lcg

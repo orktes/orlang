@@ -17,7 +17,7 @@ fn receivesTupple(receives: (int32, float32, string)) => &int8 {
 
 fn main() {
 	var (i, f, s) = returnTupple()
-	printf("%d%f%s\n", i, f, s)
+	printf("%d-%f-%s\n", i, f, s)
 	var str = receivesTupple((i, f, s))
 	printf("%s\n", str)
 	free(str)
