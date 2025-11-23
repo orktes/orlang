@@ -659,12 +659,30 @@ typeCheck:
 			}
 
 			if !namedArgs {
-				if len(n.Arguments) < len(signType.ArgumentTypes) {
+				// Check if function is variadic by looking at the last argument
+				isVariadic := false
+				var funDecl *ast.FunctionDeclaration
+				if ident, ok := n.Callee.(*ast.Identifier); ok {
+					if item := v.scope.Get(ident.Text, true); item != nil {
+						funDecl, _ = item.(*ast.FunctionDeclaration)
+					}
+				}
+				if funDecl != nil && len(funDecl.Signature.Arguments) > 0 {
+					lastArg := funDecl.Signature.Arguments[len(funDecl.Signature.Arguments)-1]
+					isVariadic = lastArg.Variadic
+				}
+
+				minArgs := len(signType.ArgumentTypes)
+				if isVariadic {
+					minArgs-- // Variadic parameter is optional
+				}
+
+				if len(n.Arguments) < minArgs {
 					v.emitError(n, fmt.Sprintf(
 						"too few arguments in call to %s",
 						n.Callee,
 					), true)
-				} else if len(n.Arguments) > len(signType.ArgumentTypes) {
+				} else if !isVariadic && len(n.Arguments) > len(signType.ArgumentTypes) {
 					v.emitError(n, fmt.Sprintf(
 						"too many arguments in call to %s",
 						n.Callee,
