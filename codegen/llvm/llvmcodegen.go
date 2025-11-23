@@ -599,7 +599,12 @@ func (lcg *LLVMCodeGen) visitFunctionDeclaration(n *ast.FunctionDeclaration) {
 		params = append(params, thisParam)
 	}
 
+	isVariadic := false
 	for _, arg := range n.Signature.Arguments {
+		if arg.Variadic {
+			isVariadic = true
+			break // Variadic must be last, don't add to params
+		}
 		paramType := lcg.getLLVMType(arg.Type)
 		param := ir.NewParam(arg.Name.Text, paramType)
 		params = append(params, param)
@@ -616,6 +621,9 @@ func (lcg *LLVMCodeGen) visitFunctionDeclaration(n *ast.FunctionDeclaration) {
 		returnType = types.Void
 	}
 	fn := lcg.module.NewFunc(name, returnType, params...)
+	if isVariadic {
+		fn.Sig.Variadic = true
+	}
 	lcg.functions[name] = fn
 
 	if n.Signature.Extern {
@@ -904,79 +912,82 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 		ast.Walk(lcg, arg)
 		val := lcg.values[arg.Expression]
 
-		// Cast argument if needed
-		// We need expected type from function signature
-		// fn.Params[i] has the type, but it's LLVM type.
-		// We need semantic type to know if it's interface.
-		// But we don't have easy access to semantic signature here unless we look it up.
-		// We can look up the function declaration in analyser info?
-		// Or we can check if the LLVM param type is interface type (struct { i8*, i8* })?
-		// Checking LLVM type is easier but less robust if we have multiple structs with same layout.
-		// But interface type is specific.
+		// Only do type casting for defined parameters (not variadic args)
+		if i < len(fn.Params) {
+			// Cast argument if needed
+			// We need expected type from function signature
+			// fn.Params[i] has the type, but it's LLVM type.
+			// We need semantic type to know if it's interface.
+			// But we don't have easy access to semantic signature here unless we look it up.
+			// We can look up the function declaration in analyser info?
+			// Or we can check if the LLVM param type is interface type (struct { i8*, i8* })?
+			// Checking LLVM type is easier but less robust if we have multiple structs with same layout.
+			// But interface type is specific.
 
-		param := fn.Params[i]
-		if param.Type().Equal(lcg.getInterfaceType()) {
-			// Target is interface.
-			// Check source type.
-			var sourceTyp ortypes.Type
-			nodeInfoArg := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[arg.Expression]
-			if nodeInfoArg != nil {
-				sourceTyp = nodeInfoArg.Type
-			}
+			param := fn.Params[i]
+			if param.Type().Equal(lcg.getInterfaceType()) {
+				// Target is interface.
+				// Check source type.
+				var sourceTyp ortypes.Type
+				nodeInfoArg := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[arg.Expression]
+				if nodeInfoArg != nil {
+					sourceTyp = nodeInfoArg.Type
+				}
 
-			// We need target interface type to generate itable.
-			// We can't easily get it from LLVM type.
-			// We MUST look up the function signature from semantic info.
+				// We need target interface type to generate itable.
+				// We can't easily get it from LLVM type.
+				// We MUST look up the function signature from semantic info.
 
-			// Try to find function definition in semantic info
-			// n.Callee is Identifier or MemberExpression
-			// If Identifier, we can look it up.
+				// Try to find function definition in semantic info
+				// n.Callee is Identifier or MemberExpression
+				// If Identifier, we can look it up.
 
-			var targetTyp ortypes.Type
+				var targetTyp ortypes.Type
 
-			if ident, ok := n.Callee.(*ast.Identifier); ok {
-				nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[ident]
-				if nodeInfo != nil {
-					// This gives us the function type?
-					// Or the definition?
-					// nodeInfo.Type should be SignatureType
-					if sig, ok := nodeInfo.Type.(*ortypes.SignatureType); ok {
-						if i < len(sig.ArgumentTypes) {
-							targetTyp = sig.ArgumentTypes[i]
+				if ident, ok := n.Callee.(*ast.Identifier); ok {
+					nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[ident]
+					if nodeInfo != nil {
+						// This gives us the function type?
+						// Or the definition?
+						// nodeInfo.Type should be SignatureType
+						if sig, ok := nodeInfo.Type.(*ortypes.SignatureType); ok {
+							if i < len(sig.ArgumentTypes) {
+								targetTyp = sig.ArgumentTypes[i]
+							}
 						}
 					}
-				}
-			} else if member, ok := n.Callee.(*ast.MemberExpression); ok {
-				// Method call
-				// We need to find the method signature
-				// We can look up the property node info?
-				// Or the target type and then find method.
+				} else if member, ok := n.Callee.(*ast.MemberExpression); ok {
+					// Method call
+					// We need to find the method signature
+					// We can look up the property node info?
+					// Or the target type and then find method.
 
-				// Let's try property node info?
-				// Usually analyser doesn't store info for property identifier directly maybe?
-				// Let's try target type.
-				targetAddr := lcg.getAddress(member.Target)
-				if targetAddr != nil {
-					var targetObjTyp ortypes.Type
-					nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[member.Target]
-					if nodeInfo != nil {
-						targetObjTyp = nodeInfo.Type
-					}
+					// Let's try property node info?
+					// Usually analyser doesn't store info for property identifier directly maybe?
+					// Let's try target type.
+					targetAddr := lcg.getAddress(member.Target)
+					if targetAddr != nil {
+						var targetObjTyp ortypes.Type
+						nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[member.Target]
+						if nodeInfo != nil {
+							targetObjTyp = nodeInfo.Type
+						}
 
-					if targetObjTyp != nil {
-						if has, typ := targetObjTyp.(ortypes.TypeWithMethods).HasFunction(member.Property.Text); has {
-							if sig, ok := typ.(*ortypes.SignatureType); ok {
-								if i < len(sig.ArgumentTypes) {
-									targetTyp = sig.ArgumentTypes[i]
+						if targetObjTyp != nil {
+							if has, typ := targetObjTyp.(ortypes.TypeWithMethods).HasFunction(member.Property.Text); has {
+								if sig, ok := typ.(*ortypes.SignatureType); ok {
+									if i < len(sig.ArgumentTypes) {
+										targetTyp = sig.ArgumentTypes[i]
+									}
 								}
 							}
 						}
 					}
 				}
-			}
 
-			if targetTyp != nil {
-				val = lcg.castIfNeeded(val, sourceTyp, targetTyp)
+				if targetTyp != nil {
+					val = lcg.castIfNeeded(val, sourceTyp, targetTyp)
+				}
 			}
 		}
 
