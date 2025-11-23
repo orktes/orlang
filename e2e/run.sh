@@ -68,7 +68,7 @@ function run_test {
 if [ -z "$1" ]; then  
   for dir in */; do
     # Skip if dir ends with _skip
-    if [[ $dir == */_skip/ ]]; then
+    if [[ $dir == */_skip/* ]]; then
       continue
     fi
     run_test $dir

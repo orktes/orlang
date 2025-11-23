@@ -1,0 +1,24 @@
+extern malloc(size: int64) => &int8
+extern free(ptr: &int8)
+extern sprintf(buf: &int8, format: string, args: ...anything) => int64
+extern printf(format: string, args: ...anything) => int64
+
+
+fn returnTupple() => (int32, float32, string) {
+	return (1, 0.5, "string")
+}
+
+fn receivesTupple(receives: (int32, float32, string)) => &int8 {
+	var (i, f, s) = receives
+    var buf = malloc(1024)
+    sprintf(buf, "int: %d, float: %f, string: %s", i, f, s)
+	return buf
+}
+
+fn main() {
+	var (i, f, s) = returnTupple()
+	printf("%d%f%s\n", i, f, s)
+	var str = receivesTupple((i, f, s))
+	printf("%s\n", str)
+	free(str)
+}

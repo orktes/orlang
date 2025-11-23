@@ -154,6 +154,13 @@ func (lcg *LLVMCodeGen) getLLVMTypeFromSemantic(t ortypes.Type) types.Type {
 		}
 	case *ortypes.InterfaceType:
 		return lcg.getInterfaceType()
+	case *ortypes.TupleType:
+		// Map tuple to LLVM struct type
+		var fields []types.Type
+		for _, elemType := range t.Types {
+			fields = append(fields, lcg.getLLVMTypeFromSemantic(elemType))
+		}
+		return types.NewStruct(fields...)
 	}
 
 	return types.I32
@@ -208,6 +215,13 @@ func (lcg *LLVMCodeGen) getLLVMType(t ast.Type) types.Type {
 		// Let's assume for now that if we are here, we might need to look it up differently.
 		// But wait, getLLVMType is used when we declare variables etc.
 		// If we have semantic info, we should prefer getLLVMTypeFromSemantic.
+	case *ast.TupleType:
+		// Map tuple type to LLVM struct
+		var fields []types.Type
+		for _, elemType := range typ.Types {
+			fields = append(fields, lcg.getLLVMType(elemType))
+		}
+		return types.NewStruct(fields...)
 	}
 
 	return types.I32
@@ -435,6 +449,12 @@ func (lcg *LLVMCodeGen) Visit(node ast.Node) ast.Visitor {
 		return nil
 	case *ast.MemberExpression:
 		lcg.visitMemberExpression(n)
+		return nil
+	case *ast.TupleExpression:
+		lcg.visitTupleExpression(n)
+		return nil
+	case *ast.TupleDeclaration:
+		lcg.visitTupleDeclaration(n)
 		return nil
 	}
 	return lcg
