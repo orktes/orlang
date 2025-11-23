@@ -14,11 +14,37 @@ function run_test {
     echo "Linting"
     orlang lint main.or
     echo "Building"
+    
+    # Check if there are any .or files other than main.or (for imports)
+    shopt -s nullglob
+    or_files=(*.or)
+    shopt -u nullglob
+    
+    # Compile all .or files to .ll
+    object_files=()
+    for or_file in "${or_files[@]}"; do
+      if [ "$or_file" != "main.or" ]; then
+        echo "Compiling $or_file"
+        orlang build "$or_file" --target llvm
+        ll_file="${or_file%.or}.ll"
+        o_file="${or_file%.or}.o"
+        clang -c -o "$o_file" "$ll_file"
+        object_files+=("$o_file")
+        rm "$ll_file"
+      fi
+    done
+    
+    # Compile main.or
     orlang build main.or --target llvm
-    clang -Wno-override-module -o main main.ll
+    clang -c -o main.o main.ll
     rm main.ll
+    
+    # Link all object files
+    clang -Wno-override-module -o main main.o "${object_files[@]}"
+    rm main.o "${object_files[@]}"
+    
     if [ -f args.txt ]; then
-      output="$(./main \"$(< args.txt)\")"
+      output="$(./main \"$(<args.txt)\")"
     else
       output="$(./main)"
     fi

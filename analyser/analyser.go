@@ -11,6 +11,7 @@ type Analyser struct {
 	scope                    *Scope
 	Error                    func(node ast.Node, msg string, fatal bool)
 	AutoCompleteInfoCallback func([]AutoCompleteInfo)
+	FileLoader               func(path string) (*ast.File, error)
 }
 
 func New(file *ast.File) (analyser *Analyser, err error) {
@@ -52,6 +53,7 @@ func (analyser *Analyser) Analyse() (info *Info, err error) {
 				analyser.Error(node, err, fatal)
 			}
 		},
+		fileLoader: analyser.FileLoader,
 	}
 
 	ast.Walk(visitor, analyser.main)

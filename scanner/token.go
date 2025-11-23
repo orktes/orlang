@@ -94,6 +94,13 @@ const (
 
 	// TokenTypeArrow =>
 	TokenTypeArrow
+
+	// TokenTypeImport import
+	TokenTypeImport
+	// TokenTypeExport export
+	TokenTypeExport
+	// TokenTypeFrom from
+	TokenTypeFrom
 )
 
 var tokenNames = [...]string{
@@ -125,7 +132,8 @@ var tokenNames = [...]string{
 	TokenTypeCOLON:     "COLON",
 	TokenTypeSEMICOLON: "SEMICOLON",
 
-	TokenTypeASSIGN:       "ASSIGN",
+	TokenTypeASSIGN: "ASSIGN",
+
 	TokenTypeADD:          "ADD",
 	TokenTypeSUB:          "SUB",
 	TokenTypeAMPERSAND:    "AMPERSAND",
@@ -149,6 +157,9 @@ var tokenNames = [...]string{
 
 	TokenTypeEllipsis: "ELLIPSIS",
 	TokenTypeArrow:    "ARROW",
+	TokenTypeImport:   "IMPORT",
+	TokenTypeExport:   "EXPORT",
+	TokenTypeFrom:     "FROM",
 }
 
 func (typ TokenType) String() string {

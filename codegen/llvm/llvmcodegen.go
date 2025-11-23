@@ -347,6 +347,12 @@ func (lcg *LLVMCodeGen) Visit(node ast.Node) ast.Visitor {
 	case *ast.IfStatement:
 		lcg.visitIfStatement(n)
 		return nil
+	case *ast.ImportStatement:
+		lcg.visitImportStatement(n)
+		return nil
+	case *ast.ExportStatement:
+		lcg.visitExportStatement(n)
+		return nil
 	case *ast.Struct:
 		lcg.visitStruct(n)
 		return nil

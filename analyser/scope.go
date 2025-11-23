@@ -14,6 +14,7 @@ type ScopeItemDetails struct {
 	ScopeItem
 	DefineIdentifier *ast.Identifier
 	Initialized      bool
+	Exported         bool
 }
 
 type OperatorOverload struct {

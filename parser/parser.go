@@ -105,11 +105,74 @@ func (p *Parser) parseStatementOrExpression(block bool) (node ast.Node, ok bool)
 }
 
 func (p *Parser) parseImportDecl() (node ast.Node, ok bool) {
-	return
+	if _, ok = p.expectToken(scanner.TokenTypeImport); !ok {
+		p.unread()
+		return
+	}
+
+	importStmt := &ast.ImportStatement{}
+
+	if _, ok = p.expectToken(scanner.TokenTypeLBRACE); !ok {
+		p.unread()
+		p.error(unexpectedToken(p.read(), scanner.TokenTypeLBRACE))
+		return
+	}
+
+	for {
+		var ident *ast.Identifier
+		if ident, ok = p.parseIdentfier(); !ok {
+			p.error(unexpectedToken(p.read(), scanner.TokenTypeIdent))
+			return
+		}
+		importStmt.Imports = append(importStmt.Imports, ident)
+
+		// Peek next token
+		tok := p.read()
+		if tok.Type == scanner.TokenTypeCOMMA {
+			// Continue to next identifier
+			continue
+		} else if tok.Type == scanner.TokenTypeRBRACE {
+			// End of imports list
+			break
+		} else {
+			p.error(unexpectedToken(tok, scanner.TokenTypeCOMMA, scanner.TokenTypeRBRACE))
+			return
+		}
+	}
+
+	if _, ok = p.expectToken(scanner.TokenTypeFrom); !ok {
+		p.unread()
+		p.error(unexpectedToken(p.read(), scanner.TokenTypeFrom))
+		return
+	}
+
+	var path ast.Node
+	if path, ok = p.parseValueExpression(); !ok {
+		p.error(unexpectedToken(p.read(), scanner.TokenTypeString))
+		return
+	}
+	importStmt.Path = path.(*ast.ValueExpression)
+
+	return importStmt, true
 }
 
 func (p *Parser) parseExportDecl() (node ast.Node, ok bool) {
-	return
+	if _, ok = p.expectToken(scanner.TokenTypeExport); !ok {
+		p.unread()
+		return
+	}
+
+	var decl ast.Node
+	if decl, ok = p.parseFuncDecl(); ok {
+	} else if decl, ok = p.parseVarDecl(); ok {
+	} else if decl, ok = p.parseStruct(); ok {
+	} else if decl, ok = p.parseInterface(); ok {
+	} else {
+		p.error("expected declaration after export")
+		return
+	}
+
+	return &ast.ExportStatement{Declaration: decl}, true
 }
 
 func (p *Parser) eof() (ok bool) {

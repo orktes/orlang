@@ -18,6 +18,7 @@ type visitor struct {
 	parent         *visitor
 	errorCb        func(node ast.Node, msg string, fatal bool)
 	autocompleteCb func([]AutoCompleteInfo)
+	fileLoader     func(path string) (*ast.File, error)
 }
 
 func (v *visitor) subVisitor(node ast.Node, scope *Scope) *visitor {
@@ -28,6 +29,7 @@ func (v *visitor) subVisitor(node ast.Node, scope *Scope) *visitor {
 		scope:          scope,
 		errorCb:        v.errorCb,
 		autocompleteCb: v.autocompleteCb,
+		fileLoader:     v.fileLoader,
 	}
 }
 
@@ -859,6 +861,82 @@ typeCheck:
 		}
 
 		v.scope.Set(n.Name, n)
+	case *ast.ImportStatement:
+		path := n.Path.Token.Value.(string)
+
+		if v.fileLoader == nil {
+			v.emitError(n, "imports not supported (no file loader)", true)
+			break
+		}
+
+		importedFile, err := v.fileLoader(path)
+		if err != nil {
+			v.emitError(n, fmt.Sprintf("failed to load import: %s", err), true)
+			break
+		}
+
+		importedAnalyser, err := New(importedFile)
+		if err != nil {
+			v.emitError(n, fmt.Sprintf("failed to create analyser for import: %s", err), true)
+			break
+		}
+		importedAnalyser.FileLoader = v.fileLoader
+
+		_, err = importedAnalyser.Analyse()
+		if err != nil {
+			v.emitError(n, fmt.Sprintf("failed to analyse import: %s", err), true)
+			break
+		}
+
+		// Import symbols
+		importedScope := importedAnalyser.scope
+		for _, importIdent := range n.Imports {
+			details := importedScope.GetDetails(importIdent.Text, true)
+			if details == nil {
+				v.emitError(importIdent, fmt.Sprintf("symbol %s not found in %s", importIdent.Text, path), true)
+				continue
+			}
+
+			if !details.Exported {
+				v.emitError(importIdent, fmt.Sprintf("symbol %s is not exported from %s", importIdent.Text, path), true)
+				continue
+			}
+
+			// Add to current scope
+			// We need to add it as if it was defined here, but pointing to the external item.
+			// Or we can just set it.
+			v.scope.Set(importIdent, details.ScopeItem)
+			// Mark as initialized since it comes from another file
+			v.scope.GetDetails(importIdent.Text, false).Initialized = true
+
+			// Populate NodeInfo
+			typ := v.getTypeForNode(details.ScopeItem)
+			v.info.NodeInfo[importIdent] = &NodeInfo{Type: typ}
+		}
+
+	case *ast.ExportStatement:
+		ast.Walk(v, n.Declaration)
+
+		var name string
+		if fn, ok := n.Declaration.(*ast.FunctionDeclaration); ok {
+			if fn.Signature.Identifier != nil {
+				name = fn.Signature.Identifier.Text
+			}
+		} else if variable, ok := n.Declaration.(*ast.VariableDeclaration); ok {
+			name = variable.Name.Text
+		} else if struc, ok := n.Declaration.(*ast.Struct); ok {
+			name = struc.Name.Text
+		} else if iface, ok := n.Declaration.(*ast.Interface); ok {
+			name = iface.Name.Text
+		}
+
+		if name != "" {
+			details := v.scope.GetDetails(name, false)
+			if details != nil {
+				details.Exported = true
+			}
+		}
+
 	case *ast.Block:
 		if _, fundeclOk := v.node.(*ast.FunctionDeclaration); fundeclOk {
 			break

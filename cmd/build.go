@@ -19,6 +19,8 @@ import (
 	"os"
 	"path"
 
+	"github.com/orktes/orlang/ast"
+
 	"github.com/orktes/orlang/analyser"
 	"github.com/orktes/orlang/codegen/js"
 	"github.com/orktes/orlang/codegen/llvm"
@@ -48,6 +50,17 @@ var buildCmd = &cobra.Command{
 			an, err := analyser.New(fileNode)
 			if err != nil {
 				return err
+			}
+			basePath := path.Dir(filePath)
+			an.FileLoader = func(importPath string) (*ast.File, error) {
+				// Resolve relative to the importing file
+				fullPath := path.Join(basePath, importPath)
+				f, err := os.Open(fullPath)
+				if err != nil {
+					return nil, err
+				}
+				defer f.Close()
+				return parser.Parse(f)
 			}
 
 			fileInfo, err := an.Analyse()

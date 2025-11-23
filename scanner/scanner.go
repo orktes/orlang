@@ -455,6 +455,12 @@ func (s *Scanner) scanIdent() (t TokenType, text string, val interface{}) {
 	case "true", "false":
 		t = TokenTypeBoolean
 		val = text == "true"
+	case "import":
+		t = TokenTypeImport
+	case "export":
+		t = TokenTypeExport
+	case "from":
+		t = TokenTypeFrom
 	}
 
 	return

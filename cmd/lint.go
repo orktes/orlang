@@ -7,8 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/orktes/orlang/analyser"
 	"github.com/orktes/orlang/ast"
 	"github.com/orktes/orlang/linter"
+	"github.com/orktes/orlang/parser"
 	"github.com/spf13/cobra"
 )
 
@@ -33,7 +35,19 @@ var lintCmd = &cobra.Command{
 				panic(err)
 			}
 
-			lintError, err := linter.Lint(file, nil)
+			lintError, err := linter.Lint(file, func(analyzer *analyser.Analyser) {
+				basePath := filepath.Dir(filePath)
+				analyzer.FileLoader = func(path string) (*ast.File, error) {
+					// Resolve relative to the importing file
+					fullPath := filepath.Join(basePath, path)
+					f, err := os.Open(fullPath)
+					if err != nil {
+						return nil, err
+					}
+					defer f.Close()
+					return parser.Parse(f)
+				}
+			})
 			if err != nil {
 				panic(err)
 			}
