@@ -30,6 +30,7 @@ type LLVMCodeGen struct {
 	structFields      map[string]map[string]int
 	typeIDs           map[string]int32 // Type name -> Type ID for runtime type checking
 	nextTypeID        int32            // Next available type ID
+	stringCount       int              // Counter for unique string constants
 }
 
 func New(info *analyser.Info) *LLVMCodeGen {
@@ -168,6 +169,13 @@ func (lcg *LLVMCodeGen) getLLVMTypeFromSemantic(t ortypes.Type) types.Type {
 			fields = append(fields, lcg.getLLVMTypeFromSemantic(elemType))
 		}
 		return types.NewStruct(fields...)
+	case *ortypes.ArrayType:
+		elemType := lcg.getLLVMTypeFromSemantic(t.Type)
+		if t.Length >= 0 {
+			return types.NewArray(uint64(t.Length), elemType)
+		}
+		// Slice - return pointer to element for now
+		return types.NewPointer(elemType)
 	}
 
 	return types.I32
@@ -218,10 +226,10 @@ func (lcg *LLVMCodeGen) getLLVMType(t ast.Type) types.Type {
 		baseType := lcg.getLLVMType(typ.Type)
 		return types.NewPointer(baseType)
 	case *ast.ArrayType:
-		// But here we only have the name.
-		// Let's assume for now that if we are here, we might need to look it up differently.
-		// But wait, getLLVMType is used when we declare variables etc.
-		// If we have semantic info, we should prefer getLLVMTypeFromSemantic.
+		// Arrays decay to pointers when passed to functions (like C)
+		// Get the element type
+		elemType := lcg.getLLVMType(typ.Type)
+		return types.NewPointer(elemType)
 	case *ast.TupleType:
 		// Map tuple type to LLVM struct
 		var fields []types.Type
@@ -350,6 +358,116 @@ func (lcg *LLVMCodeGen) visitMemberExpression(n *ast.MemberExpression) {
 	// Load value
 	load := lcg.currentBlock.NewLoad(structType.Fields[fieldIdx], gep)
 	lcg.values[n] = load
+}
+
+func (lcg *LLVMCodeGen) visitIndexExpression(n *ast.IndexExpression) {
+	// Get address of array
+	arrayAddr := lcg.getAddress(n.Target)
+	if arrayAddr == nil {
+		// If getAddress returns nil, try evaluating the target as expression
+		ast.Walk(lcg, n.Target)
+		arrayAddr = lcg.values[n.Target]
+		if arrayAddr == nil {
+			return
+		}
+	}
+
+	// Evaluate the index expression
+	ast.Walk(lcg, n.Index)
+	index := lcg.values[n.Index]
+	if index == nil {
+		return
+	}
+
+	// Get the array type from the pointer
+	ptrType, ok := arrayAddr.Type().(*types.PointerType)
+	if !ok {
+		return
+	}
+
+	// Check if we have a pointer to pointer (double indirection)
+	// This happens when we get the address of a variable that holds an array
+	if innerPtrType, ok := ptrType.ElemType.(*types.PointerType); ok {
+		// We have PointerType -> PointerType -> ArrayType (or PointerType for parameters)
+		// We need to load once to get PointerType -> ArrayType or PointerType
+		arrayAddr = lcg.currentBlock.NewLoad(innerPtrType, arrayAddr)
+		ptrType = innerPtrType
+	}
+
+	// Check if the element type is an array or a pointer
+	if arrayType, ok := ptrType.ElemType.(*types.ArrayType); ok {
+		// It's an actual array type - use GEP with two indices
+		zero := constant.NewInt(types.I32, 0)
+		gep := lcg.currentBlock.NewGetElementPtr(arrayType, arrayAddr, zero, index)
+		load := lcg.currentBlock.NewLoad(arrayType.ElemType, gep)
+		lcg.values[n] = load
+	} else if elemPtrType, ok := ptrType.ElemType.(*types.PointerType); ok {
+		// It's a pointer type (e.g., function parameter i8**)
+		// arrayAddr is i8***, ptrType.ElemType is i8**
+		// GEP to get address of arr[index] (which is i8**)
+		gep := lcg.currentBlock.NewGetElementPtr(ptrType.ElemType, arrayAddr, index)
+		// Load the element (an i8*)
+		load := lcg.currentBlock.NewLoad(elemPtrType, gep)
+		lcg.values[n] = load
+	} else {
+		return
+	}
+}
+
+func (lcg *LLVMCodeGen) visitArrayExpression(n *ast.ArrayExpression) {
+	// Get the array type from analyzer info
+	nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n]
+	if nodeInfo == nil || nodeInfo.Type == nil {
+		return
+	}
+
+	arrayType, ok := nodeInfo.Type.(*ortypes.ArrayType)
+	if !ok {
+		return
+	}
+
+	// Convert to LLVM type
+	elementType := lcg.getLLVMTypeFromSemantic(arrayType.Type)
+	var arrayLength int64
+
+	// Determine array length
+	if n.Type.Length != nil {
+		// Fixed size array: [3]string{}
+		ast.Walk(lcg, n.Type.Length)
+		lengthVal := lcg.values[n.Type.Length]
+		if constInt, ok := lengthVal.(*constant.Int); ok {
+			arrayLength = constInt.X.Int64()
+		}
+	} else {
+		// Inferred size from elements: []string{"a", "b"}
+		arrayLength = int64(len(n.Expressions))
+	}
+
+	llvmArrayType := types.NewArray(uint64(arrayLength), elementType)
+
+	// Allocate array on stack
+	alloca := lcg.currentBlock.NewAlloca(llvmArrayType)
+
+	// Initialize elements
+	zero := constant.NewInt(types.I32, 0)
+	for i, expr := range n.Expressions {
+		// Evaluate expression
+		ast.Walk(lcg, expr)
+		val := lcg.values[expr]
+		if val == nil {
+			continue
+		}
+
+		// Get pointer to element
+		idx := constant.NewInt(types.I32, int64(i))
+		gep := lcg.currentBlock.NewGetElementPtr(llvmArrayType, alloca, zero, idx)
+
+		// Store value
+		lcg.currentBlock.NewStore(val, gep)
+	}
+
+	// Store the array pointer in values
+	lcg.values[n] = alloca
 }
 
 func (lcg *LLVMCodeGen) getAddress(n ast.Node) value.Value {
@@ -492,6 +610,12 @@ func (lcg *LLVMCodeGen) Visit(node ast.Node) ast.Visitor {
 	case *ast.CastExpression:
 		lcg.visitCastExpression(n)
 		return nil
+	case *ast.ArrayExpression:
+		lcg.visitArrayExpression(n)
+		return nil
+	case *ast.IndexExpression:
+		lcg.visitIndexExpression(n)
+		return nil
 	}
 	return lcg
 }
@@ -518,6 +642,13 @@ func (lcg *LLVMCodeGen) visitVariableDeclaration(n *ast.VariableDeclaration) {
 	if n.DefaultValue != nil {
 		ast.Walk(lcg, n.DefaultValue)
 		val = lcg.values[n.DefaultValue]
+
+		// If the value is already an alloca (e.g., for arrays/structs),
+		// just use it directly instead of creating a new alloca
+		if _, isAlloca := val.(*ir.InstAlloca); isAlloca {
+			lcg.values[n.Name] = val
+			return
+		}
 
 		if typ == nil || typ == types.I32 { // I32 is fallback in getLLVMTypeFromSemantic
 			// Use value type
@@ -1113,7 +1244,7 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 	filledIndices := make(map[int]bool)
 
 	for i, arg := range n.Arguments {
-		ast.Walk(lcg, arg)
+		ast.Walk(lcg, arg.Expression)
 		val := lcg.values[arg.Expression]
 
 		targetIndex := i
@@ -1153,19 +1284,22 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 			} else {
 				// Fallback to simple bitcast
 				param := fn.Params[realIndex]
-				if val.Type() != param.Type() {
+				if val != nil && val.Type() != param.Type() {
 					val = lcg.currentBlock.NewBitCast(val, param.Type())
 				}
 			}
 		} else {
 			// Variadic argument
-			// Promote float to double for C compatibility (printf etc)
-			if val.Type().Equal(types.Float) {
-				val = lcg.currentBlock.NewFPExt(val, types.Double)
-			}
-			// Promote i1, i8, i16 to i32
-			if intType, ok := val.Type().(*types.IntType); ok && intType.BitSize < 32 {
-				val = lcg.currentBlock.NewZExt(val, types.I32)
+			// Only promote if val is not nil
+			if val != nil {
+				// Promote float to double for C compatibility (printf etc)
+				if val.Type().Equal(types.Float) {
+					val = lcg.currentBlock.NewFPExt(val, types.Double)
+				}
+				// Promote i1, i8, i16 to i32
+				if intType, ok := val.Type().(*types.IntType); ok && intType.BitSize < 32 {
+					val = lcg.currentBlock.NewZExt(val, types.I32)
+				}
 			}
 		}
 
@@ -1224,6 +1358,16 @@ func (lcg *LLVMCodeGen) visitIdentifier(n *ast.Identifier) {
 			// Actually parameters in LLVM IR are values, but if we want mutable variables we usually alloca them.
 			// For now, if it's an alloca (instruction), load it.
 			if _, isInst := val.(ir.Instruction); isInst {
+				// Arrays should decay to pointers (pointer to first element)
+				if arrayType, isArray := ptrType.ElemType.(*types.ArrayType); isArray {
+					// Decay: GEP to get pointer to first element
+					// Similar to C: arr decays to &arr[0]
+					zero := constant.NewInt(types.I32, 0)
+					gepPtr := lcg.currentBlock.NewGetElementPtr(arrayType, val, zero, zero)
+					lcg.values[n] = gepPtr
+					return
+				}
+
 				load := lcg.currentBlock.NewLoad(ptrType.ElemType, val)
 				lcg.values[n] = load
 				return
@@ -1288,7 +1432,13 @@ func (lcg *LLVMCodeGen) addStringConstant(str string) value.Value {
 	globalName := ""
 	if lcg.moduleName != "" && lcg.moduleName != "main" {
 		globalName = lcg.moduleName + "_str"
+	} else {
+		globalName = "str"
 	}
+
+	globalName = fmt.Sprintf("%s_%d", globalName, lcg.stringCount)
+	lcg.stringCount++
+
 	g := lcg.module.NewGlobalDef(globalName, c)
 	g.Immutable = true
 

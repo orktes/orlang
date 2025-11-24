@@ -8,6 +8,17 @@ fn print_array(arr: []string) {
 
 
 fn main() {
-	var arr = [3]string{"foo", "bar", "baz"}
+	var arr = []string{"foo", "bar", "baz"} // create array with length of 3
 	print_array(arr)
+
+    var arrWithSize = [3]string{} // create array with length of 3 and initialized with default values ""
+    print_array(arrWithSize)
+
+    arrWithSize[0] = "foo"
+    arrWithSize[1] = "bar"
+    arrWithSize[2] = "baz"
+    print_array(arrWithSize)
+
+    puts(arrWithSize[2])
+
 }

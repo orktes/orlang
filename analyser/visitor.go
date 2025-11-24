@@ -286,6 +286,20 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			targetType.GetName(),
 			n.Property.Text,
 		), true)
+	case *ast.IndexExpression:
+		// Get the type of the target (should be an array)
+		targetType := v.getTypeForNode(n.Target)
+		if arrayType, ok := targetType.(*types.ArrayType); ok {
+			// Return the element type
+			return arrayType.Type
+		}
+
+		v.emitError(n, fmt.Sprintf(
+			"invalid operation: %s (type %s does not support indexing)",
+			n,
+			targetType.GetName(),
+		), true)
+		return types.UnknownType("cannot index")
 	case *CustomTypeResolvingScopeItem:
 		return n.ResolvedType
 	case *ast.PointerType:
@@ -1187,6 +1201,26 @@ typeCheck:
 			targetType.GetName(),
 			n.Property.Text,
 		), true)
+	case *ast.IndexExpression:
+		nodeInfo.Type = v.getTypeForNode(node)
+		// Verify target is indexable (array type)
+		targetType := v.getTypeForNode(n.Target)
+		if _, ok := targetType.(*types.ArrayType); !ok {
+			v.emitError(n, fmt.Sprintf(
+				"invalid operation: %s (type %s does not support indexing)",
+				n,
+				targetType.GetName(),
+			), true)
+		}
+		// Verify index is an integer
+		indexType := v.getTypeForNode(n.Index)
+		if !strings.HasPrefix(indexType.GetName(), "int") && !strings.HasPrefix(indexType.GetName(), "uint") {
+			v.emitError(n, fmt.Sprintf(
+				"non-integer index %s (type %s)",
+				n.Index,
+				indexType.GetName(),
+			), true)
+		}
 	}
 
 	return v.subVisitor(node, v.scope)

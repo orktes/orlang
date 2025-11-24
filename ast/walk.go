@@ -93,6 +93,9 @@ func Walk(v Visitor, node Node) {
 	case *MemberExpression:
 		Walk(v, n.Target)
 		Walk(v, n.Property)
+	case *IndexExpression:
+		Walk(v, n.Target)
+		Walk(v, n.Index)
 	case *TypeReference:
 		Walk(v, n.Name)
 	case *UnaryExpression:

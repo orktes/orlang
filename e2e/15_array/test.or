@@ -1,0 +1,12 @@
+extern printf(fmt: string, args: ...anything) => int32
+
+fn test_array(arr: []string) {
+   printf("arr[0]: %s\n", arr[0])
+}
+
+fn main() {
+	printf("start\n")
+	var arr = []string{"foo", "bar"}
+	test_array(arr)
+	printf("end\n")
+}

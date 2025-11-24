@@ -51,6 +51,35 @@ func (p *Parser) parseMemberExpression(target ast.Expression) (node *ast.MemberE
 	return
 }
 
+func (p *Parser) parseIndexExpression(target ast.Expression) (node *ast.IndexExpression, ok bool) {
+	leftBracket, ok := p.expectToken(scanner.TokenTypeLBRACK)
+	if !ok {
+		p.unread()
+		return
+	}
+
+	index, indexOk := p.parseExpression()
+	if !indexOk {
+		p.error("expected index expression")
+		return
+	}
+
+	rightBracket, rBracketOk := p.expectToken(scanner.TokenTypeRBRACK)
+	if !rBracketOk {
+		p.error(unexpectedToken(rightBracket, scanner.TokenTypeRBRACK))
+		return
+	}
+
+	node = &ast.IndexExpression{
+		Target:       target,
+		Index:        index,
+		LeftBracket:  leftBracket,
+		RightBracket: rightBracket,
+	}
+
+	return
+}
+
 func (p *Parser) parseCallExpression(target ast.Expression) (node *ast.FunctionCall, ok bool) {
 	_, ok = p.expectToken(scanner.TokenTypeLPAREN)
 	if !ok {
@@ -179,12 +208,13 @@ func (p *Parser) parseUnaryExpression() (expression ast.Expression, ok bool) {
 
 rightLoop:
 	for {
-		// Parse function calls, member expressions and type casts
+		// Parse function calls, member expressions, index expressions and type casts
 		switch {
 		case check(p.parseAssigment(expression)):
 		case check(p.parseCallExpression(expression)):
 		case check(p.parseStructExpression(expression)):
 		case check(p.parseMemberExpression(expression)):
+		case check(p.parseIndexExpression(expression)):
 		case check(p.parseComparisonExpression(expression)):
 		default:
 			break rightLoop
