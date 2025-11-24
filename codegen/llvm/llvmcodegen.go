@@ -29,9 +29,10 @@ type LLVMCodeGen struct {
 	structs           map[string]types.Type
 	structDefinitions map[string]*types.StructType
 	structFields      map[string]map[string]int
-	typeIDs           map[string]int32 // Type name -> Type ID for runtime type checking
-	nextTypeID        int32            // Next available type ID
-	stringCount       int              // Counter for unique string constants
+	typeIDs           map[string]int32                // Type name -> Type ID for runtime type checking
+	nextTypeID        int32                           // Next available type ID
+	stringCount       int                             // Counter for unique string constants
+	allocaMetadata    map[value.Value]*AllocaMetadata // Type metadata for alloca instructions
 }
 
 func New(info *analyser.Info) *LLVMCodeGen {
@@ -45,6 +46,7 @@ func New(info *analyser.Info) *LLVMCodeGen {
 		structFields:      make(map[string]map[string]int),
 		typeIDs:           make(map[string]int32),
 		nextTypeID:        1, // Start from 1, reserve 0 for unknown/nil
+		allocaMetadata:    make(map[value.Value]*AllocaMetadata),
 	}
 }
 
@@ -880,6 +882,18 @@ func (lcg *LLVMCodeGen) visitVariableDeclaration(n *ast.VariableDeclaration) {
 	alloca := lcg.currentBlock.NewAlloca(typ)
 	lcg.values[n.Name] = alloca
 
+	// Store metadata for this alloca
+	var semType ortypes.Type
+	nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n.Name]
+	if nodeInfo != nil {
+		semType = nodeInfo.Type
+	}
+	category := GetTypeCategory(semType, typ)
+	lcg.allocaMetadata[alloca] = &AllocaMetadata{
+		SemanticType: semType,
+		Category:     category,
+	}
+
 	// Store default value
 	if val != nil {
 		// Check if we need to cast
@@ -1618,54 +1632,75 @@ func (lcg *LLVMCodeGen) visitIdentifier(n *ast.Identifier) {
 	}
 	nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n]
 	if nodeInfo == nil {
-		// nodeInfo is nil
 		return
 	}
 
 	details := nodeInfo.Scope.GetDetails(n.Text, true)
 	if details == nil {
-		// details is nil
 		return
 	}
 
 	if val, ok := lcg.values[details.DefineIdentifier]; ok {
-
-		// If it's an alloca (pointer), load it
-		if ptrType, isPtr := val.Type().(*types.PointerType); isPtr {
-			// Check if it's a function parameter (which is also a value but not a pointer to stack usually in this impl)
-			// Actually parameters in LLVM IR are values, but if we want mutable variables we usually alloca them.
-			// For now, if it's an alloca (instruction), load it.
-			if _, isInst := val.(ir.Instruction); isInst {
-				// Arrays should decay to pointers (pointer to first element)
-				if arrayType, isArray := ptrType.ElemType.(*types.ArrayType); isArray {
-					// Decay: GEP to get pointer to first element
-					// Similar to C: arr decays to &arr[0]
-					zero := constant.NewInt(types.I32, 0)
-					gepPtr := lcg.currentBlock.NewGetElementPtr(arrayType, val, zero, zero)
-					lcg.values[n] = gepPtr
-					return
-				}
-
-				// Don't load struct types - they should remain as pointers
-				// But DO load tuples (which are also represented as structs in LLVM)
-				// Check the semantic type to differentiate
-				if _, isStruct := ptrType.ElemType.(*types.StructType); isStruct {
-					// Check if the semantic type is a StructType (not TupleType)
-					if nodeInfo.Type != nil {
-						if _, isSemanticStruct := nodeInfo.Type.(*ortypes.StructType); isSemanticStruct {
-							lcg.values[n] = val
-							return
-						}
+		// Check if we have metadata for this alloca
+		if metadata, ok := lcg.allocaMetadata[val]; ok {
+			// Use type category to determine how to handle the value
+			switch metadata.Category {
+			case StructRefType:
+				// Structs stay as pointers (reference semantics)
+				lcg.values[n] = val
+				return
+			case ArrayDecayType:
+				// Arrays decay to pointer to first element
+				if ptrType, isPtr := val.Type().(*types.PointerType); isPtr {
+					if arrayType, isArray := ptrType.ElemType.(*types.ArrayType); isArray {
+						zero := constant.NewInt(types.I32, 0)
+						gepPtr := lcg.currentBlock.NewGetElementPtr(arrayType, val, zero, zero)
+						lcg.values[n] = gepPtr
+						return
 					}
 				}
+			case SliceValueType, InterfaceValueType, TupleValueType, PrimitiveType:
+				// These should be loaded (value semantics)
+				if ptrType, isPtr := val.Type().(*types.PointerType); isPtr {
+					if _, isInst := val.(ir.Instruction); isInst {
+						load := lcg.currentBlock.NewLoad(ptrType.ElemType, val)
+						lcg.values[n] = load
+						return
+					}
+				}
+			}
+		} else {
+			// No metadata - fallback to old behavior
+			// If it's an alloca (pointer), load it
+			if ptrType, isPtr := val.Type().(*types.PointerType); isPtr {
+				if _, isInst := val.(ir.Instruction); isInst {
+					// Determine category from types
+					category := GetTypeCategory(nodeInfo.Type, ptrType.ElemType)
 
-				load := lcg.currentBlock.NewLoad(ptrType.ElemType, val)
-				lcg.values[n] = load
-				return
+					switch category {
+					case StructRefType:
+						// Keep as pointer
+						lcg.values[n] = val
+						return
+					case ArrayDecayType:
+						// Decay array
+						if arrayType, isArray := ptrType.ElemType.(*types.ArrayType); isArray {
+							zero := constant.NewInt(types.I32, 0)
+							gepPtr := lcg.currentBlock.NewGetElementPtr(arrayType, val, zero, zero)
+							lcg.values[n] = gepPtr
+							return
+						}
+					default:
+						// Load value
+						load := lcg.currentBlock.NewLoad(ptrType.ElemType, val)
+						lcg.values[n] = load
+						return
+					}
+				}
 			}
 		}
-		lcg.values[n] = val
 
+		lcg.values[n] = val
 	}
 }
 
