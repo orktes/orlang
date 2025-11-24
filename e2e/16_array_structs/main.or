@@ -1,0 +1,21 @@
+extern printf(fmt: string, args: ...anything) => int32
+
+struct Point {
+    var x: int32
+    var y: int32
+}
+
+fn print_points(points: []Point) {
+    for var i = 0; i < len(points); i++ {
+        printf("Point: %d, %d\n", points[i].x, points[i].y)
+    }
+}
+
+fn main() {
+    // Fixed array of structs
+    var points = [2]Point{}
+    points[0] = Point{x: 10, y: 20}
+    points[1] = Point{x: 30, y: 40}
+    
+    print_points(points)
+}

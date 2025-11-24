@@ -1547,6 +1547,17 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 
 			// Perform cast if we have type info
 			if sourceTyp != nil && targetTyp != nil {
+				// Special handling for struct-to-interface casts
+				// We need to pass the address of the struct, not the loaded value
+				if _, isTargetIface := targetTyp.(*ortypes.InterfaceType); isTargetIface {
+					if _, isSourceStruct := sourceTyp.(*ortypes.StructType); isSourceStruct {
+						// Get the address of the struct instead of the loaded value
+						addr := lcg.getAddress(arg.Expression)
+						if addr != nil {
+							val = addr
+						}
+					}
+				}
 				val = lcg.castIfNeeded(val, sourceTyp, targetTyp)
 			} else {
 				// Fallback to simple bitcast
@@ -1633,6 +1644,19 @@ func (lcg *LLVMCodeGen) visitIdentifier(n *ast.Identifier) {
 					gepPtr := lcg.currentBlock.NewGetElementPtr(arrayType, val, zero, zero)
 					lcg.values[n] = gepPtr
 					return
+				}
+
+				// Don't load struct types - they should remain as pointers
+				// But DO load tuples (which are also represented as structs in LLVM)
+				// Check the semantic type to differentiate
+				if _, isStruct := ptrType.ElemType.(*types.StructType); isStruct {
+					// Check if the semantic type is a StructType (not TupleType)
+					if nodeInfo.Type != nil {
+						if _, isSemanticStruct := nodeInfo.Type.(*ortypes.StructType); isSemanticStruct {
+							lcg.values[n] = val
+							return
+						}
+					}
 				}
 
 				load := lcg.currentBlock.NewLoad(ptrType.ElemType, val)
