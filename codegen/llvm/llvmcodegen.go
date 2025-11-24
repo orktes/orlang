@@ -6,6 +6,7 @@ import (
 
 	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/constant"
+	"github.com/llir/llvm/ir/enum"
 	"github.com/llir/llvm/ir/types"
 	"github.com/llir/llvm/ir/value"
 	"github.com/orktes/orlang/analyser"
@@ -174,8 +175,8 @@ func (lcg *LLVMCodeGen) getLLVMTypeFromSemantic(t ortypes.Type) types.Type {
 		if t.Length >= 0 {
 			return types.NewArray(uint64(t.Length), elemType)
 		}
-		// Slice - return pointer to element for now
-		return types.NewPointer(elemType)
+		// Slice: struct { data *T, len i32 }
+		return types.NewStruct(types.NewPointer(elemType), types.I32)
 	}
 
 	return types.I32
@@ -226,10 +227,13 @@ func (lcg *LLVMCodeGen) getLLVMType(t ast.Type) types.Type {
 		baseType := lcg.getLLVMType(typ.Type)
 		return types.NewPointer(baseType)
 	case *ast.ArrayType:
-		// Arrays decay to pointers when passed to functions (like C)
-		// Get the element type
 		elemType := lcg.getLLVMType(typ.Type)
-		return types.NewPointer(elemType)
+		if typ.Length != nil {
+			// Fixed array: decay to pointer to element
+			return types.NewPointer(elemType)
+		}
+		// Slice: struct { data *T, len i32 }
+		return types.NewStruct(types.NewPointer(elemType), types.I32)
 	case *ast.TupleType:
 		// Map tuple type to LLVM struct
 		var fields []types.Type
@@ -409,6 +413,24 @@ func (lcg *LLVMCodeGen) visitIndexExpression(n *ast.IndexExpression) {
 		// Load the element (an i8*)
 		load := lcg.currentBlock.NewLoad(elemPtrType, gep)
 		lcg.values[n] = load
+	} else if structType, ok := ptrType.ElemType.(*types.StructType); ok {
+		// Slice struct { data*, len }
+		// We need to extract the data pointer (index 0)
+
+		zero := constant.NewInt(types.I32, 0)
+
+		// GEP to get pointer to data field
+		dataFieldPtr := lcg.currentBlock.NewGetElementPtr(structType, arrayAddr, zero, zero)
+
+		// Load data pointer
+		dataPtr := lcg.currentBlock.NewLoad(structType.Fields[0], dataFieldPtr)
+
+		// GEP on data pointer with index
+		gep := lcg.currentBlock.NewGetElementPtr(structType.Fields[0].(*types.PointerType).ElemType, dataPtr, index)
+
+		// Load element
+		load := lcg.currentBlock.NewLoad(structType.Fields[0].(*types.PointerType).ElemType, gep)
+		lcg.values[n] = load
 	} else {
 		return
 	}
@@ -450,24 +472,66 @@ func (lcg *LLVMCodeGen) visitArrayExpression(n *ast.ArrayExpression) {
 
 	// Initialize elements
 	zero := constant.NewInt(types.I32, 0)
-	for i, expr := range n.Expressions {
-		// Evaluate expression
-		ast.Walk(lcg, expr)
-		val := lcg.values[expr]
-		if val == nil {
-			continue
+
+	if len(n.Expressions) == 0 {
+		// Zero initialize if no expressions provided (e.g. [3]int{})
+		// We can use memset or a loop. For simplicity, loop.
+		// Actually, if we just want zero init, we can iterate up to arrayLength
+		for i := int64(0); i < arrayLength; i++ {
+			idx := constant.NewInt(types.I32, i)
+			gep := lcg.currentBlock.NewGetElementPtr(llvmArrayType, alloca, zero, idx)
+
+			// Store default value
+			if elementType.Equal(types.I8Ptr) {
+				// String: initialize to ""
+				emptyStr := lcg.addStringConstant("")
+				lcg.currentBlock.NewStore(emptyStr, gep)
+			} else {
+				// Zero initialize
+				lcg.currentBlock.NewStore(constant.NewZeroInitializer(elementType), gep)
+			}
 		}
+	} else {
+		for i, expr := range n.Expressions {
+			// Evaluate expression
+			ast.Walk(lcg, expr)
+			val := lcg.values[expr]
+			if val == nil {
+				continue
+			}
 
-		// Get pointer to element
-		idx := constant.NewInt(types.I32, int64(i))
-		gep := lcg.currentBlock.NewGetElementPtr(llvmArrayType, alloca, zero, idx)
+			// Get pointer to element
+			idx := constant.NewInt(types.I32, int64(i))
+			gep := lcg.currentBlock.NewGetElementPtr(llvmArrayType, alloca, zero, idx)
 
-		// Store value
-		lcg.currentBlock.NewStore(val, gep)
+			// Store value
+			lcg.currentBlock.NewStore(val, gep)
+		}
 	}
 
-	// Store the array pointer in values
-	lcg.values[n] = alloca
+	// Store the result
+	if n.Type.Length == nil {
+		// Slice: create struct { data *T, len i32 }
+		sliceType := types.NewStruct(types.NewPointer(elementType), types.I32)
+
+		// Create struct value
+		var sliceVal value.Value = constant.NewStruct(sliceType, constant.NewNull(types.NewPointer(elementType)), constant.NewInt(types.I32, 0))
+
+		// Decay array to pointer
+		dataPtr := lcg.currentBlock.NewGetElementPtr(llvmArrayType, alloca, zero, zero)
+
+		// Insert data pointer
+		sliceVal = lcg.currentBlock.NewInsertValue(sliceVal, dataPtr, 0)
+
+		// Insert length
+		lenVal := constant.NewInt(types.I32, arrayLength)
+		sliceVal = lcg.currentBlock.NewInsertValue(sliceVal, lenVal, 1)
+
+		lcg.values[n] = sliceVal
+	} else {
+		// Fixed array: return pointer to array
+		lcg.values[n] = alloca
+	}
 }
 
 func (lcg *LLVMCodeGen) getAddress(n ast.Node) value.Value {
@@ -535,6 +599,49 @@ func (lcg *LLVMCodeGen) getAddress(n ast.Node) value.Value {
 		idx := constant.NewInt(types.I32, int64(fieldIdx))
 		gep := lcg.currentBlock.NewGetElementPtr(ptrType.ElemType, targetAddr, zero, idx)
 		return gep
+	} else if indexExpr, ok := n.(*ast.IndexExpression); ok {
+		// Get address of array
+		arrayAddr := lcg.getAddress(indexExpr.Target)
+		if arrayAddr == nil {
+			return nil
+		}
+
+		// Evaluate index
+		ast.Walk(lcg, indexExpr.Index)
+		index := lcg.values[indexExpr.Index]
+		if index == nil {
+			return nil
+		}
+
+		ptrType, ok := arrayAddr.Type().(*types.PointerType)
+		if !ok {
+			return nil
+		}
+
+		// Check for double indirection
+		if innerPtrType, ok := ptrType.ElemType.(*types.PointerType); ok {
+			arrayAddr = lcg.currentBlock.NewLoad(innerPtrType, arrayAddr)
+			ptrType = innerPtrType
+		}
+
+		if arrayType, ok := ptrType.ElemType.(*types.ArrayType); ok {
+			// Fixed array
+			zero := constant.NewInt(types.I32, 0)
+			gep := lcg.currentBlock.NewGetElementPtr(arrayType, arrayAddr, zero, index)
+			return gep
+		} else if elemPtrType, ok := ptrType.ElemType.(*types.PointerType); ok {
+			// Pointer (parameter)
+			pointerVal := lcg.currentBlock.NewLoad(ptrType.ElemType, arrayAddr)
+			gep := lcg.currentBlock.NewGetElementPtr(elemPtrType.ElemType, pointerVal, index)
+			return gep
+		} else if structType, ok := ptrType.ElemType.(*types.StructType); ok {
+			// Slice struct
+			zero := constant.NewInt(types.I32, 0)
+			dataFieldPtr := lcg.currentBlock.NewGetElementPtr(structType, arrayAddr, zero, zero)
+			dataPtr := lcg.currentBlock.NewLoad(structType.Fields[0], dataFieldPtr)
+			gep := lcg.currentBlock.NewGetElementPtr(structType.Fields[0].(*types.PointerType).ElemType, dataPtr, index)
+			return gep
+		}
 	}
 	return nil
 }
@@ -616,8 +723,113 @@ func (lcg *LLVMCodeGen) Visit(node ast.Node) ast.Visitor {
 	case *ast.IndexExpression:
 		lcg.visitIndexExpression(n)
 		return nil
+	case *ast.ForLoop:
+		lcg.visitForLoop(n)
+		return nil
+	case *ast.UnaryExpression:
+		lcg.visitUnaryExpression(n)
+		return nil
 	}
 	return lcg
+}
+
+func (lcg *LLVMCodeGen) visitUnaryExpression(n *ast.UnaryExpression) {
+	// Handle postfix increment/decrement
+	if n.Postfix {
+		// Get address of operand
+		addr := lcg.getAddress(n.Expression)
+		if addr == nil {
+			return
+		}
+
+		// Load current value
+		val := lcg.currentBlock.NewLoad(addr.Type().(*types.PointerType).ElemType, addr)
+
+		// Store original value as result of expression
+		lcg.values[n] = val
+
+		// Calculate new value
+		var newVal value.Value
+		one := constant.NewInt(val.Type().(*types.IntType), 1)
+
+		switch n.Operator.Type {
+		case scanner.TokenTypeIncrement:
+			newVal = lcg.currentBlock.NewAdd(val, one)
+		case scanner.TokenTypeDecrement:
+			newVal = lcg.currentBlock.NewSub(val, one)
+		default:
+			return
+		}
+
+		// Store new value back to address
+		lcg.currentBlock.NewStore(newVal, addr)
+		return
+	}
+
+	// TODO: Handle prefix unary expressions
+}
+
+func (lcg *LLVMCodeGen) visitForLoop(n *ast.ForLoop) {
+	// 1. Create blocks
+	// condBlock: check condition
+	// bodyBlock: loop body
+	// postBlock: increment/post statement
+	// afterBlock: exit loop
+
+	condBlock := lcg.currentFunc.NewBlock("")
+	bodyBlock := lcg.currentFunc.NewBlock("")
+	postBlock := lcg.currentFunc.NewBlock("")
+	afterBlock := lcg.currentFunc.NewBlock("")
+
+	// 2. Execute Init statement
+	if n.Init != nil {
+		ast.Walk(lcg, n.Init)
+	}
+
+	// Jump to condition check
+	lcg.currentBlock.NewBr(condBlock)
+
+	// 3. Condition Block
+	lcg.currentBlock = condBlock
+	if n.Condition != nil {
+		ast.Walk(lcg, n.Condition)
+		condVal := lcg.values[n.Condition]
+
+		// Ensure boolean
+		if condVal.Type().Equal(types.I1) {
+			lcg.currentBlock.NewCondBr(condVal, bodyBlock, afterBlock)
+		} else {
+			// Try to cast to bool or compare with 0
+			// For now assume it's boolean-like or error
+			// If it's int, compare != 0
+			zero := constant.NewInt(condVal.Type().(*types.IntType), 0)
+			condBool := lcg.currentBlock.NewICmp(enum.IPredNE, condVal, zero)
+			lcg.currentBlock.NewCondBr(condBool, bodyBlock, afterBlock)
+		}
+	} else {
+		// Infinite loop
+		lcg.currentBlock.NewBr(bodyBlock)
+	}
+
+	// 4. Body Block
+	lcg.currentBlock = bodyBlock
+	ast.Walk(lcg, n.Block)
+
+	// If body doesn't terminate, jump to post
+	if !lcg.isTerminator(lcg.currentBlock.Term) {
+		lcg.currentBlock.NewBr(postBlock)
+	}
+
+	// 5. Post Block
+	lcg.currentBlock = postBlock
+	if n.After != nil {
+		ast.Walk(lcg, n.After)
+	}
+	// Jump back to condition
+	lcg.currentBlock.NewBr(condBlock)
+
+	// 6. After Block
+	lcg.currentBlock = afterBlock
 }
 
 func (lcg *LLVMCodeGen) visitVariableDeclaration(n *ast.VariableDeclaration) {
@@ -948,6 +1160,61 @@ func (lcg *LLVMCodeGen) visitFunctionDeclaration(n *ast.FunctionDeclaration) {
 func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 	var name string
 	var args []value.Value
+
+	// Check if this is a builtin function call
+	if ident, ok := n.Callee.(*ast.Identifier); ok {
+		if ident.Text == "len" {
+			// Handle len()
+			if len(n.Arguments) != 1 {
+				return
+			}
+			arg := n.Arguments[0]
+			ast.Walk(lcg, arg.Expression)
+			val := lcg.values[arg.Expression]
+			if val == nil {
+				return
+			}
+
+			// Get argument type
+			valType := val.Type()
+
+			if structType, ok := valType.(*types.StructType); ok {
+				// Slice struct { data*, len }
+				// Extract length at index 1
+				// Check if it has 2 fields and second is i32
+				if len(structType.Fields) == 2 && structType.Fields[1].Equal(types.I32) {
+					lenVal := lcg.currentBlock.NewExtractValue(val, 1)
+					lcg.values[n] = lenVal
+					return
+				}
+			} else if ptrType, ok := valType.(*types.PointerType); ok {
+				if arrayType, ok := ptrType.ElemType.(*types.ArrayType); ok {
+					// Fixed array pointer [N x T]*
+					length := int64(arrayType.Len)
+					lcg.values[n] = constant.NewInt(types.I32, length)
+					return
+				} else if ptrType.ElemType.Equal(types.I8) {
+					// String (i8*)
+					// Call strlen
+					// We need to declare strlen if not exists
+					strlenName := "strlen"
+					var strlen *ir.Func
+					if fn, ok := lcg.functions[strlenName]; ok {
+						strlen = fn
+					} else {
+						strlen = lcg.module.NewFunc(strlenName, types.I32, ir.NewParam("str", types.I8Ptr))
+						lcg.functions[strlenName] = strlen
+					}
+					call := lcg.currentBlock.NewCall(strlen, val)
+					lcg.values[n] = call
+					return
+				}
+			}
+
+			// Fallback or error
+			return
+		}
+	}
 
 	// Check if this is a type cast (e.g., int64(x), int32(y))
 	if ident, ok := n.Callee.(*ast.Identifier); ok {

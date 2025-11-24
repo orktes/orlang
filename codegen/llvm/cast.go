@@ -1,6 +1,7 @@
 package llvm
 
 import (
+	"github.com/llir/llvm/ir/constant"
 	"github.com/llir/llvm/ir/types" // Added import for types
 	"github.com/llir/llvm/ir/value"
 	ortypes "github.com/orktes/orlang/types"
@@ -38,6 +39,50 @@ func (lcg *LLVMCodeGen) castIfNeeded(val value.Value, sourceTyp, targetTyp ortyp
 	if targetIface, ok := targetTyp.(*ortypes.InterfaceType); ok {
 		if _, isIface := sourceTyp.(*ortypes.InterfaceType); !isIface {
 			return lcg.createInterfaceCast(val, sourceTyp, targetIface)
+		}
+	}
+
+	// Handle Fixed Array -> Slice conversion
+	if sourceArray, ok := sourceTyp.(*ortypes.ArrayType); ok {
+		if targetArray, ok := targetTyp.(*ortypes.ArrayType); ok {
+			if sourceArray.Length >= 0 && targetArray.Length == -1 {
+				// Convert fixed array (pointer) to slice struct
+				// val is pointer to array [N x T]*
+
+				// We need to construct struct { T*, i32 }
+
+				// 1. Get pointer to first element
+				// val is [N x T]*
+				// GEP to [0, 0] -> T*
+				zero := constant.NewInt(types.I32, 0)
+
+				// 2. Create slice struct
+				elemType := lcg.getLLVMTypeFromSemantic(targetArray.Type)
+				sliceType := types.NewStruct(types.NewPointer(elemType), types.I32)
+
+				var sliceVal value.Value = constant.NewStruct(sliceType, constant.NewNull(types.NewPointer(elemType)), constant.NewInt(types.I32, 0))
+
+				var dataPtr value.Value
+
+				// Check if val is already decayed (pointer to element)
+				if val.Type().Equal(types.NewPointer(elemType)) {
+					dataPtr = val
+				} else if ptrType, ok := val.Type().(*types.PointerType); ok {
+					// It's a pointer to array [N x T]*
+					arrayType := ptrType.ElemType
+					dataPtr = lcg.currentBlock.NewGetElementPtr(arrayType, val, zero, zero)
+				} else {
+					// Should not happen
+					return val
+				}
+
+				sliceVal = lcg.currentBlock.NewInsertValue(sliceVal, dataPtr, 0)
+
+				length := constant.NewInt(types.I32, sourceArray.Length)
+				sliceVal = lcg.currentBlock.NewInsertValue(sliceVal, length, 1)
+
+				return sliceVal
+			}
 		}
 	}
 

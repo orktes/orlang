@@ -92,9 +92,17 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			Length: arrLength,
 		}
 	case *ast.ArrayExpression:
+		length := int64(len(n.Expressions))
+		if n.Type.Length != nil {
+			if valExpr, ok := n.Type.Length.(*ast.ValueExpression); ok {
+				if valExpr.Token.Type == scanner.TokenTypeNumber {
+					length = valExpr.Token.Value.(int64)
+				}
+			}
+		}
 		return &types.ArrayType{
 			Type:   v.getTypeForNode(n.Type.Type),
-			Length: int64(len(n.Expressions)),
+			Length: length,
 		}
 	case *ast.VariableDeclaration:
 		if n.Type != nil {
@@ -609,6 +617,28 @@ typeCheck:
 			}
 		}
 	case *ast.FunctionCall:
+		// Check for builtin functions
+		if ident, ok := n.Callee.(*ast.Identifier); ok && ident.Text == "len" {
+			if len(n.Arguments) != 1 {
+				v.emitError(n, "len() takes exactly one argument", true)
+				break
+			}
+			arg := n.Arguments[0]
+			v.Visit(arg.Expression)
+
+			// Check argument type
+			argType := v.getTypeForNode(arg.Expression)
+			if _, isArray := argType.(*types.ArrayType); !isArray {
+				if argType.GetName() != "string" {
+					v.emitError(arg.Expression, "len() argument must be array or string", true)
+				}
+			}
+
+			// Set return type to int32
+			nodeInfo.Type = types.Int32Type
+			break
+		}
+
 		// Check if function call is a typecast
 		if ident, ok := n.Callee.(*ast.Identifier); ok {
 			typ := v.getType(ident.Text)

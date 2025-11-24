@@ -48,13 +48,19 @@ function run_test {
       output="$(./main 2>&1 | tee /dev/stderr)"
     fi
 
-    if [ "$output" = "$(cat expected.txt)" ];
+    expected=$(cat expected.txt)
+
+    if [ "$output" = "$expected" ];
     then
       echo "Test produced expected result"
       rm main.ll
       rm main
     else
-      echo "Invalid output $output expected $(cat expected.txt)"
+      echo "Invalid output"
+      echo "Output:"
+      echo "$output"
+      echo "Expected:"
+      echo "$expected"
       echo "Leaving main.ll and main for debugging"
       exit 1
     fi

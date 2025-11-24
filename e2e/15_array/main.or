@@ -1,6 +1,8 @@
+extern printf(fmt: string, args: ...anything) => int32
 extern puts(s: string) => int64
 
 fn print_array(arr: []string) {
+    printf("len: %d\n", len(arr))
     for var i = 0; i < len(arr); i++ {
         puts(arr[i])
     }
@@ -8,6 +10,7 @@ fn print_array(arr: []string) {
 
 
 fn main() {
+    printf("start\n")
 	var arr = []string{"foo", "bar", "baz"} // create array with length of 3
 	print_array(arr)
 
