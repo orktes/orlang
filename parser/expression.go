@@ -283,6 +283,7 @@ func (p *Parser) parseComparisonExpression(left ast.Expression) (node ast.Expres
 		scanner.TokenTypeIs,
 		scanner.TokenTypeOr,
 		scanner.TokenTypeAnd,
+		scanner.TokenTypeAs,
 	)
 
 	if !ok {
@@ -302,6 +303,23 @@ func (p *Parser) parseComparisonExpression(left ast.Expression) (node ast.Expres
 			Expression: left,
 			IsToken:    token,
 			Type:       typ,
+		}
+		ok = true
+		return
+	}
+
+	// Handle type cast (as operator)
+	if token.Type == scanner.TokenTypeAs {
+		typ, typeOk := p.parseType()
+		if !typeOk {
+			p.error(unexpected(p.read().StringValue(), "type"))
+			return
+		}
+
+		node = &ast.CastExpression{
+			Left:  left,
+			Token: token,
+			Type:  typ,
 		}
 		ok = true
 		return

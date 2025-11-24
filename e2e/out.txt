@@ -1,0 +1,13 @@
+Running test 3_complex
+~/Development/orlang/e2e/3_complex ~/Development/orlang/e2e
+Linting 3_complex
+main.or:26:8 Point declared but not used
+main.or:1:8 puts declared but not used
+main.or:21:11 Resetable declared but not used
+main.or:21:11 Resetable declared but not used
+main.or:26:8 Point declared but not used
+Building 3_complex
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running

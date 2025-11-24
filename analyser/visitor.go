@@ -295,6 +295,8 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 	case *ast.TypeAssertionExpression:
 		// Type assertions always return bool
 		return types.BoolType
+	case *ast.CastExpression:
+		return v.getTypeForNode(n.Type)
 	default:
 		panic("Could not resolve type for " + reflect.TypeOf(n).String())
 	}
@@ -889,6 +891,8 @@ typeCheck:
 			), true)
 			break
 		}
+	case *ast.CastExpression:
+		v.getTypeForNode(n.Left)
 	case *ast.Argument:
 		if n.DefaultValue != nil {
 			if n.Type != nil {
@@ -969,6 +973,14 @@ typeCheck:
 				localIdent = item.Alias
 			}
 			v.scope.Set(localIdent, details.ScopeItem)
+
+			// If it is a type, add it to v.info.Types
+			if _, ok := details.ScopeItem.(*ast.Struct); ok {
+				v.info.Types[localName] = details.ScopeItem
+			} else if _, ok := details.ScopeItem.(*ast.Interface); ok {
+				v.info.Types[localName] = details.ScopeItem
+			}
+
 			// Mark as initialized since it comes from another file
 			v.scope.GetDetails(localName, false).Initialized = true
 
@@ -999,6 +1011,8 @@ typeCheck:
 				details.Exported = true
 			}
 		}
+
+		return nil
 
 	case *ast.IncludeStatement:
 		// For now, we don't validate include statements
@@ -1148,6 +1162,7 @@ typeCheck:
 		// TODO check that no property or function is double declared
 		if n.Name != nil {
 			v.info.Types[n.Name.Text] = n
+			v.scope.Set(n.Name, n)
 		}
 	case *ast.Interface:
 		// TODO check that it is not redeclared
@@ -1155,6 +1170,7 @@ typeCheck:
 		nodeInfo.Type = v.getTypeForNode(node)
 		if n.Name != nil {
 			v.info.Types[n.Name.Text] = n
+			v.scope.Set(n.Name, n)
 		}
 	case *ast.MemberExpression:
 		nodeInfo.Type = v.getTypeForNode(node)

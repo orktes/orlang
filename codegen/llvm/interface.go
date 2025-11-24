@@ -31,8 +31,15 @@ func (lcg *LLVMCodeGen) createInterfaceCast(val value.Value, sourceTyp ortypes.T
 	var dataPtr value.Value
 	if val.Type().Equal(types.I8Ptr) {
 		dataPtr = val
-	} else {
+	} else if _, ok := val.Type().(*types.PointerType); ok {
+		// If it's a pointer, use it directly (cast to i8*)
 		dataPtr = lcg.currentBlock.NewBitCast(val, types.I8Ptr)
+	} else {
+		// If it's not a pointer (e.g. primitive i32, float, etc.), we need to allocate space
+		// and store it, then use the pointer to that space.
+		alloca := lcg.currentBlock.NewAlloca(val.Type())
+		lcg.currentBlock.NewStore(val, alloca)
+		dataPtr = lcg.currentBlock.NewBitCast(alloca, types.I8Ptr)
 	}
 
 	// 3. Generate or get itable

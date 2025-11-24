@@ -173,6 +173,9 @@ func Walk(v Visitor, node Node) {
 	case *TypeAssertionExpression:
 		Walk(v, n.Expression)
 		Walk(v, n.Type)
+	case *CastExpression:
+		Walk(v, n.Left)
+		Walk(v, n.Type)
 	default:
 		panic(fmt.Errorf("Unknown node type: %s", reflect.TypeOf(n)))
 	}

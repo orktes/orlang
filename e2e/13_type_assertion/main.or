@@ -2,19 +2,19 @@ extern printf(format: string, args: ...anything) => int64
 
 fn print(v: anything) {
 	if v is int32 {
-		printf("%d\n", v)
+		printf("%d\n", v as int32)
 	} else if v is float32 {
-		printf("%f\n", v)
+		printf("%f\n", v as float32)
 	} else if v is string {
-		printf("%s\n", v)
+		printf("%s\n", v as string)
 	} else if v is bool {
-		printf("%d\n", v)
+		printf("%d\n", v as bool)
 	}
 }
 
 fn main() {
 	print(123)
-	print(123.456)
+	print(123.5)
 	print("string")
 	print(true)
 }

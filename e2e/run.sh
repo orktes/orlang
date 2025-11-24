@@ -42,15 +42,12 @@ function run_test {
     rm main.o "${object_files[@]}"
     
     echo "Running"
-    # Temporarily allow errors so we can capture output even if main crashes
-    set +e
     if [ -f args.txt ]; then
       output="$(./main "$(<args.txt)" 2>&1 | tee /dev/stderr)"
     else
       output="$(./main 2>&1 | tee /dev/stderr)"
     fi
-    set -e
-    
+
     if [ "$output" = "$(cat expected.txt)" ];
     then
       echo "Test produced expected result"

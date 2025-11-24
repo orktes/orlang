@@ -112,7 +112,10 @@ func (lcg *LLVMCodeGen) getLLVMTypeFromSemantic(t ortypes.Type) types.Type {
 		if s, ok := lcg.structs[t.Type]; ok {
 			return types.NewPointer(s)
 		}
-		// Default for other primitives (int32, bool, etc.)
+		if t.Type == "bool" {
+			return types.I1
+		}
+		// Default for other primitives (int32, etc.)
 		return types.I32
 	case *ortypes.PrimitiveType:
 		// Handle pointer type
@@ -235,8 +238,31 @@ func (lcg *LLVMCodeGen) visitStructExpression(n *ast.StructExpression) {
 	name := n.Identifier.Text
 	structType, ok := lcg.structs[name]
 	if !ok {
-		// TODO: Error handling
-		return
+		// Check if it's an imported struct from analyzer info
+		// Look up the type of the StructExpression itself, not its Identifier
+		if typNode, exists := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n]; exists {
+			if structTyp, ok := typNode.Type.(*ortypes.StructType); ok {
+				// Create the LLVM struct type from the semantic type
+				var fields []types.Type
+				fieldIndices := make(map[string]int)
+				for i, v := range structTyp.Variables {
+					fields = append(fields, lcg.getLLVMTypeFromSemantic(v.Type))
+					fieldIndices[v.Name] = i
+				}
+
+				llvmStructType := types.NewStruct(fields...)
+				typeDef := lcg.module.NewTypeDef(name, llvmStructType)
+				lcg.structs[name] = typeDef
+				lcg.structDefinitions[name] = llvmStructType
+				lcg.structFields[name] = fieldIndices
+
+				structType = typeDef
+			} else {
+				return
+			}
+		} else {
+			return
+		}
 	}
 
 	// Allocate struct
@@ -462,6 +488,9 @@ func (lcg *LLVMCodeGen) Visit(node ast.Node) ast.Visitor {
 		return nil
 	case *ast.TypeAssertionExpression:
 		lcg.visitTypeAssertionExpression(n)
+		return nil
+	case *ast.CastExpression:
+		lcg.visitCastExpression(n)
 		return nil
 	}
 	return lcg
@@ -841,19 +870,21 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 				}
 
 				// 4. Get function pointer from itable
-				// itablePtr is i8*. Cast to i8** (array of pointers)
-				itablePtrTyped := lcg.currentBlock.NewBitCast(itablePtr, types.NewPointer(types.I8Ptr))
+				// itablePtr is i8*. Cast to { i32, [0 x i8*] }*
+				itableStructType := types.NewStruct(types.I32, types.NewArray(0, types.I8Ptr))
+				itableTyped := lcg.currentBlock.NewBitCast(itablePtr, types.NewPointer(itableStructType))
+
+				// Get pointer to the function pointers array (index 1)
+				// GEP(itableTyped, 0, 1) -> pointer to [0 x i8*]
+				arrayPtr := lcg.currentBlock.NewGetElementPtr(itableStructType, itableTyped,
+					constant.NewInt(types.I32, 0),
+					constant.NewInt(types.I32, 1))
 
 				// Get pointer to method slot
-				idx := constant.NewInt(types.I32, int64(methodIdx))
-				methodSlot := lcg.currentBlock.NewGetElementPtr(types.I8Ptr, itablePtrTyped, idx)
-				// No, GEP on pointer gives pointer to element.
-				// If we have i8**, GEP(i) gives address of i-th element.
-				// But NewGetElementPtr takes the element type.
-				// If we treat it as array [N x i8*]*, then we need 0, idx.
-				// But here we have i8**.
-				// So just idx.
-				methodSlot = lcg.currentBlock.NewGetElementPtr(types.I8Ptr, itablePtrTyped, idx)
+				// GEP(arrayPtr, 0, methodIdx)
+				methodSlot := lcg.currentBlock.NewGetElementPtr(types.NewArray(0, types.I8Ptr), arrayPtr,
+					constant.NewInt(types.I32, 0),
+					constant.NewInt(types.I32, int64(methodIdx)))
 
 				// Load function pointer (i8*)
 				fnPtrRaw := lcg.currentBlock.NewLoad(types.I8Ptr, methodSlot)
@@ -910,7 +941,7 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 		// ... existing struct method logic ...
 		// Method call
 		// Resolve target
-		// targetAddr := lcg.getAddress(member.Target) // This line is already above
+		targetAddr = lcg.getAddress(member.Target)
 		if targetAddr != nil {
 			// Get struct type
 			if ptrType, ok := targetAddr.Type().(*types.PointerType); ok {
@@ -931,6 +962,33 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 					if _, ok := lcg.functions[mangledName]; ok {
 						name = mangledName
 						args = append(args, targetAddr) // Pass 'this'
+					} else {
+						// Check if it is a valid method in the struct type
+						nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[member.Target]
+						if nodeInfo != nil {
+							if structTyp, ok := nodeInfo.Type.(*ortypes.StructType); ok {
+								if has, methodTyp := structTyp.HasFunction(methodName); has {
+									if sig, ok := methodTyp.(*ortypes.SignatureType); ok {
+										// Declare it
+										// We need to add 'this' param
+										var params []*ir.Param
+										params = append(params, ir.NewParam("this", types.NewPointer(lcg.structs[structTyp.Name])))
+
+										for i, argType := range sig.ArgumentTypes {
+											params = append(params, ir.NewParam(fmt.Sprintf("arg%d", i), lcg.getLLVMTypeFromSemantic(argType)))
+										}
+
+										returnType := lcg.getLLVMTypeFromSemantic(sig.ReturnType)
+
+										fn := lcg.module.NewFunc(mangledName, returnType, params...)
+										lcg.functions[mangledName] = fn
+
+										name = mangledName
+										args = append(args, targetAddr)
+									}
+								}
+							}
+						}
 					}
 				}
 			}
@@ -1104,6 +1162,10 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 			// Promote float to double for C compatibility (printf etc)
 			if val.Type().Equal(types.Float) {
 				val = lcg.currentBlock.NewFPExt(val, types.Double)
+			}
+			// Promote i1, i8, i16 to i32
+			if intType, ok := val.Type().(*types.IntType); ok && intType.BitSize < 32 {
+				val = lcg.currentBlock.NewZExt(val, types.I32)
 			}
 		}
 
