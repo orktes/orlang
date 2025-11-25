@@ -9,7 +9,7 @@ fn print_array(arr: []string) {
 }
 
 fn main() {
-	var arr = []string{"foo", "bar", "baz"}
+    var arr = []string{"foo", "bar", "baz"}
     var arr2 = append(arr, "biz", "buz", "bez")
     print_array(arr2)
 }
