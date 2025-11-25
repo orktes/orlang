@@ -1,0 +1,15 @@
+extern printf(fmt: string, args: ...anything) => int32
+extern puts(s: string) => int64
+
+fn print_array(arr: []string) {
+    printf("len: %d\n", len(arr))
+    for var i = 0; i < len(arr); i++ {
+        puts(arr[i])
+    }
+}
+
+fn main() {
+	var arr = []string{"foo", "bar", "baz"}
+    var arr2 = append(arr, "biz", "buz", "bez")
+    print_array(arr2)
+}

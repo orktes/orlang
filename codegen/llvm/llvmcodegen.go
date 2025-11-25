@@ -33,10 +33,11 @@ type LLVMCodeGen struct {
 	nextTypeID        int32                           // Next available type ID
 	stringCount       int                             // Counter for unique string constants
 	allocaMetadata    map[value.Value]*AllocaMetadata // Type metadata for alloca instructions
+	arrayHelper       *ArrayHelper                    // Helper for array/slice operations
 }
 
 func New(info *analyser.Info) *LLVMCodeGen {
-	return &LLVMCodeGen{
+	lcg := &LLVMCodeGen{
 		analyserInfo:      info,
 		module:            ir.NewModule(),
 		values:            make(map[ast.Node]value.Value),
@@ -48,6 +49,9 @@ func New(info *analyser.Info) *LLVMCodeGen {
 		nextTypeID:        1, // Start from 1, reserve 0 for unknown/nil
 		allocaMetadata:    make(map[value.Value]*AllocaMetadata),
 	}
+	// Initialize helpers that need reference to lcg
+	lcg.arrayHelper = NewArrayHelper(lcg)
+	return lcg
 }
 
 func (lcg *LLVMCodeGen) SetModuleName(name string) {
@@ -66,6 +70,44 @@ func getKeys(m map[string]*ir.Func) []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+func (lcg *LLVMCodeGen) getLLVMParamType(t ortypes.Type) types.Type {
+	return lcg.getLLVMTypeFromSemantic(t)
+}
+
+func (lcg *LLVMCodeGen) getLLVMReturnType(t ortypes.Type) types.Type {
+	llvmType := lcg.getLLVMTypeFromSemantic(t)
+
+	// Resolve lazy
+	t = ortypes.LazyResolve(t)
+
+	// If it's a struct type, unwrap the pointer to return by value
+	if _, ok := t.(*ortypes.StructType); ok {
+		if ptr, ok := llvmType.(*types.PointerType); ok {
+			return ptr.ElemType
+		}
+	}
+
+	// Also check PrimitiveType if it refers to a struct
+	if pt, ok := t.(*ortypes.PrimitiveType); ok {
+		if _, ok := lcg.structs[pt.Type]; ok {
+			if ptr, ok := llvmType.(*types.PointerType); ok {
+				return ptr.ElemType
+			}
+		}
+	}
+
+	// Also check pointer to PrimitiveType if it refers to a struct (e.g. *Point)
+	// Wait, if it's *Point, getLLVMTypeFromSemantic returns %Point*.
+	// We want to return %Point*.
+	// So only unwrap if it's NOT a pointer in semantic type.
+	// But ortypes.PrimitiveType "Point" means value semantics in Orlang?
+	// In Orlang, "Point" is a struct. Variables are references?
+	// No, "var p Point" allocates a struct.
+	// "fn f() => Point" returns a struct.
+
+	return llvmType
 }
 
 func (lcg *LLVMCodeGen) getLLVMTypeFromSemantic(t ortypes.Type) types.Type {
@@ -179,6 +221,10 @@ func (lcg *LLVMCodeGen) getLLVMTypeFromSemantic(t ortypes.Type) types.Type {
 		}
 		// Slice: struct { data *T, len i32 }
 		return types.NewStruct(types.NewPointer(elemType), types.I32)
+	case *ortypes.PointerType:
+		// Handle explicit pointer types like &int8
+		innerType := lcg.getLLVMTypeFromSemantic(t.Type)
+		return types.NewPointer(innerType)
 	}
 
 	return types.I32
@@ -512,7 +558,11 @@ func (lcg *LLVMCodeGen) visitArrayExpression(n *ast.ArrayExpression) {
 	}
 
 	// Store the result
-	if n.Type.Length == nil {
+	// Use semantic type to determine if this is a fixed array or slice
+	// because n.Type.Length might not be set correctly by the parser
+	isFixedArray := arrayType.Length >= 0
+
+	if !isFixedArray {
 		// Slice: create struct { data *T, len i32 }
 		sliceType := types.NewStruct(types.NewPointer(elementType), types.I32)
 
@@ -859,8 +909,29 @@ func (lcg *LLVMCodeGen) visitVariableDeclaration(n *ast.VariableDeclaration) {
 
 		// If the value is already an alloca (e.g., for arrays/structs),
 		// just use it directly instead of creating a new alloca
-		if _, isAlloca := val.(*ir.InstAlloca); isAlloca {
+		if allocaInst, isAlloca := val.(*ir.InstAlloca); isAlloca {
 			lcg.values[n.Name] = val
+
+			// Store metadata for this reused alloca
+			var semType ortypes.Type
+			nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n.Name]
+			if nodeInfo != nil {
+				semType = nodeInfo.Type
+			}
+			// If we don't have type from Name, try DefaultValue
+			if semType == nil && n.DefaultValue != nil {
+				defaultNodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n.DefaultValue]
+				if defaultNodeInfo != nil {
+					semType = defaultNodeInfo.Type
+				}
+			}
+			category := GetTypeCategory(semType, allocaInst.ElemType)
+
+			lcg.allocaMetadata[val] = &AllocaMetadata{
+				SemanticType: semType,
+				Category:     category,
+			}
+
 			return
 		}
 
@@ -887,6 +958,13 @@ func (lcg *LLVMCodeGen) visitVariableDeclaration(n *ast.VariableDeclaration) {
 	nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n.Name]
 	if nodeInfo != nil {
 		semType = nodeInfo.Type
+	}
+	// If we don't have type from Name, try DefaultValue
+	if semType == nil && n.DefaultValue != nil {
+		defaultNodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n.DefaultValue]
+		if defaultNodeInfo != nil {
+			semType = defaultNodeInfo.Type
+		}
 	}
 	category := GetTypeCategory(semType, typ)
 	lcg.allocaMetadata[alloca] = &AllocaMetadata{
@@ -1091,13 +1169,43 @@ func (lcg *LLVMCodeGen) visitFunctionDeclaration(n *ast.FunctionDeclaration) {
 		params = append(params, thisParam)
 	}
 
+	// Get semantic function type
+	var funcSemType *ortypes.SignatureType
+
+	var lookupNode ast.Node = n
+	if n.Signature.Identifier != nil {
+		lookupNode = n.Signature.Identifier
+	}
+
+	if nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[lookupNode]; nodeInfo != nil {
+		if ft, ok := nodeInfo.Type.(*ortypes.SignatureType); ok {
+			funcSemType = ft
+		}
+	}
+
+	// If still not found, try the other one (if we tried identifier, try n; if we tried n, well n is all we have)
+	if funcSemType == nil && n.Signature.Identifier != nil {
+		if nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n]; nodeInfo != nil {
+			if ft, ok := nodeInfo.Type.(*ortypes.SignatureType); ok {
+				funcSemType = ft
+			}
+		}
+	}
+
 	isVariadic := false
-	for _, arg := range n.Signature.Arguments {
+	for i, arg := range n.Signature.Arguments {
 		if arg.Variadic {
 			isVariadic = true
 			break // Variadic must be last, don't add to params
 		}
-		paramType := lcg.getLLVMType(arg.Type)
+
+		var paramType types.Type
+		if funcSemType != nil && i < len(funcSemType.ArgumentTypes) {
+			paramType = lcg.getLLVMParamType(funcSemType.ArgumentTypes[i])
+		} else {
+			paramType = lcg.getLLVMType(arg.Type)
+		}
+
 		param := ir.NewParam(arg.Name.Text, paramType)
 		params = append(params, param)
 		lcg.values[arg.Name] = param
@@ -1107,6 +1215,8 @@ func (lcg *LLVMCodeGen) visitFunctionDeclaration(n *ast.FunctionDeclaration) {
 	if name == "main" {
 		// main should always return i32 for compatibility
 		returnType = types.I32
+	} else if funcSemType != nil {
+		returnType = lcg.getLLVMReturnType(funcSemType.ReturnType)
 	} else if n.Signature.ReturnType != nil {
 		returnType = lcg.getLLVMType(n.Signature.ReturnType)
 	} else {
@@ -1382,16 +1492,15 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 								if has, methodTyp := structTyp.HasFunction(methodName); has {
 									if sig, ok := methodTyp.(*ortypes.SignatureType); ok {
 										// Declare it
-										// We need to add 'this' param
 										var params []*ir.Param
+										// Add 'this' param
 										params = append(params, ir.NewParam("this", types.NewPointer(lcg.structs[structTyp.Name])))
 
 										for i, argType := range sig.ArgumentTypes {
-											params = append(params, ir.NewParam(fmt.Sprintf("arg%d", i), lcg.getLLVMTypeFromSemantic(argType)))
+											params = append(params, ir.NewParam(fmt.Sprintf("arg%d", i), lcg.getLLVMParamType(argType)))
 										}
 
-										returnType := lcg.getLLVMTypeFromSemantic(sig.ReturnType)
-
+										returnType := lcg.getLLVMReturnType(sig.ReturnType)
 										fn := lcg.module.NewFunc(mangledName, returnType, params...)
 										lcg.functions[mangledName] = fn
 
@@ -1504,122 +1613,11 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 		}
 	}
 
-	// Prepare arguments slice with correct size
-	// If variadic, we might have more arguments than params
-	preArgsCount := len(args)
-	numArgs := len(n.Arguments) + preArgsCount
-	if len(fn.Params) > numArgs {
-		numArgs = len(fn.Params)
-	}
-
-	// We need to store evaluated values in the correct order
-	// Initialize with nil
-	orderedArgs := make([]value.Value, numArgs)
-
-	// Copy pre-filled args (e.g. 'this')
-	for i, v := range args {
-		orderedArgs[i] = v
-	}
-
-	// Track which indices are filled (for variadic handling)
-	filledIndices := make(map[int]bool)
-
-	for i, arg := range n.Arguments {
-		ast.Walk(lcg, arg.Expression)
-		val := lcg.values[arg.Expression]
-
-		targetIndex := i
-
-		// If named argument, find the index in signature
-		if arg.Name != nil && signature != nil {
-			for idx, name := range signature.ArgumentNames {
-				if name == arg.Name.Text {
-					targetIndex = idx
-					break
-				}
-			}
-		}
-
-		// Shift index by preArgsCount (to account for 'this')
-		realIndex := targetIndex + preArgsCount
-
-		filledIndices[realIndex] = true
-
-		// Handle casting
-		if realIndex < len(fn.Params) {
-			// Resolve source and target types for casting
-			var sourceTyp ortypes.Type
-			nodeInfoArg := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[arg.Expression]
-			if nodeInfoArg != nil {
-				sourceTyp = nodeInfoArg.Type
-			}
-
-			var targetTyp ortypes.Type
-			if signature != nil && targetIndex < len(signature.ArgumentTypes) {
-				targetTyp = signature.ArgumentTypes[targetIndex]
-			}
-
-			// Perform cast if we have type info
-			if sourceTyp != nil && targetTyp != nil {
-				// Special handling for struct-to-interface casts
-				// We need to pass the address of the struct, not the loaded value
-				if _, isTargetIface := targetTyp.(*ortypes.InterfaceType); isTargetIface {
-					if _, isSourceStruct := sourceTyp.(*ortypes.StructType); isSourceStruct {
-						// Get the address of the struct instead of the loaded value
-						addr := lcg.getAddress(arg.Expression)
-						if addr != nil {
-							val = addr
-						}
-					}
-				}
-				val = lcg.castIfNeeded(val, sourceTyp, targetTyp)
-			} else {
-				// Fallback to simple bitcast
-				param := fn.Params[realIndex]
-				if val != nil && val.Type() != param.Type() {
-					val = lcg.currentBlock.NewBitCast(val, param.Type())
-				}
-			}
-		} else {
-			// Variadic argument
-			// Only promote if val is not nil
-			if val != nil {
-				// Promote float to double for C compatibility (printf etc)
-				if val.Type().Equal(types.Float) {
-					val = lcg.currentBlock.NewFPExt(val, types.Double)
-				}
-				// Promote i1, i8, i16 to i32
-				if intType, ok := val.Type().(*types.IntType); ok && intType.BitSize < 32 {
-					val = lcg.currentBlock.NewZExt(val, types.I32)
-				}
-			}
-		}
-
-		// Resize orderedArgs if needed (for variadic args that go beyond initial size)
-		if realIndex >= len(orderedArgs) {
-			newArgs := make([]value.Value, realIndex+1)
-			copy(newArgs, orderedArgs)
-			orderedArgs = newArgs
-		}
-
-		orderedArgs[realIndex] = val
-	}
-
-	// Filter out nil values (shouldn't happen for valid calls, but good for safety)
-	// Actually, for variadic calls, we just pass all orderedArgs.
-	// But we need to make sure we don't have holes if user skipped args (which analyzer should catch).
-
-	// Construct the final args list for LLVM call
-	var finalArgs []value.Value
-	for i, v := range orderedArgs {
-		if v != nil {
-			finalArgs = append(finalArgs, v)
-		} else {
-			// This might happen if we have optional args (not supported yet) or bug.
-			// For now, panic or ignore?
-			// If it's a variadic function, and we have holes, that's weird.
-			panic(fmt.Sprintf("Missing argument at index %d for call to %s", i, name))
-		}
+	// Use ArgumentMatcher to resolve arguments
+	matcher := NewArgumentMatcher(lcg, signature, fn, args)
+	finalArgs, err := matcher.Match(n.Arguments)
+	if err != nil {
+		panic(err)
 	}
 
 	val := lcg.currentBlock.NewCall(fn, finalArgs...)
@@ -1651,14 +1649,8 @@ func (lcg *LLVMCodeGen) visitIdentifier(n *ast.Identifier) {
 				return
 			case ArrayDecayType:
 				// Arrays decay to pointer to first element
-				if ptrType, isPtr := val.Type().(*types.PointerType); isPtr {
-					if arrayType, isArray := ptrType.ElemType.(*types.ArrayType); isArray {
-						zero := constant.NewInt(types.I32, 0)
-						gepPtr := lcg.currentBlock.NewGetElementPtr(arrayType, val, zero, zero)
-						lcg.values[n] = gepPtr
-						return
-					}
-				}
+				lcg.values[n] = lcg.arrayHelper.DecayArray(val)
+				return
 			case SliceValueType, InterfaceValueType, TupleValueType, PrimitiveType:
 				// These should be loaded (value semantics)
 				if ptrType, isPtr := val.Type().(*types.PointerType); isPtr {
@@ -1684,12 +1676,8 @@ func (lcg *LLVMCodeGen) visitIdentifier(n *ast.Identifier) {
 						return
 					case ArrayDecayType:
 						// Decay array
-						if arrayType, isArray := ptrType.ElemType.(*types.ArrayType); isArray {
-							zero := constant.NewInt(types.I32, 0)
-							gepPtr := lcg.currentBlock.NewGetElementPtr(arrayType, val, zero, zero)
-							lcg.values[n] = gepPtr
-							return
-						}
+						lcg.values[n] = lcg.arrayHelper.DecayArray(val)
+						return
 					default:
 						// Load value
 						load := lcg.currentBlock.NewLoad(ptrType.ElemType, val)
@@ -1708,6 +1696,22 @@ func (lcg *LLVMCodeGen) visitReturnStatement(n *ast.ReturnStatement) {
 	if n.Expression != nil {
 		ast.Walk(lcg, n.Expression)
 		val := lcg.values[n.Expression]
+
+		// Check if we need to load the value (e.g. returning struct value from pointer)
+		// We need to know the expected return type of the function
+		returnType := lcg.currentFunc.Sig.RetType
+
+		// If return type is not a pointer, but val is a pointer, we might need to load it
+		// This happens for structs which are now returned by value
+		if _, ok := returnType.(*types.PointerType); !ok {
+			if ptr, ok := val.Type().(*types.PointerType); ok {
+				// Check if it's a pointer to the return type
+				if ptr.ElemType.Equal(returnType) {
+					val = lcg.currentBlock.NewLoad(returnType, val)
+				}
+			}
+		}
+
 		lcg.currentBlock.NewRet(val)
 	} else {
 		lcg.currentBlock.NewRet(nil)

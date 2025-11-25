@@ -1,0 +1,230 @@
+Running test 01_simple/
+~/Development/orlang/e2e/01_simple ~/Development/orlang/e2e
+Linting 01_simple/
+Building 01_simple/
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+success
+Test produced expected result
+~/Development/orlang/e2e
+Running test 02_interfaces/
+~/Development/orlang/e2e/02_interfaces ~/Development/orlang/e2e
+Linting 02_interfaces/
+main.or:1:8 puts declared but not used
+main.or:3:11 Resetable declared but not used
+main.or:7:8 Point declared but not used
+main.or:3:11 Resetable declared but not used
+main.or:7:8 Point declared but not used
+main.or:1:8 puts declared but not used
+Building 02_interfaces/
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+Sum is 30
+Test produced expected result
+~/Development/orlang/e2e
+Running test 03_complex/
+~/Development/orlang/e2e/03_complex ~/Development/orlang/e2e
+Linting 03_complex/
+main.or:1:8 puts declared but not used
+main.or:4:11 Resetable declared but not used
+main.or:9:8 Point declared but not used
+Building 03_complex/
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+X is correct
+Reset worked
+Test produced expected result
+~/Development/orlang/e2e
+Running test 04_export_import/
+~/Development/orlang/e2e/04_export_import ~/Development/orlang/e2e
+Linting 04_export_import/
+Building 04_export_import/
+Compiling lib.or
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+bar
+Test produced expected result
+~/Development/orlang/e2e
+Running test 05_include_c_header/
+~/Development/orlang/e2e/05_include_c_header ~/Development/orlang/e2e
+Linting 05_include_c_header/
+main.or:4:5 puts (type unknown (undefined)) is not a function
+main.or:4:5 undefined: puts
+Building 05_include_c_header/
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+foobar
+Test produced expected result
+~/Development/orlang/e2e
+Running test 06_import_as/
+~/Development/orlang/e2e/06_import_as ~/Development/orlang/e2e
+Linting 06_import_as/
+main.or:1:10 undefined: foo
+main.or:2:10 undefined: foo
+Building 06_import_as/
+Compiling lib.or
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Compiling lib2.or
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+bar
+biz
+Test produced expected result
+~/Development/orlang/e2e
+Running test 07_printf/
+~/Development/orlang/e2e/07_printf ~/Development/orlang/e2e
+Linting 07_printf/
+Building 07_printf/
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+Hello, World 42!
+Test produced expected result
+~/Development/orlang/e2e
+Running test 08_macro/
+~/Development/orlang/e2e/08_macro ~/Development/orlang/e2e
+Linting 08_macro/
+Building 08_macro/
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+Hello, World 42!
+Test produced expected result
+~/Development/orlang/e2e
+Running test 09_sprintf/
+~/Development/orlang/e2e/09_sprintf ~/Development/orlang/e2e
+Linting 09_sprintf/
+Building 09_sprintf/
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+Hello, World 42!
+Test produced expected result
+~/Development/orlang/e2e
+Running test 10_named_args/
+~/Development/orlang/e2e/10_named_args ~/Development/orlang/e2e
+Linting 10_named_args/
+Building 10_named_args/
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+0.200000
+Test produced expected result
+~/Development/orlang/e2e
+Running test 11_casts/
+~/Development/orlang/e2e/11_casts ~/Development/orlang/e2e
+Linting 11_casts/
+Building 11_casts/
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+i64: 100, i32: 100, i16: 100, i8: 100
+u64: 200, u32: 200, u16: 200, u8: 200
+f64: 123.455994, f32: 123.455994
+i_to_f: 100.000000, f_to_i: 123
+u_to_f: 200.000000
+Test produced expected result
+~/Development/orlang/e2e
+Running test 12_tuple/
+~/Development/orlang/e2e/12_tuple ~/Development/orlang/e2e
+Linting 12_tuple/
+Building 12_tuple/
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+1-0.500000-string
+int: 1, float: 0.500000, string: string
+Test produced expected result
+~/Development/orlang/e2e
+Running test 13_type_assertion/
+~/Development/orlang/e2e/13_type_assertion ~/Development/orlang/e2e
+Linting 13_type_assertion/
+Building 13_type_assertion/
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+123
+123.500000
+string
+1
+Test produced expected result
+~/Development/orlang/e2e
+Running test 14_struct_export/
+~/Development/orlang/e2e/14_struct_export ~/Development/orlang/e2e
+Linting 14_struct_export/
+main.or:1:10 Foo declared but not used
+Building 14_struct_export/
+Compiling lib.or
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+bar
+Test produced expected result
+~/Development/orlang/e2e
+Running test 15_array/
+~/Development/orlang/e2e/15_array ~/Development/orlang/e2e
+Linting 15_array/
+main.or:5:25 undefined: len
+main.or:6:20 invalid operation: i < len(arr) (mismatched types int32 and unknown (undefined))
+main.or:6:24 undefined: len
+Building 15_array/
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+start
+len: 3
+foo
+bar
+baz
+len: 3
+
+
+
+len: 3
+foo
+bar
+baz
+baz
+Test produced expected result
+~/Development/orlang/e2e
+Running test 16_array_structs/
+~/Development/orlang/e2e/16_array_structs ~/Development/orlang/e2e
+Linting 16_array_structs/
+main.or:9:20 invalid operation: i < len(points) (mismatched types int32 and unknown (undefined))
+main.or:9:24 undefined: len
+Building 16_array_structs/
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+Point: 10, 20
+Point: 30, 40
+Test produced expected result

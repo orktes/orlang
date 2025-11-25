@@ -1,89 +1,14 @@
 package llvm
 
 import (
-	"github.com/llir/llvm/ir/constant"
 	"github.com/llir/llvm/ir/types" // Added import for types
 	"github.com/llir/llvm/ir/value"
 	ortypes "github.com/orktes/orlang/types"
 )
 
-func (lcg *LLVMCodeGen) castIfNeeded(val value.Value, sourceTyp, targetTyp ortypes.Type) value.Value { // Modified function signature
+func (lcg *LLVMCodeGen) castIfNeeded(val value.Value, sourceTyp, targetTyp ortypes.Type) value.Value {
 	if sourceTyp == nil || targetTyp == nil {
 		return val
-	}
-
-	// Handle int32 -> int64 promotion
-	if sourceTyp.GetName() == "int32" && targetTyp.GetName() == "int64" {
-		return lcg.currentBlock.NewSExt(val, types.I64)
-	}
-
-	// Handle &int8 <-> string (both are i8*)
-	if sourcePtr, ok := sourceTyp.(*ortypes.PointerType); ok {
-		if targetTyp.GetName() == "string" {
-			// Check if it's &int8
-			if prim, ok := sourcePtr.Type.(*ortypes.PrimitiveType); ok && prim.Type == "int8" {
-				return val // No cast needed, both are i8*
-			}
-		}
-	}
-
-	if targetPtr, ok := targetTyp.(*ortypes.PointerType); ok {
-		if sourceTyp.GetName() == "string" {
-			// Check if it's &int8
-			if prim, ok := targetPtr.Type.(*ortypes.PrimitiveType); ok && prim.Type == "int8" {
-				return val // No cast needed
-			}
-		}
-	}
-
-	if targetIface, ok := targetTyp.(*ortypes.InterfaceType); ok {
-		if _, isIface := sourceTyp.(*ortypes.InterfaceType); !isIface {
-			return lcg.createInterfaceCast(val, sourceTyp, targetIface)
-		}
-	}
-
-	// Handle Fixed Array -> Slice conversion
-	if sourceArray, ok := sourceTyp.(*ortypes.ArrayType); ok {
-		if targetArray, ok := targetTyp.(*ortypes.ArrayType); ok {
-			if sourceArray.Length >= 0 && targetArray.Length == -1 {
-				// Convert fixed array (pointer) to slice struct
-				// val is pointer to array [N x T]*
-
-				// We need to construct struct { T*, i32 }
-
-				// 1. Get pointer to first element
-				// val is [N x T]*
-				// GEP to [0, 0] -> T*
-				zero := constant.NewInt(types.I32, 0)
-
-				// 2. Create slice struct
-				elemType := lcg.getLLVMTypeFromSemantic(targetArray.Type)
-				sliceType := types.NewStruct(types.NewPointer(elemType), types.I32)
-
-				var sliceVal value.Value = constant.NewStruct(sliceType, constant.NewNull(types.NewPointer(elemType)), constant.NewInt(types.I32, 0))
-
-				var dataPtr value.Value
-
-				// Check if val is already decayed (pointer to element)
-				if val.Type().Equal(types.NewPointer(elemType)) {
-					dataPtr = val
-				} else if ptrType, ok := val.Type().(*types.PointerType); ok {
-					// It's a pointer to array [N x T]*
-					arrayType := ptrType.ElemType
-					dataPtr = lcg.currentBlock.NewGetElementPtr(arrayType, val, zero, zero)
-				} else {
-					// Should not happen
-					return val
-				}
-
-				sliceVal = lcg.currentBlock.NewInsertValue(sliceVal, dataPtr, 0)
-
-				length := constant.NewInt(types.I32, sourceArray.Length)
-				sliceVal = lcg.currentBlock.NewInsertValue(sliceVal, length, 1)
-
-				return sliceVal
-			}
-		}
 	}
 
 	// Resolve LazyTypes
@@ -94,20 +19,69 @@ func (lcg *LLVMCodeGen) castIfNeeded(val value.Value, sourceTyp, targetTyp ortyp
 		targetTyp = lazy.Resolver()
 	}
 
-	// Check if casting to interface
+	// Handle numeric promotions
+	if val, ok := lcg.promoteNumeric(val, sourceTyp, targetTyp); ok {
+		return val
+	}
+
+	// Handle string casts (&int8 <-> string)
+	if val, ok := lcg.handleStringCast(val, sourceTyp, targetTyp); ok {
+		return val
+	}
+
+	// Handle Fixed Array -> Slice conversion
+	if sourceArray, ok := sourceTyp.(*ortypes.ArrayType); ok {
+		if targetArray, ok := targetTyp.(*ortypes.ArrayType); ok {
+			if sourceArray.Length >= 0 && targetArray.Length == -1 {
+				return lcg.arrayHelper.ArrayToSlice(val, sourceArray)
+			}
+		}
+	}
+
+	// Handle Interface casts
 	if targetIface, ok := targetTyp.(*ortypes.InterfaceType); ok {
 		// If source is struct (or pointer to struct), cast to interface
-		// Note: In LLVM, we usually work with pointers to structs.
-		// sourceTyp from semantic analysis might be StructType.
-
 		if _, ok := sourceTyp.(*ortypes.StructType); ok {
 			return lcg.createInterfaceCast(val, sourceTyp, targetIface)
 		}
 
-		// If source is already the same interface, no cast needed (or maybe bitcast if needed?)
-		// If source is another interface, we might need to adjust itable? (Not supported yet probably)
+		// Check if we're casting from another interface (not supported yet fully, but check types)
+		if _, isIface := sourceTyp.(*ortypes.InterfaceType); !isIface {
+			return lcg.createInterfaceCast(val, sourceTyp, targetIface)
+		}
 	}
+
 	return val
+}
+
+func (lcg *LLVMCodeGen) promoteNumeric(val value.Value, sourceTyp, targetTyp ortypes.Type) (value.Value, bool) {
+	// Handle int32 -> int64 promotion
+	if sourceTyp.GetName() == "int32" && targetTyp.GetName() == "int64" {
+		return lcg.currentBlock.NewSExt(val, types.I64), true
+	}
+	return nil, false
+}
+
+func (lcg *LLVMCodeGen) handleStringCast(val value.Value, sourceTyp, targetTyp ortypes.Type) (value.Value, bool) {
+	// Handle &int8 -> string (both are i8*)
+	if sourcePtr, ok := sourceTyp.(*ortypes.PointerType); ok {
+		if targetTyp.GetName() == "string" {
+			if prim, ok := sourcePtr.Type.(*ortypes.PrimitiveType); ok && prim.Type == "int8" {
+				return val, true // No cast needed
+			}
+		}
+	}
+
+	// Handle string -> &int8
+	if targetPtr, ok := targetTyp.(*ortypes.PointerType); ok {
+		if sourceTyp.GetName() == "string" {
+			if prim, ok := targetPtr.Type.(*ortypes.PrimitiveType); ok && prim.Type == "int8" {
+				return val, true // No cast needed
+			}
+		}
+	}
+
+	return nil, false
 }
 
 // castValue performs explicit casting between LLVM types

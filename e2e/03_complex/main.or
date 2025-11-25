@@ -1,22 +1,5 @@
 extern puts(s: string) => int64
 
-// This macro uses build-in function print to print a list of expressions
-macro print {
-  ($a:expr) : (
-    puts($a)
-    puts("\n")
-  )
-
-  ($a:expr, $( $b:expr ),*) : (
-    puts($a)
-    $(
-      puts(" ")
-      puts($b)
-    )*
-    puts("\n")
-  )
-}
-
 // Example of an interface that defines a reset function
 interface Resetable {
   fn reset()
