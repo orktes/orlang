@@ -155,9 +155,13 @@ func (s *Scanner) Scan() (token Token) {
 	case ch == '+':
 		t = TokenTypeADD
 		text = string(ch)
-		if s.read() == '+' {
+		next := s.read()
+		if next == '+' {
 			t = TokenTypeIncrement
 			text = "++"
+		} else if next == '=' {
+			t = TokenTypeAddAssign
+			text = "+="
 		} else {
 			s.unread()
 		}
@@ -165,9 +169,13 @@ func (s *Scanner) Scan() (token Token) {
 	case ch == '-':
 		t = TokenTypeSUB
 		text = string(ch)
-		if s.read() == '-' {
+		next := s.read()
+		if next == '-' {
 			t = TokenTypeDecrement
 			text = "--"
+		} else if next == '=' {
+			t = TokenTypeSubAssign
+			text = "-="
 		} else {
 			s.unread()
 		}
@@ -175,6 +183,22 @@ func (s *Scanner) Scan() (token Token) {
 	case ch == '*':
 		t = TokenTypeASTERISK
 		text = string(ch)
+		if s.read() == '=' {
+			t = TokenTypeMulAssign
+			text = "*="
+		} else {
+			s.unread()
+		}
+
+	case ch == '%':
+		t = TokenTypePERCENT
+		text = string(ch)
+		if s.read() == '=' {
+			t = TokenTypeModAssign
+			text = "%="
+		} else {
+			s.unread()
+		}
 
 	case ch == '&':
 		t = TokenTypeAMPERSAND
@@ -197,9 +221,13 @@ func (s *Scanner) Scan() (token Token) {
 	case ch == '<':
 		t = TokenTypeLess
 		text = string(ch)
-		if s.read() == '=' {
+		next := s.read()
+		if next == '=' {
 			t = TokenTypeLessOrEqual
 			text = "<="
+		} else if next == '<' {
+			t = TokenTypeLSHIFT
+			text = "<<"
 		} else {
 			s.unread()
 		}
@@ -219,7 +247,11 @@ func (s *Scanner) Scan() (token Token) {
 	case ch == '>':
 		t = TokenTypeGreater
 		text = string(ch)
-		if s.read() == '=' {
+		next := s.read()
+		if next == '>' {
+			t = TokenTypeRSHIFT
+			text = ">>"
+		} else if next == '=' {
 			t = TokenTypeGreaterOrEqual
 			text = ">="
 		} else {
@@ -263,7 +295,7 @@ func (s *Scanner) Scan() (token Token) {
 		}
 
 	case ch == '|':
-		t = TokenTypeUnknown // Single pipe not used yet
+		t = TokenTypePIPE
 		text = string(ch)
 		if s.read() == '|' {
 			t = TokenTypeOr
@@ -271,6 +303,14 @@ func (s *Scanner) Scan() (token Token) {
 		} else {
 			s.unread()
 		}
+
+	case ch == '^':
+		t = TokenTypeCARET
+		text = string(ch)
+
+	case ch == '~':
+		t = TokenTypeTILDE
+		text = string(ch)
 
 	case ch == eof:
 		t = TokenTypeEOF
@@ -296,6 +336,12 @@ func (s *Scanner) scanComment() (t TokenType, text string) {
 	buf.WriteRune(start)
 
 	afterStart := s.peek()
+	if afterStart == '=' {
+		s.read() // consume '='
+		t = TokenTypeDivAssign
+		text = "/="
+		return
+	}
 	if afterStart != '*' && afterStart != '/' {
 		// Not a comment. Lets just return the slash
 		t = TokenTypeSLASH
@@ -491,17 +537,62 @@ func (s *Scanner) scanIdent() (t TokenType, text string, val interface{}) {
 		t = TokenTypeAs
 	case "is":
 		t = TokenTypeIs
+	case "break":
+		t = TokenTypeBreak
+	case "continue":
+		t = TokenTypeContinue
+	case "switch":
+		t = TokenTypeSwitch
+	case "case":
+		t = TokenTypeCase
+	case "default":
+		t = TokenTypeDefault
+	case "defer":
+		t = TokenTypeDefer
 	}
 
 	return
+}
+
+func isHexDigit(ch rune) bool {
+	return isNumber(ch) || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')
 }
 
 func (s *Scanner) scanNumber(ch rune) (t TokenType, text string, val interface{}) {
 	var buf bytes.Buffer
 	t = TokenTypeNumber
 
+	// Check for hex literal: 0x or 0X
+	if ch == '0' {
+		next := s.read()
+		if next == 'x' || next == 'X' {
+			// Scan hex digits
+			for {
+				ch = s.read()
+				if isHexDigit(ch) {
+					buf.WriteRune(ch)
+				} else {
+					s.unread()
+					break
+				}
+			}
+			text = "0x" + buf.String()
+			var err error
+			val, err = strconv.ParseInt(buf.String(), 16, 64)
+			if err != nil {
+				s.error(err.Error())
+			}
+			return t, text, val
+		}
+		s.unread()
+		buf.WriteRune(ch)
+	} else {
+		buf.WriteRune(ch)
+	}
+
 loop:
 	for {
+		ch = s.read()
 		switch {
 		case isNumber(ch):
 			buf.WriteRune(ch)
@@ -512,8 +603,6 @@ loop:
 			s.unread()
 			break loop
 		}
-
-		ch = s.read()
 	}
 
 	text = buf.String()

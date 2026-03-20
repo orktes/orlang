@@ -1,0 +1,9 @@
+and1: true
+and2: false
+or1: true
+or2: false
+not1: true
+not2: true
+neg: -5
+combined: true
+short-circuit: ok

@@ -73,6 +73,9 @@ func GetTypeCategory(semType ortypes.Type, llvmType types.Type) TypeCategory {
 	case *ortypes.PointerType:
 		// Pointers to primitives are still primitives in terms of loading
 		return PrimitiveType
+	case *ortypes.SignatureType:
+		// Function pointers are values (primitives) — just a pointer
+		return PrimitiveType
 	default:
 		// Unknown or complex type, fallback to LLVM analysis
 		return getTypeCategoryFromLLVM(llvmType)

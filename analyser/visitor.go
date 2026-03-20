@@ -91,6 +91,11 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			Type:   v.getTypeForNode(n.Type),
 			Length: arrLength,
 		}
+	case *ast.MapType:
+		return &types.MapType{
+			KeyType:   v.getTypeForNode(n.KeyType),
+			ValueType: v.getTypeForNode(n.ValueType),
+		}
 	case *ast.ArrayExpression:
 		length := int64(len(n.Expressions))
 		if n.Type.Length != nil {
@@ -103,6 +108,11 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 		return &types.ArrayType{
 			Type:   v.getTypeForNode(n.Type.Type),
 			Length: length,
+		}
+	case *ast.MapExpression:
+		return &types.MapType{
+			KeyType:   v.getTypeForNode(n.Type.KeyType),
+			ValueType: v.getTypeForNode(n.Type.ValueType),
 		}
 	case *ast.VariableDeclaration:
 		if n.Type != nil {
@@ -280,6 +290,15 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 		}
 
 		return typ
+	case *ast.Enum:
+		enumType := &types.EnumType{
+			Name:   n.Name.Text,
+			Values: make(map[string]int32),
+		}
+		for i, val := range n.Values {
+			enumType.Values[val.Name.Text] = int32(i)
+		}
+		return enumType
 	case *ast.MemberExpression:
 		targetType := v.getTypeForNode(n.Target)
 		if typeWithMembersType, ok := targetType.(types.TypeWithMembers); ok {
@@ -295,11 +314,14 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			n.Property.Text,
 		), true)
 	case *ast.IndexExpression:
-		// Get the type of the target (should be an array)
+		// Get the type of the target (should be an array or map)
 		targetType := v.getTypeForNode(n.Target)
 		if arrayType, ok := targetType.(*types.ArrayType); ok {
 			// Return the element type
 			return arrayType.Type
+		}
+		if mapType, ok := targetType.(*types.MapType); ok {
+			return mapType.ValueType
 		}
 
 		v.emitError(n, fmt.Sprintf(
@@ -358,6 +380,19 @@ func (v *visitor) getParentFuncDecl() *ast.FunctionDeclaration {
 	for parent != nil {
 		if funDecl, ok := parent.node.(*ast.FunctionDeclaration); ok {
 			return funDecl
+		}
+		parent = parent.parent
+	}
+
+	return nil
+}
+
+func (v *visitor) getParentForLoop() ast.Node {
+	parent := v.parent
+	for parent != nil {
+		switch parent.node.(type) {
+		case *ast.ForLoop, *ast.ForRangeLoop:
+			return parent.node
 		}
 		parent = parent.parent
 	}
@@ -639,6 +674,42 @@ typeCheck:
 			break
 		}
 
+		if ident, ok := n.Callee.(*ast.Identifier); ok && ident.Text == "append" {
+			if len(n.Arguments) < 2 {
+				v.emitError(n, "append() requires at least 2 arguments", true)
+				break
+			}
+
+			// First argument is the slice
+			sliceArg := n.Arguments[0]
+			v.Visit(sliceArg.Expression)
+
+			// Check argument type
+			sliceType := v.getTypeForNode(sliceArg.Expression)
+			arrayType, isArray := sliceType.(*types.ArrayType)
+			if !isArray {
+				v.emitError(sliceArg.Expression, "append() first argument must be a slice", true)
+				break
+			}
+
+			// Visit remaining arguments and check they match element type
+			for i := 1; i < len(n.Arguments); i++ {
+				v.Visit(n.Arguments[i].Expression)
+				argType := v.getTypeForNode(n.Arguments[i].Expression)
+				if !argType.IsEqual(arrayType.Type) {
+					v.emitError(n.Arguments[i].Expression, fmt.Sprintf("append() argument type mismatch: expected %s, got %s", arrayType.Type.GetName(), argType.GetName()), true)
+				}
+			}
+
+			// Return type is a dynamic slice (not fixed array)
+			// Create a new ArrayType with Length=-1 to indicate slice
+			nodeInfo.Type = &types.ArrayType{
+				Type:   arrayType.Type,
+				Length: -1, // Dynamic slice
+			}
+			break
+		}
+
 		// Check if function call is a typecast
 		if ident, ok := n.Callee.(*ast.Identifier); ok {
 			typ := v.getType(ident.Text)
@@ -687,14 +758,15 @@ typeCheck:
 
 				if len(signType.ArgumentNames) > i {
 					argName := signType.ArgumentNames[i]
-					if _, ok := usedArgs[argName]; ok {
-						v.emitError(
-							callArg,
-							fmt.Sprintf("argument %s already defined", argName),
-							true)
+					if argName != "" {
+						if _, ok := usedArgs[argName]; ok {
+							v.emitError(
+								callArg,
+								fmt.Sprintf("argument %s already defined", argName),
+								true)
+						}
+						usedArgs[argName] = true
 					}
-
-					usedArgs[argName] = true
 
 					fnArgType := signType.ArgumentTypes[i]
 					exprType := v.getTypeForNode(callArg.Expression)
@@ -879,6 +951,40 @@ typeCheck:
 				funcDeclType.ReturnType.GetName(),
 			), true)
 			break
+		}
+
+	case *ast.BreakStatement:
+		if v.getParentForLoop() == nil {
+			v.emitError(n, "break outside of loop", true)
+		}
+
+	case *ast.ContinueStatement:
+		if v.getParentForLoop() == nil {
+			v.emitError(n, "continue outside of loop", true)
+		}
+
+	case *ast.SwitchStatement:
+		// Walk is handled by ast.Walk; just validate here
+		break
+
+	case *ast.DeferStatement:
+		// Walk is handled by ast.Walk
+		break
+
+	case *ast.ForRangeLoop:
+		// Register iteration variables in scope
+		iterableType := v.getTypeForNode(n.Iterable)
+		if arrType, ok := iterableType.(*types.ArrayType); ok {
+			// Register value variable: scope item is ForRangeLoop, type is element type
+			v.scope.Set(n.ValueName, n)
+			v.info.NodeInfo[n.ValueName] = &NodeInfo{Type: arrType.Type}
+			// Set type on ForRangeLoop itself so getTypeForNode returns element type
+			v.getNodeInfo(n).Type = arrType.Type
+			// Register index variable with int32 type
+			if n.IndexName != nil {
+				v.scope.Set(n.IndexName, n.IndexName)
+				v.info.NodeInfo[n.IndexName] = &NodeInfo{Type: types.Int32Type}
+			}
 		}
 
 	case *ast.BinaryExpression:
@@ -1208,6 +1314,12 @@ typeCheck:
 			v.info.Types[n.Name.Text] = n
 			v.scope.Set(n.Name, n)
 		}
+	case *ast.Enum:
+		nodeInfo.Type = v.getTypeForNode(node)
+		if n.Name != nil {
+			v.info.Types[n.Name.Text] = n
+			v.scope.Set(n.Name, n)
+		}
 	case *ast.Interface:
 		// TODO check that it is not redeclared
 		// TODO check that no property or function is double declared
@@ -1233,23 +1345,27 @@ typeCheck:
 		), true)
 	case *ast.IndexExpression:
 		nodeInfo.Type = v.getTypeForNode(node)
-		// Verify target is indexable (array type)
+		// Verify target is indexable (array or map type)
 		targetType := v.getTypeForNode(n.Target)
-		if _, ok := targetType.(*types.ArrayType); !ok {
+		_, isArray := targetType.(*types.ArrayType)
+		_, isMap := targetType.(*types.MapType)
+		if !isArray && !isMap {
 			v.emitError(n, fmt.Sprintf(
 				"invalid operation: %s (type %s does not support indexing)",
 				n,
 				targetType.GetName(),
 			), true)
 		}
-		// Verify index is an integer
-		indexType := v.getTypeForNode(n.Index)
-		if !strings.HasPrefix(indexType.GetName(), "int") && !strings.HasPrefix(indexType.GetName(), "uint") {
-			v.emitError(n, fmt.Sprintf(
-				"non-integer index %s (type %s)",
-				n.Index,
-				indexType.GetName(),
-			), true)
+		// Verify index is an integer for arrays (maps allow string keys)
+		if !isMap {
+			indexType := v.getTypeForNode(n.Index)
+			if !strings.HasPrefix(indexType.GetName(), "int") && !strings.HasPrefix(indexType.GetName(), "uint") {
+				v.emitError(n, fmt.Sprintf(
+					"non-integer index %s (type %s)",
+					n.Index,
+					indexType.GetName(),
+				), true)
+			}
 		}
 	}
 

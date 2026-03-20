@@ -1,0 +1,40 @@
+extern printf(fmt: string, args: ...anything) => int32
+
+fn describe(animal: string) {
+    switch animal {
+        case "cat" {
+            printf("meow\n")
+        }
+        case "dog" {
+            printf("woof\n")
+        }
+        case "bird" {
+            printf("tweet\n")
+        }
+        default {
+            printf("unknown: %s\n", animal)
+        }
+    }
+}
+
+fn main() {
+    describe("cat")
+    describe("dog")
+    describe("bird")
+    describe("fish")
+
+    var s = "hello"
+    printf("len: %d\n", len(s))
+    printf("s[0]: %c\n", s[0])
+    printf("s[4]: %c\n", s[4])
+
+    var a = "abc"
+    var b = "abc"
+    var c = "xyz"
+    if a == b {
+        printf("eq: true\n")
+    }
+    if a != c {
+        printf("neq: true\n")
+    }
+}

@@ -2,6 +2,7 @@ package llvm
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/llir/llvm/ir"
@@ -34,6 +35,12 @@ type LLVMCodeGen struct {
 	stringCount       int                             // Counter for unique string constants
 	allocaMetadata    map[value.Value]*AllocaMetadata // Type metadata for alloca instructions
 	arrayHelper       *ArrayHelper                    // Helper for array/slice operations
+	loopExitBlocks    []*ir.Block                     // Stack of break targets (afterBlock)
+	loopPostBlocks    []*ir.Block                     // Stack of continue targets (postBlock)
+	deferredCalls     []ast.Expression                // Stack of deferred call expressions for current function
+	enumValues        map[string]map[string]int32     // Enum name -> value name -> int32 constant
+	anonFnCounter     int                             // Counter for unique anonymous function names
+	closureWrappers   map[string]*ir.Func             // function name -> closure wrapper (adds env param)
 }
 
 func New(info *analyser.Info) *LLVMCodeGen {
@@ -48,10 +55,40 @@ func New(info *analyser.Info) *LLVMCodeGen {
 		typeIDs:           make(map[string]int32),
 		nextTypeID:        1, // Start from 1, reserve 0 for unknown/nil
 		allocaMetadata:    make(map[value.Value]*AllocaMetadata),
+		enumValues:        make(map[string]map[string]int32),
+		closureWrappers:   make(map[string]*ir.Func),
 	}
+	lcg.initializeModule() // Call the new initialization function
 	// Initialize helpers that need reference to lcg
 	lcg.arrayHelper = NewArrayHelper(lcg)
 	return lcg
+}
+
+func (lcg *LLVMCodeGen) initializeModule() {
+	// Set target triple and data layout for proper code generation
+	// Use version-specific triple to avoid clang override warnings
+	var targetTriple string
+	var dataLayout string
+
+	if runtime.GOOS == "darwin" {
+		if runtime.GOARCH == "arm64" {
+			targetTriple = "arm64-apple-macosx14.0.0"
+			dataLayout = "e-m:o-i64:64-i128:128-n32:64-S128"
+		} else {
+			targetTriple = "x86_64-apple-macosx10.15.0"
+			dataLayout = "e-m:o-i64:64-f80:128-n8:16:32:64-S128"
+		}
+	} else {
+		targetTriple = runtime.GOARCH + "-unknown-linux-gnu"
+		if runtime.GOARCH == "arm64" {
+			dataLayout = "e-m:e-i64:64-i128:128-n32:64-S128"
+		} else {
+			dataLayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
+		}
+	}
+
+	lcg.module.TargetTriple = targetTriple
+	lcg.module.DataLayout = dataLayout
 }
 
 func (lcg *LLVMCodeGen) SetModuleName(name string) {
@@ -70,6 +107,35 @@ func getKeys(m map[string]*ir.Func) []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+// getSizeOf returns the size in bytes of an LLVM type
+func (lcg *LLVMCodeGen) getSizeOf(t types.Type) int64 {
+	switch typ := t.(type) {
+	case *types.IntType:
+		return int64(typ.BitSize / 8)
+	case *types.FloatType:
+		switch typ.Kind {
+		case types.FloatKindFloat:
+			return 4
+		case types.FloatKindDouble:
+			return 8
+		default:
+			return 4
+		}
+	case *types.PointerType:
+		return 8 // Assuming 64-bit pointers
+	case *types.StructType:
+		size := int64(0)
+		for _, field := range typ.Fields {
+			size += lcg.getSizeOf(field)
+		}
+		return size
+	case *types.ArrayType:
+		return int64(typ.Len) * lcg.getSizeOf(typ.ElemType)
+	default:
+		return 8 // Default to pointer size
+	}
 }
 
 func (lcg *LLVMCodeGen) getLLVMParamType(t ortypes.Type) types.Type {
@@ -225,6 +291,9 @@ func (lcg *LLVMCodeGen) getLLVMTypeFromSemantic(t ortypes.Type) types.Type {
 		// Handle explicit pointer types like &int8
 		innerType := lcg.getLLVMTypeFromSemantic(t.Type)
 		return types.NewPointer(innerType)
+	case *ortypes.SignatureType:
+		// Closure struct: { fn_ptr as i8*, env_ptr as i8* }
+		return lcg.getClosureType()
 	}
 
 	return types.I32
@@ -355,6 +424,15 @@ func (lcg *LLVMCodeGen) visitStructExpression(n *ast.StructExpression) {
 }
 
 func (lcg *LLVMCodeGen) visitMemberExpression(n *ast.MemberExpression) {
+	// Check if this is an enum member access (e.g., Color.Red)
+	if ident, ok := n.Target.(*ast.Identifier); ok {
+		if enumVals, ok := lcg.enumValues[ident.Text]; ok {
+			if val, ok := enumVals[n.Property.Text]; ok {
+				lcg.values[n] = constant.NewInt(types.I32, int64(val))
+				return
+			}
+		}
+	}
 
 	// Get address of target
 	addr := lcg.getAddress(n.Target)
@@ -413,6 +491,44 @@ func (lcg *LLVMCodeGen) visitMemberExpression(n *ast.MemberExpression) {
 }
 
 func (lcg *LLVMCodeGen) visitIndexExpression(n *ast.IndexExpression) {
+	// Check if this is a map access by looking at semantic type info
+	nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n.Target]
+	if nodeInfo != nil {
+		if _, isMapType := nodeInfo.Type.(*ortypes.MapType); isMapType {
+			// Handle map get operation
+			ast.Walk(lcg, n.Target)
+			mapPtr := lcg.values[n.Target]
+			if mapPtr == nil {
+				return
+			}
+
+			// Evaluate key
+			ast.Walk(lcg, n.Index)
+			keyVal := lcg.values[n.Index]
+			if keyVal == nil {
+				return
+			}
+
+			// Declare map_get function
+			var mapGetFn *ir.Func
+			if fn, ok := lcg.functions["map_get"]; ok {
+				mapGetFn = fn
+			} else {
+				mapStructPtr := types.NewPointer(types.I8)
+				mapGetFn = lcg.module.NewFunc("map_get", types.I32,
+					ir.NewParam("map", mapStructPtr),
+					ir.NewParam("key", types.I8Ptr))
+				lcg.functions["map_get"] = mapGetFn
+			}
+
+			// Call map_get
+			result := lcg.currentBlock.NewCall(mapGetFn, mapPtr, keyVal)
+			lcg.values[n] = result
+			return
+		}
+	}
+
+	// Original array/slice logic
 	// Get address of array
 	arrayAddr := lcg.getAddress(n.Target)
 	if arrayAddr == nil {
@@ -479,6 +595,13 @@ func (lcg *LLVMCodeGen) visitIndexExpression(n *ast.IndexExpression) {
 		// Load element
 		load := lcg.currentBlock.NewLoad(structType.Fields[0].(*types.PointerType).ElemType, gep)
 		lcg.values[n] = load
+	} else if ptrType.ElemType.Equal(types.I8) {
+		// String (i8*) — index into character array
+		gep := lcg.currentBlock.NewGetElementPtr(types.I8, arrayAddr, index)
+		load := lcg.currentBlock.NewLoad(types.I8, gep)
+		// Zero-extend i8 to i32 for use in expressions
+		ext := lcg.currentBlock.NewZExt(load, types.I32)
+		lcg.values[n] = ext
 	} else {
 		return
 	}
@@ -584,6 +707,54 @@ func (lcg *LLVMCodeGen) visitArrayExpression(n *ast.ArrayExpression) {
 		// Fixed array: return pointer to array
 		lcg.values[n] = alloca
 	}
+}
+
+func (lcg *LLVMCodeGen) visitMapExpression(n *ast.MapExpression) {
+	// Declare map_create function if not already declared
+	var mapCreateFn *ir.Func
+	if fn, ok := lcg.functions["map_create"]; ok {
+		mapCreateFn = fn
+	} else {
+		// map_create returns a pointer to the Map struct (opaque)
+		mapStructPtr := types.NewPointer(types.I8) // Use i8* for opaque pointer
+		mapCreateFn = lcg.module.NewFunc("map_create", mapStructPtr)
+		lcg.functions["map_create"] = mapCreateFn
+	}
+
+	// Create the map
+	mapPtr := lcg.currentBlock.NewCall(mapCreateFn)
+
+	// Insert each entry
+	if len(n.Entries) > 0 {
+		// Declare map_insert function
+		var mapInsertFn *ir.Func
+		if fn, ok := lcg.functions["map_insert"]; ok {
+			mapInsertFn = fn
+		} else {
+			mapStructPtr := types.NewPointer(types.I8)
+			mapInsertFn = lcg.module.NewFunc("map_insert", types.Void,
+				ir.NewParam("map", mapStructPtr),
+				ir.NewParam("key", types.I8Ptr),
+				ir.NewParam("value", types.I32))
+			lcg.functions["map_insert"] = mapInsertFn
+		}
+
+		for _, entry := range n.Entries {
+			// Evaluate key (should be a string)
+			ast.Walk(lcg, entry.Key)
+			keyVal := lcg.values[entry.Key]
+
+			// Evaluate value
+			ast.Walk(lcg, entry.Value)
+			valueVal := lcg.values[entry.Value]
+
+			// Call map_insert
+			lcg.currentBlock.NewCall(mapInsertFn, mapPtr, keyVal, valueVal)
+		}
+	}
+
+	// Store the map pointer as the result
+	lcg.values[n] = mapPtr
 }
 
 func (lcg *LLVMCodeGen) getAddress(n ast.Node) value.Value {
@@ -751,6 +922,9 @@ func (lcg *LLVMCodeGen) Visit(node ast.Node) ast.Visitor {
 	case *ast.Struct:
 		lcg.visitStruct(n)
 		return nil
+	case *ast.Enum:
+		lcg.visitEnum(n)
+		return nil
 	case *ast.StructExpression:
 		lcg.visitStructExpression(n)
 		return nil
@@ -772,14 +946,38 @@ func (lcg *LLVMCodeGen) Visit(node ast.Node) ast.Visitor {
 	case *ast.ArrayExpression:
 		lcg.visitArrayExpression(n)
 		return nil
+	case *ast.MapExpression:
+		lcg.visitMapExpression(n)
+		return nil
 	case *ast.IndexExpression:
 		lcg.visitIndexExpression(n)
 		return nil
 	case *ast.ForLoop:
 		lcg.visitForLoop(n)
 		return nil
+	case *ast.ForRangeLoop:
+		lcg.visitForRangeLoop(n)
+		return nil
 	case *ast.UnaryExpression:
 		lcg.visitUnaryExpression(n)
+		return nil
+	case *ast.BreakStatement:
+		if len(lcg.loopExitBlocks) > 0 {
+			lcg.currentBlock.NewBr(lcg.loopExitBlocks[len(lcg.loopExitBlocks)-1])
+			lcg.currentBlock = lcg.currentFunc.NewBlock("")
+		}
+		return nil
+	case *ast.ContinueStatement:
+		if len(lcg.loopPostBlocks) > 0 {
+			lcg.currentBlock.NewBr(lcg.loopPostBlocks[len(lcg.loopPostBlocks)-1])
+			lcg.currentBlock = lcg.currentFunc.NewBlock("")
+		}
+		return nil
+	case *ast.SwitchStatement:
+		lcg.visitSwitchStatement(n)
+		return nil
+	case *ast.DeferStatement:
+		lcg.visitDeferStatement(n)
 		return nil
 	}
 	return lcg
@@ -818,7 +1016,53 @@ func (lcg *LLVMCodeGen) visitUnaryExpression(n *ast.UnaryExpression) {
 		return
 	}
 
-	// TODO: Handle prefix unary expressions
+	// Handle prefix unary expressions
+	ast.Walk(lcg, n.Expression)
+	operand := lcg.values[n.Expression]
+	if operand == nil {
+		return
+	}
+
+	switch n.Operator.Type {
+	case scanner.TokenTypeEXCL:
+		// Logical NOT: !expr
+		boolVal := lcg.ensureBool(operand)
+		lcg.values[n] = lcg.currentBlock.NewXor(boolVal, constant.True)
+	case scanner.TokenTypeSUB:
+		// Unary minus: -expr
+		if intType, ok := operand.Type().(*types.IntType); ok {
+			lcg.values[n] = lcg.currentBlock.NewSub(constant.NewInt(intType, 0), operand)
+		} else if operand.Type().Equal(types.Double) {
+			lcg.values[n] = lcg.currentBlock.NewFSub(constant.NewFloat(types.Double, 0), operand)
+		}
+	case scanner.TokenTypeIncrement:
+		// Prefix ++
+		addr := lcg.getAddress(n.Expression)
+		if addr == nil {
+			return
+		}
+		val := lcg.currentBlock.NewLoad(addr.Type().(*types.PointerType).ElemType, addr)
+		one := constant.NewInt(val.Type().(*types.IntType), 1)
+		newVal := lcg.currentBlock.NewAdd(val, one)
+		lcg.currentBlock.NewStore(newVal, addr)
+		lcg.values[n] = newVal
+	case scanner.TokenTypeDecrement:
+		// Prefix --
+		addr := lcg.getAddress(n.Expression)
+		if addr == nil {
+			return
+		}
+		val := lcg.currentBlock.NewLoad(addr.Type().(*types.PointerType).ElemType, addr)
+		one := constant.NewInt(val.Type().(*types.IntType), 1)
+		newVal := lcg.currentBlock.NewSub(val, one)
+		lcg.currentBlock.NewStore(newVal, addr)
+		lcg.values[n] = newVal
+	case scanner.TokenTypeTILDE:
+		// Bitwise NOT: ~expr (XOR with all ones = -1)
+		if intType, ok := operand.Type().(*types.IntType); ok {
+			lcg.values[n] = lcg.currentBlock.NewXor(operand, constant.NewInt(intType, -1))
+		}
+	}
 }
 
 func (lcg *LLVMCodeGen) visitForLoop(n *ast.ForLoop) {
@@ -865,7 +1109,11 @@ func (lcg *LLVMCodeGen) visitForLoop(n *ast.ForLoop) {
 
 	// 4. Body Block
 	lcg.currentBlock = bodyBlock
+	lcg.loopExitBlocks = append(lcg.loopExitBlocks, afterBlock)
+	lcg.loopPostBlocks = append(lcg.loopPostBlocks, postBlock)
 	ast.Walk(lcg, n.Block)
+	lcg.loopExitBlocks = lcg.loopExitBlocks[:len(lcg.loopExitBlocks)-1]
+	lcg.loopPostBlocks = lcg.loopPostBlocks[:len(lcg.loopPostBlocks)-1]
 
 	// If body doesn't terminate, jump to post
 	if !lcg.isTerminator(lcg.currentBlock.Term) {
@@ -884,7 +1132,118 @@ func (lcg *LLVMCodeGen) visitForLoop(n *ast.ForLoop) {
 	lcg.currentBlock = afterBlock
 }
 
+func (lcg *LLVMCodeGen) visitForRangeLoop(n *ast.ForRangeLoop) {
+	// 1. Evaluate iterable
+	ast.Walk(lcg, n.Iterable)
+	iterVal := lcg.values[n.Iterable]
+	if iterVal == nil {
+		return
+	}
+
+	// 2. Determine element type, length, and data pointer from the iterable value
+	var elemType types.Type
+	var length value.Value
+	var dataPtr value.Value
+
+	iterType := iterVal.Type()
+	if structType, ok := iterType.(*types.StructType); ok {
+		// Slice struct { T*, i32 }
+		if len(structType.Fields) >= 2 {
+			length = lcg.currentBlock.NewExtractValue(iterVal, 1)
+			dataPtr = lcg.currentBlock.NewExtractValue(iterVal, 0)
+			if ptrType, ok := structType.Fields[0].(*types.PointerType); ok {
+				elemType = ptrType.ElemType
+			}
+		}
+	} else if ptrType, ok := iterType.(*types.PointerType); ok {
+		// Decayed array pointer T* (fixed-size array)
+		elemType = ptrType.ElemType
+		dataPtr = iterVal
+		// Get length from semantic type info
+		nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n.Iterable]
+		if nodeInfo != nil {
+			if arrType, ok := nodeInfo.Type.(*ortypes.ArrayType); ok {
+				length = constant.NewInt(types.I32, arrType.Length)
+			}
+		}
+	}
+
+	if elemType == nil || length == nil || dataPtr == nil {
+		return
+	}
+
+	// 3. Create index alloca, initialize to 0
+	idxAlloca := lcg.currentBlock.NewAlloca(types.I32)
+	lcg.currentBlock.NewStore(constant.NewInt(types.I32, 0), idxAlloca)
+
+	// 4. Create blocks
+	condBlock := lcg.currentFunc.NewBlock("")
+	bodyBlock := lcg.currentFunc.NewBlock("")
+	postBlock := lcg.currentFunc.NewBlock("")
+	afterBlock := lcg.currentFunc.NewBlock("")
+
+	lcg.currentBlock.NewBr(condBlock)
+
+	// 5. Condition block: idx < length
+	lcg.currentBlock = condBlock
+	idx := lcg.currentBlock.NewLoad(types.I32, idxAlloca)
+	cond := lcg.currentBlock.NewICmp(enum.IPredSLT, idx, length)
+	lcg.currentBlock.NewCondBr(cond, bodyBlock, afterBlock)
+
+	// 6. Body block
+	lcg.currentBlock = bodyBlock
+
+	// Load current index
+	bodyIdx := lcg.currentBlock.NewLoad(types.I32, idxAlloca)
+
+	// Get element: GEP + load
+	elemPtr := lcg.currentBlock.NewGetElementPtr(elemType, dataPtr, bodyIdx)
+	elemVal := lcg.currentBlock.NewLoad(elemType, elemPtr)
+
+	// Create value variable alloca and store element
+	valAlloca := lcg.currentBlock.NewAlloca(elemType)
+	lcg.currentBlock.NewStore(elemVal, valAlloca)
+	lcg.values[n.ValueName] = valAlloca
+
+	// If index name provided, create alloca for it
+	if n.IndexName != nil {
+		idxVarAlloca := lcg.currentBlock.NewAlloca(types.I32)
+		lcg.currentBlock.NewStore(bodyIdx, idxVarAlloca)
+		lcg.values[n.IndexName] = idxVarAlloca
+	}
+
+	// Push loop blocks for break/continue
+	lcg.loopExitBlocks = append(lcg.loopExitBlocks, afterBlock)
+	lcg.loopPostBlocks = append(lcg.loopPostBlocks, postBlock)
+
+	// Walk body
+	ast.Walk(lcg, n.Block)
+
+	lcg.loopExitBlocks = lcg.loopExitBlocks[:len(lcg.loopExitBlocks)-1]
+	lcg.loopPostBlocks = lcg.loopPostBlocks[:len(lcg.loopPostBlocks)-1]
+
+	if !lcg.isTerminator(lcg.currentBlock.Term) {
+		lcg.currentBlock.NewBr(postBlock)
+	}
+
+	// 7. Post block: increment index
+	lcg.currentBlock = postBlock
+	postIdx := lcg.currentBlock.NewLoad(types.I32, idxAlloca)
+	newIdx := lcg.currentBlock.NewAdd(postIdx, constant.NewInt(types.I32, 1))
+	lcg.currentBlock.NewStore(newIdx, idxAlloca)
+	lcg.currentBlock.NewBr(condBlock)
+
+	// 8. After block
+	lcg.currentBlock = afterBlock
+}
+
 func (lcg *LLVMCodeGen) visitVariableDeclaration(n *ast.VariableDeclaration) {
+	// Global variable: we're at file level (not inside any function)
+	if lcg.currentFunc == nil {
+		lcg.visitGlobalVariableDeclaration(n)
+		return
+	}
+
 	var typ types.Type
 
 	// 1. Try explicit type
@@ -1009,7 +1368,140 @@ func (lcg *LLVMCodeGen) visitVariableDeclaration(n *ast.VariableDeclaration) {
 	}
 }
 
+func (lcg *LLVMCodeGen) visitGlobalVariableDeclaration(n *ast.VariableDeclaration) {
+	var typ types.Type
+
+	// Determine type from explicit annotation or analyser
+	if n.Type != nil {
+		typ = lcg.getLLVMType(n.Type)
+	}
+	if typ == nil {
+		nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n.Name]
+		if nodeInfo != nil && nodeInfo.Type != nil {
+			typ = lcg.getLLVMTypeFromSemantic(nodeInfo.Type)
+		}
+	}
+	if typ == nil {
+		typ = types.I32
+	}
+
+	// Determine the constant initializer
+	var init constant.Constant
+	if n.DefaultValue != nil {
+		if valExpr, ok := n.DefaultValue.(*ast.ValueExpression); ok {
+			init = lcg.getConstantFromValue(valExpr, typ)
+		}
+	}
+	if init == nil {
+		init = lcg.getZeroValue(typ)
+	}
+
+	name := n.Name.Text
+	if lcg.moduleName != "" && lcg.moduleName != "main" {
+		name = lcg.moduleName + "__" + name
+	}
+
+	g := lcg.module.NewGlobalDef(name, init)
+	lcg.values[n.Name] = g
+
+	// Store metadata
+	var semType ortypes.Type
+	nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n.Name]
+	if nodeInfo != nil {
+		semType = nodeInfo.Type
+	}
+	lcg.allocaMetadata[g] = &AllocaMetadata{
+		SemanticType: semType,
+		Category:     GetTypeCategory(semType, typ),
+	}
+}
+
+func (lcg *LLVMCodeGen) getConstantFromValue(valExpr *ast.ValueExpression, typ types.Type) constant.Constant {
+	if valExpr.Token.Value == nil {
+		return nil
+	}
+	if i, ok := valExpr.Token.Value.(int64); ok {
+		if intType, ok := typ.(*types.IntType); ok {
+			return constant.NewInt(intType, i)
+		}
+		if floatType, ok := typ.(*types.FloatType); ok {
+			return constant.NewFloat(floatType, float64(i))
+		}
+	}
+	if f, ok := valExpr.Token.Value.(float64); ok {
+		if floatType, ok := typ.(*types.FloatType); ok {
+			return constant.NewFloat(floatType, f)
+		}
+	}
+	if b, ok := valExpr.Token.Value.(bool); ok {
+		intVal := int64(0)
+		if b {
+			intVal = 1
+		}
+		return constant.NewInt(types.I1, intVal)
+	}
+	return nil
+}
+
+func (lcg *LLVMCodeGen) getZeroValue(typ types.Type) constant.Constant {
+	switch t := typ.(type) {
+	case *types.IntType:
+		return constant.NewInt(t, 0)
+	case *types.FloatType:
+		return constant.NewFloat(t, 0)
+	default:
+		return constant.NewZeroInitializer(typ)
+	}
+}
+
 func (lcg *LLVMCodeGen) visitAssigment(n *ast.Assigment) {
+	// Check if this is a map assignment (m[key] = value)
+	if indexExpr, ok := n.Left.(*ast.IndexExpression); ok {
+		nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[indexExpr.Target]
+		if nodeInfo != nil {
+			if _, isMapType := nodeInfo.Type.(*ortypes.MapType); isMapType {
+				// Handle map insert operation
+				ast.Walk(lcg, indexExpr.Target)
+				mapPtr := lcg.values[indexExpr.Target]
+				if mapPtr == nil {
+					return
+				}
+
+				// Evaluate key
+				ast.Walk(lcg, indexExpr.Index)
+				keyVal := lcg.values[indexExpr.Index]
+				if keyVal == nil {
+					return
+				}
+
+				// Evaluate value
+				ast.Walk(lcg, n.Right)
+				valueVal := lcg.values[n.Right]
+				if valueVal == nil {
+					return
+				}
+
+				// Declare map_insert function
+				var mapInsertFn *ir.Func
+				if fn, ok := lcg.functions["map_insert"]; ok {
+					mapInsertFn = fn
+				} else {
+					mapStructPtr := types.NewPointer(types.I8)
+					mapInsertFn = lcg.module.NewFunc("map_insert", types.Void,
+						ir.NewParam("map", mapStructPtr),
+						ir.NewParam("key", types.I8Ptr),
+						ir.NewParam("value", types.I32))
+					lcg.functions["map_insert"] = mapInsertFn
+				}
+
+				// Call map_insert
+				lcg.currentBlock.NewCall(mapInsertFn, mapPtr, keyVal, valueVal)
+				return
+			}
+		}
+	}
+
+	// Original assignment logic
 	ast.Walk(lcg, n.Right)
 	val := lcg.values[n.Right]
 
@@ -1072,16 +1564,25 @@ func (lcg *LLVMCodeGen) visitBinaryExpression(n *ast.BinaryExpression) {
 			} else {
 				structName = ptrType.ElemType.Name()
 			}
+		} else if namedType, ok := leftVal.Type().(*types.StructType); ok {
+			structName = namedType.Name()
 		}
 
 		if structName != "" {
 			fnName := structName + "_op_" + n.Operator.Text
 			if fn, ok := lcg.functions[fnName]; ok {
-				// Call the overloaded operator
-				// Arguments: this (left), left, right
-				// Note: The operator function is defined as fn +(left:Point, right:Point) inside struct Point
-				// So it has 3 arguments: this, left, right
-				val = lcg.currentBlock.NewCall(fn, leftVal, leftVal, rightVal)
+				// Ensure operands are pointers (operator functions take pointer args)
+				ensurePtr := func(v value.Value) value.Value {
+					if _, isPtr := v.Type().(*types.PointerType); !isPtr {
+						alloca := lcg.currentBlock.NewAlloca(v.Type())
+						lcg.currentBlock.NewStore(v, alloca)
+						return alloca
+					}
+					return v
+				}
+				leftPtr := ensurePtr(leftVal)
+				rightPtr := ensurePtr(rightVal)
+				val = lcg.currentBlock.NewCall(fn, leftPtr, leftPtr, rightPtr)
 				lcg.values[n] = val
 				return
 			}
@@ -1118,6 +1619,22 @@ func (lcg *LLVMCodeGen) visitBinaryExpression(n *ast.BinaryExpression) {
 		} else {
 			val = lcg.currentBlock.NewSDiv(leftVal, rightVal)
 		}
+	case "%":
+		if isFloat {
+			val = lcg.currentBlock.NewFRem(leftVal, rightVal)
+		} else {
+			val = lcg.currentBlock.NewSRem(leftVal, rightVal)
+		}
+	case "&":
+		val = lcg.currentBlock.NewAnd(leftVal, rightVal)
+	case "|":
+		val = lcg.currentBlock.NewOr(leftVal, rightVal)
+	case "^":
+		val = lcg.currentBlock.NewXor(leftVal, rightVal)
+	case "<<":
+		val = lcg.currentBlock.NewShl(leftVal, rightVal)
+	case ">>":
+		val = lcg.currentBlock.NewAShr(leftVal, rightVal)
 	}
 
 	if val == nil {
@@ -1138,8 +1655,9 @@ func (lcg *LLVMCodeGen) visitFunctionDeclaration(n *ast.FunctionDeclaration) {
 		// For now, fallback to a generic operator name.
 		name = "op_" + n.Signature.Operator.Text
 	} else {
-		// Default name for functions without identifier (e.g., main)
-		name = "main"
+		// Anonymous function — generate unique name
+		name = fmt.Sprintf("__anon_fn_%d", lcg.anonFnCounter)
+		lcg.anonFnCounter++
 	}
 
 	// Check if this is a method (inside a struct)
@@ -1153,15 +1671,49 @@ func (lcg *LLVMCodeGen) visitFunctionDeclaration(n *ast.FunctionDeclaration) {
 		}
 	} else if lcg.isExported(n) && lcg.moduleName != "" && lcg.moduleName != "main" {
 		// Exported function from a library module: mangle with module name
+		originalName := name
 		name = lcg.moduleName + "__" + name
+		// Defer registering under original name so same-module calls resolve
+		defer func() {
+			if fn, ok := lcg.functions[name]; ok {
+				lcg.functions[originalName] = fn
+			}
+		}()
 	}
+
+	isAnonymous := n.Signature.Identifier == nil && n.Signature.Operator == nil
 
 	// Check if already declared
 	if _, ok := lcg.functions[name]; ok {
 		return
 	}
 
+	// Detect captures for anonymous functions (must happen before switching context)
+	var captures []capturedVar
+	var envStructType *types.StructType
+	if isAnonymous && n.Block != nil {
+		lambdaArgNames := make(map[string]bool)
+		for _, arg := range n.Signature.Arguments {
+			if arg.Name != nil {
+				lambdaArgNames[arg.Name.Text] = true
+			}
+		}
+		captures = lcg.detectCaptures(n.Block, lambdaArgNames)
+		if len(captures) > 0 {
+			var envFields []types.Type
+			for _, cap := range captures {
+				envFields = append(envFields, cap.llvmType)
+			}
+			envStructType = types.NewStruct(envFields...)
+		}
+	}
+
 	var params []*ir.Param
+
+	// Add env parameter for anonymous functions (closure calling convention)
+	if isAnonymous {
+		params = append(params, ir.NewParam("__env", types.I8Ptr))
+	}
 
 	// Add 'this' parameter for methods
 	if lcg.currentStruct != nil {
@@ -1232,51 +1784,131 @@ func (lcg *LLVMCodeGen) visitFunctionDeclaration(n *ast.FunctionDeclaration) {
 		return
 	}
 
+	// Save outer function context (for anonymous functions nested inside another function)
+	savedFunc := lcg.currentFunc
+	savedBlock := lcg.currentBlock
+
 	block := fn.NewBlock("")
 
 	lcg.currentFunc = fn
 	lcg.currentBlock = block
 
+	// Initialize GC at the start of main
+	if name == "main" {
+		gcInit := lcg.getOrDeclareGCInit()
+		block.NewCall(gcInit)
+	}
+
 	// Alloca parameters so they are mutable/addressable
 	for i, param := range params {
-		// Skip 'this' for now, or handle it
-		if lcg.currentStruct != nil && i == 0 {
+		// Skip env param for anonymous functions (used directly, not via alloca)
+		if isAnonymous && i == 0 {
+			continue
+		}
+
+		// Skip 'this' for methods
+		thisIdx := 0
+		if isAnonymous {
+			thisIdx = 1
+		}
+		if lcg.currentStruct != nil && i == thisIdx {
 			alloca := block.NewAlloca(param.Type())
 			block.NewStore(param, alloca)
-			// We map 'this' manually since it's not in AST arguments
-			// We can use a special AST node or string key if we had one
-			// But for now, let's just rely on 'this' identifier resolution
-			// The analyser should resolve 'this' to a ScopeItem.
-			// We need to make sure we can look it up.
-			// Actually, 'this' is usually implicit in scope.
-			// Let's assume the analyser handles 'this' resolution to a special identifier.
-			// If not, we might need to hack it.
-			// For now, let's just proceed.
 			continue
 		}
 
 		alloca := block.NewAlloca(param.Type())
 		block.NewStore(param, alloca)
 
-		// Update mapping to point to alloca
-		// Adjust index for 'this'
+		// Map to AST argument name
 		argIdx := i
+		if isAnonymous {
+			argIdx-- // skip env
+		}
 		if lcg.currentStruct != nil {
-			argIdx--
+			argIdx-- // skip 'this'
 		}
 		argName := n.Signature.Arguments[argIdx].Name
 		lcg.values[argName] = alloca
 	}
 
+	// Set up capture mappings from env struct (overrides outer variable bindings)
+	var savedCaptureMappings map[ast.Node]value.Value
+	if isAnonymous && len(captures) > 0 {
+		savedCaptureMappings = make(map[ast.Node]value.Value)
+		for _, cap := range captures {
+			savedCaptureMappings[cap.defineIdent] = lcg.values[cap.defineIdent]
+		}
+
+		envParam := params[0] // env i8* param
+		envTyped := lcg.currentBlock.NewBitCast(envParam, types.NewPointer(envStructType))
+
+		for i, cap := range captures {
+			fieldPtr := lcg.currentBlock.NewGetElementPtr(envStructType, envTyped,
+				constant.NewInt(types.I32, 0), constant.NewInt(types.I32, int64(i)))
+			lcg.values[cap.defineIdent] = fieldPtr
+		}
+	}
+
+	// Save and reset deferred calls for this function scope
+	savedDefers := lcg.deferredCalls
+	lcg.deferredCalls = nil
+
 	ast.Walk(lcg, n.Block)
 
 	// Add implicit return 0 if missing (for main)
 	if name == "main" && (len(n.Block.Body) == 0 || !lcg.isTerminator(lcg.currentBlock.Term)) {
+		lcg.emitDeferredCalls()
 		lcg.currentBlock.NewRet(constant.NewInt(types.I32, 0))
 	} else if !lcg.isTerminator(lcg.currentBlock.Term) {
 		// Add implicit return void if missing
 		if fn.Sig.RetType.Equal(types.Void) {
+			lcg.emitDeferredCalls()
 			lcg.currentBlock.NewRet(nil)
+		}
+	}
+
+	// Restore deferred calls from outer function scope
+	lcg.deferredCalls = savedDefers
+
+	// Restore capture mappings so outer function sees its own variables again
+	if savedCaptureMappings != nil {
+		for ident, val := range savedCaptureMappings {
+			lcg.values[ident] = val
+		}
+	}
+
+	// Restore outer function context and set closure value
+	if savedFunc != nil {
+		lcg.currentFunc = savedFunc
+		lcg.currentBlock = savedBlock
+
+		if isAnonymous {
+			if len(captures) > 0 {
+				// Allocate env struct on the heap and populate with captured values
+				mallocFn := lcg.getOrDeclareGCMalloc()
+
+				// Compute sizeof(envStruct) via GEP trick
+				nullPtr := constant.NewNull(types.NewPointer(envStructType))
+				sizeGEP := lcg.currentBlock.NewGetElementPtr(envStructType, nullPtr, constant.NewInt(types.I32, 1))
+				envSize := lcg.currentBlock.NewPtrToInt(sizeGEP, types.I64)
+
+				envRaw := lcg.currentBlock.NewCall(mallocFn, envSize)
+				envTyped := lcg.currentBlock.NewBitCast(envRaw, types.NewPointer(envStructType))
+
+				// Store captured values from outer allocas into env struct
+				for i, cap := range captures {
+					capturedVal := lcg.currentBlock.NewLoad(cap.llvmType, cap.outerValue)
+					fieldPtr := lcg.currentBlock.NewGetElementPtr(envStructType, envTyped,
+						constant.NewInt(types.I32, 0), constant.NewInt(types.I32, int64(i)))
+					lcg.currentBlock.NewStore(capturedVal, fieldPtr)
+				}
+
+				lcg.values[n] = lcg.createClosureValue(fn, envRaw)
+			} else {
+				// No captures — null env
+				lcg.values[n] = lcg.createClosureValue(fn, nil)
+			}
 		}
 	}
 }
@@ -1336,6 +1968,129 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 			}
 
 			// Fallback or error
+			return
+		}
+
+		if ident.Text == "append" {
+
+			// Handle append(slice, elements...)
+			if len(n.Arguments) < 2 {
+				return
+			}
+
+			// First argument is the slice
+			sliceArg := n.Arguments[0]
+			ast.Walk(lcg, sliceArg.Expression)
+			sliceVal := lcg.values[sliceArg.Expression]
+			if sliceVal == nil {
+				return
+			}
+
+			// Check if it's a slice struct or fixed array pointer
+			var elemType types.Type
+			var oldDataPtr, oldLen value.Value
+
+			valType := sliceVal.Type()
+
+			// Check semantic type first to handle fixed arrays (which are decayed to pointers)
+			nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[sliceArg.Expression]
+			var isFixedArray bool
+			if nodeInfo != nil {
+				if arrayType, ok := nodeInfo.Type.(*ortypes.ArrayType); ok && arrayType.Length >= 0 {
+					isFixedArray = true
+					elemType = lcg.getLLVMTypeFromSemantic(arrayType.Type)
+					oldLen = constant.NewInt(types.I32, int64(arrayType.Length))
+					oldDataPtr = sliceVal // Already decayed to T*
+				}
+			}
+
+			if isFixedArray {
+				// Handled above
+			} else if structType, ok := valType.(*types.StructType); ok {
+				// Slice struct { data*, len }
+				if len(structType.Fields) != 2 {
+					return
+				}
+
+				// Extract element type from slice data pointer
+				dataPtrType := structType.Fields[0]
+				elemPtrType, ok := dataPtrType.(*types.PointerType)
+				if !ok {
+					return
+				}
+				elemType = elemPtrType.ElemType
+
+				// Extract old data pointer and length
+				oldDataPtr = lcg.currentBlock.NewExtractValue(sliceVal, 0)
+				oldLen = lcg.currentBlock.NewExtractValue(sliceVal, 1)
+
+			} else {
+				return
+			}
+
+			// Calculate new length
+			numNewElems := len(n.Arguments) - 1
+			newLenVal := lcg.currentBlock.NewAdd(oldLen, constant.NewInt(types.I32, int64(numNewElems)))
+
+			// Allocate new array: GC_malloc(newLen * sizeof(elem))
+			elemSize := lcg.getSizeOf(elemType)
+			newLenI64 := lcg.currentBlock.NewSExt(newLenVal, types.I64)
+			totalSize := lcg.currentBlock.NewMul(newLenI64, constant.NewInt(types.I64, elemSize))
+
+			// Declare GC_malloc if not exists
+			mallocFn := lcg.getOrDeclareGCMalloc()
+
+			newDataI8 := lcg.currentBlock.NewCall(mallocFn, totalSize)
+			newDataPtr := lcg.currentBlock.NewBitCast(newDataI8, types.NewPointer(elemType))
+
+			// Copy old elements using memcpy
+			oldLenI64 := lcg.currentBlock.NewSExt(oldLen, types.I64)
+			oldSize := lcg.currentBlock.NewMul(oldLenI64, constant.NewInt(types.I64, elemSize))
+
+			// Declare memcpy if not exists
+			var memcpyFn *ir.Func
+			if fn, ok := lcg.functions["memcpy"]; ok {
+				memcpyFn = fn
+			} else {
+				memcpyFn = lcg.module.NewFunc("memcpy", types.I8Ptr,
+					ir.NewParam("dest", types.I8Ptr),
+					ir.NewParam("src", types.I8Ptr),
+					ir.NewParam("n", types.I64))
+				lcg.functions["memcpy"] = memcpyFn
+			}
+
+			oldDataI8 := lcg.currentBlock.NewBitCast(oldDataPtr, types.I8Ptr)
+			lcg.currentBlock.NewCall(memcpyFn, newDataI8, oldDataI8, oldSize)
+
+			// Append new elements
+			for i, arg := range n.Arguments[1:] {
+				ast.Walk(lcg, arg.Expression)
+				elemVal := lcg.values[arg.Expression]
+				if elemVal == nil {
+					continue
+				}
+
+				// Calculate index: oldLen + i
+				idx := lcg.currentBlock.NewAdd(oldLen, constant.NewInt(types.I32, int64(i)))
+
+				// Get pointer to element: newDataPtr[idx]
+				elemPtr := lcg.currentBlock.NewGetElementPtr(elemType, newDataPtr, idx)
+
+				// Store element
+				lcg.currentBlock.NewStore(elemVal, elemPtr)
+			}
+
+			// Create new slice struct
+			appendSliceType := types.NewStruct(types.NewPointer(elemType), types.I32)
+			var newSlice value.Value = constant.NewStruct(
+				appendSliceType,
+				constant.NewNull(types.NewPointer(elemType)),
+				constant.NewInt(types.I32, 0),
+			)
+			newSlice = lcg.currentBlock.NewInsertValue(newSlice, newDataPtr, 0)
+			newSlice = lcg.currentBlock.NewInsertValue(newSlice, newLenVal, 1)
+
+			lcg.values[n] = newSlice
 			return
 		}
 	}
@@ -1584,8 +2339,40 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 
 	fn, ok := lcg.functions[name]
 	if !ok {
-		// Function not found - this shouldn't happen if analyzer did its job
-		// But we should handle it gracefully
+		// Not a direct function — check if it's a function-typed variable/parameter (indirect call via closure struct)
+		if ident, ok := n.Callee.(*ast.Identifier); ok {
+			ast.Walk(lcg, ident)
+			closureVal := lcg.values[ident]
+			if closureVal != nil {
+				nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[ident]
+				if nodeInfo != nil {
+					if sig, ok := nodeInfo.Type.(*ortypes.SignatureType); ok {
+						// Extract fn_ptr and env_ptr from closure struct { i8*, i8* }
+						fnPtrRaw := lcg.currentBlock.NewExtractValue(closureVal, 0)
+						envPtr := lcg.currentBlock.NewExtractValue(closureVal, 1)
+
+						// Cast fn_ptr to the correct function type (with env as first param)
+						closureFuncType := lcg.getClosureFuncType(sig)
+						fnPtr := lcg.currentBlock.NewBitCast(fnPtrRaw, types.NewPointer(closureFuncType))
+
+						// Build args: env first, then user args
+						var callArgs []value.Value
+						callArgs = append(callArgs, envPtr)
+						for _, arg := range n.Arguments {
+							ast.Walk(lcg, arg)
+							argVal := lcg.values[arg.Expression]
+							if argVal != nil {
+								callArgs = append(callArgs, argVal)
+							}
+						}
+
+						result := lcg.currentBlock.NewCall(fnPtr, callArgs...)
+						lcg.values[n] = result
+						return
+					}
+				}
+			}
+		}
 		panic(fmt.Sprintf("undefined function: %s (available: %v)", name, getKeys(lcg.functions)))
 	}
 
@@ -1654,7 +2441,9 @@ func (lcg *LLVMCodeGen) visitIdentifier(n *ast.Identifier) {
 			case SliceValueType, InterfaceValueType, TupleValueType, PrimitiveType:
 				// These should be loaded (value semantics)
 				if ptrType, isPtr := val.Type().(*types.PointerType); isPtr {
-					if _, isInst := val.(ir.Instruction); isInst {
+					_, isInst := val.(ir.Instruction)
+					_, isGlobal := val.(*ir.Global)
+					if isInst || isGlobal {
 						load := lcg.currentBlock.NewLoad(ptrType.ElemType, val)
 						lcg.values[n] = load
 						return
@@ -1663,9 +2452,11 @@ func (lcg *LLVMCodeGen) visitIdentifier(n *ast.Identifier) {
 			}
 		} else {
 			// No metadata - fallback to old behavior
-			// If it's an alloca (pointer), load it
+			// If it's an alloca or global (pointer), load it
 			if ptrType, isPtr := val.Type().(*types.PointerType); isPtr {
-				if _, isInst := val.(ir.Instruction); isInst {
+				_, isInst := val.(ir.Instruction)
+				_, isGlobal := val.(*ir.Global)
+				if isInst || isGlobal {
 					// Determine category from types
 					category := GetTypeCategory(nodeInfo.Type, ptrType.ElemType)
 
@@ -1689,6 +2480,23 @@ func (lcg *LLVMCodeGen) visitIdentifier(n *ast.Identifier) {
 		}
 
 		lcg.values[n] = val
+		return
+	}
+
+	// Check if it's a function name used as a value — create closure struct
+	if fn, ok := lcg.functions[n.Text]; ok {
+		wrapper := lcg.getOrCreateWrapper(n.Text, fn)
+		lcg.values[n] = lcg.createClosureValue(wrapper, nil)
+	}
+}
+
+func (lcg *LLVMCodeGen) visitDeferStatement(n *ast.DeferStatement) {
+	lcg.deferredCalls = append(lcg.deferredCalls, n.Call)
+}
+
+func (lcg *LLVMCodeGen) emitDeferredCalls() {
+	for i := len(lcg.deferredCalls) - 1; i >= 0; i-- {
+		ast.Walk(lcg, lcg.deferredCalls[i])
 	}
 }
 
@@ -1712,8 +2520,11 @@ func (lcg *LLVMCodeGen) visitReturnStatement(n *ast.ReturnStatement) {
 			}
 		}
 
+		// Emit deferred calls before returning
+		lcg.emitDeferredCalls()
 		lcg.currentBlock.NewRet(val)
 	} else {
+		lcg.emitDeferredCalls()
 		lcg.currentBlock.NewRet(nil)
 	}
 }
@@ -1818,6 +2629,93 @@ func (lcg *LLVMCodeGen) visitIfStatement(n *ast.IfStatement) {
 	lcg.currentBlock = mergeBlock
 }
 
+func (lcg *LLVMCodeGen) visitSwitchStatement(n *ast.SwitchStatement) {
+	// Evaluate the switch expression
+	ast.Walk(lcg, n.Expression)
+	switchVal := lcg.values[n.Expression]
+
+	mergeBlock := lcg.currentFunc.NewBlock("")
+
+	// Find default case index (-1 if none)
+	defaultIdx := -1
+	for i, c := range n.Cases {
+		if c.IsDefault {
+			defaultIdx = i
+			break
+		}
+	}
+
+	// Build chain of condition checks and case bodies
+	for i, c := range n.Cases {
+		if c.IsDefault {
+			continue // handle default as the fallthrough target
+		}
+
+		// Evaluate case value
+		ast.Walk(lcg, c.Value)
+		caseVal := lcg.values[c.Value]
+
+		// Compare — use strcmp for strings (i8*)
+		var cond value.Value
+		isStr := false
+		if ptrL, ok := switchVal.Type().(*types.PointerType); ok {
+			if ptrR, ok := caseVal.Type().(*types.PointerType); ok {
+				if ptrL.ElemType.Equal(types.I8) && ptrR.ElemType.Equal(types.I8) {
+					isStr = true
+				}
+			}
+		}
+		if isStr {
+			var strcmpFn *ir.Func
+			if fn, ok := lcg.functions["strcmp"]; ok {
+				strcmpFn = fn
+			} else {
+				strcmpFn = lcg.module.NewFunc("strcmp", types.I32,
+					ir.NewParam("s1", types.I8Ptr),
+					ir.NewParam("s2", types.I8Ptr))
+				lcg.functions["strcmp"] = strcmpFn
+			}
+			cmpResult := lcg.currentBlock.NewCall(strcmpFn, switchVal, caseVal)
+			cond = lcg.currentBlock.NewICmp(enum.IPredEQ, cmpResult, constant.NewInt(types.I32, 0))
+		} else {
+			cond = lcg.currentBlock.NewICmp(enum.IPredEQ, switchVal, caseVal)
+		}
+
+		caseBlock := lcg.currentFunc.NewBlock("")
+		nextBlock := lcg.currentFunc.NewBlock("")
+
+		lcg.currentBlock.NewCondBr(cond, caseBlock, nextBlock)
+
+		// Generate case body
+		lcg.currentBlock = caseBlock
+		ast.Walk(lcg, c.Block)
+		if !lcg.isTerminator(lcg.currentBlock.Term) {
+			lcg.currentBlock.NewBr(mergeBlock)
+		}
+
+		// Move to next comparison block
+		lcg.currentBlock = nextBlock
+
+		// If this is the last non-default case and there's no default,
+		// the nextBlock falls through to merge
+		if i == len(n.Cases)-1 || (i == len(n.Cases)-2 && defaultIdx == len(n.Cases)-1) {
+			// will be handled below
+		}
+	}
+
+	// Handle default case or fall through to merge
+	if defaultIdx >= 0 {
+		ast.Walk(lcg, n.Cases[defaultIdx].Block)
+		if !lcg.isTerminator(lcg.currentBlock.Term) {
+			lcg.currentBlock.NewBr(mergeBlock)
+		}
+	} else {
+		lcg.currentBlock.NewBr(mergeBlock)
+	}
+
+	lcg.currentBlock = mergeBlock
+}
+
 func (lcg *LLVMCodeGen) visitStruct(n *ast.Struct) {
 	name := n.Name.Text
 
@@ -1845,4 +2743,12 @@ func (lcg *LLVMCodeGen) visitStruct(n *ast.Struct) {
 
 	lcg.currentStruct = nil
 	lcg.currentStructName = ""
+}
+
+func (lcg *LLVMCodeGen) visitEnum(n *ast.Enum) {
+	name := n.Name.Text
+	lcg.enumValues[name] = make(map[string]int32)
+	for i, val := range n.Values {
+		lcg.enumValues[name][val.Name.Text] = int32(i)
+	}
 }

@@ -1,0 +1,9 @@
+meow
+woof
+tweet
+unknown: fish
+len: 5
+s[0]: h
+s[4]: o
+eq: true
+neq: true

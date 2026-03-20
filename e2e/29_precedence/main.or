@@ -1,0 +1,32 @@
+extern printf(fmt: string, args: ...anything) => int32
+
+fn main() {
+    var x: int32 = 10
+
+    if x > 5 && x < 20 {
+        printf("range: ok\n")
+    }
+
+    if x >= 10 && x <= 10 {
+        printf("exact: ok\n")
+    }
+
+    if x == 1 || x == 10 {
+        printf("either: ok\n")
+    }
+
+    if x > 0 && x < 100 || x == -1 {
+        printf("mixed: ok\n")
+    }
+
+    var a: int32 = 2 + 3 * 4
+    printf("arith: %d\n", a)
+
+    if a == 14 && x == 10 {
+        printf("combined: ok\n")
+    }
+
+    if !(x > 20) {
+        printf("not-gt: ok\n")
+    }
+}

@@ -1,0 +1,41 @@
+extern printf(fmt: string, args: ...anything) => int32
+
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+enum Direction {
+    North
+    East
+    South
+    West
+}
+
+fn check_color(c: int32) {
+    switch c {
+        case Color.Red {
+            printf("red\n")
+        }
+        case Color.Green {
+            printf("green\n")
+        }
+        case Color.Blue {
+            printf("blue\n")
+        }
+    }
+}
+
+fn main() {
+    check_color(Color.Red)
+    check_color(Color.Green)
+    check_color(Color.Blue)
+
+    var dir = Direction.South
+    printf("south: %d\n", dir)
+
+    if dir == Direction.South {
+        printf("going south\n")
+    }
+}

@@ -51,12 +51,92 @@ func (p *Parser) parseStruct() (node *ast.Struct, ok bool) {
 	return
 }
 
+func (p *Parser) parseEnum() (node *ast.Enum, ok bool) {
+	token := p.read()
+	if token.Type == scanner.TokenTypeIdent && token.Text == keywordEnum {
+		ok = true
+
+		node = &ast.Enum{}
+
+		identifier, _ := p.parseIdentfier()
+		node.Name = identifier
+
+		if leftBrace, leftBraceOk := p.expectToken(scanner.TokenTypeLBRACE); leftBraceOk {
+			node.Start = ast.StartPositionFromToken(leftBrace)
+		} else {
+			p.error(unexpectedToken(leftBrace, scanner.TokenTypeLBRACE))
+			return
+		}
+
+		for {
+			valueIdent, identOk := p.expectToken(scanner.TokenTypeIdent)
+			if !identOk {
+				p.unread()
+				break
+			}
+			node.Values = append(node.Values, &ast.EnumValue{
+				Name: &ast.Identifier{Token: valueIdent},
+			})
+		}
+
+		if rightBrace, rightBraceOk := p.expectToken(scanner.TokenTypeRBRACE); rightBraceOk {
+			node.End = ast.StartPositionFromToken(rightBrace)
+		} else {
+			p.error(unexpectedToken(rightBrace, scanner.TokenTypeRBRACE))
+			return
+		}
+
+	} else {
+		p.unread()
+	}
+
+	return
+}
+
 func (p *Parser) parseStructExpression(expr ast.Expression) (node *ast.StructExpression, ok bool) {
-	ident, ok := expr.(*ast.Identifier)
-	if !ok {
+	ident, identOk := expr.(*ast.Identifier)
+	if !identOk {
 		return
 	}
 
+	// Peek ahead to distinguish struct expression from code block
+	// without consuming any tokens. This avoids the "identifier {" ambiguity
+	// (e.g., "b {" in "if a && b { ... }" should not be struct expression)
+	tokens := p.peekMultiple(3) // peek: {, firstArg, secondToken
+
+	if tokens[0].Type != scanner.TokenTypeLBRACE {
+		return
+	}
+
+	// Determine if this looks like a struct expression based on what follows {
+	isStructExpr := false
+	switch tokens[1].Type {
+	case scanner.TokenTypeRBRACE:
+		// Empty struct: Foo{}
+		isStructExpr = true
+	case scanner.TokenTypeNumber, scanner.TokenTypeFloat, scanner.TokenTypeString, scanner.TokenTypeBoolean:
+		// Positional args starting with a literal: Foo{10, 20}
+		isStructExpr = true
+	case scanner.TokenTypeIdent:
+		if !isKeyword(tokens[1].Text) {
+			// Check if it's named (ident:) or positional (ident,) or single (ident})
+			if tokens[2].Type == scanner.TokenTypeCOLON || tokens[2].Type == scanner.TokenTypeCOMMA || tokens[2].Type == scanner.TokenTypeRBRACE {
+				isStructExpr = true
+			}
+		}
+	case scanner.TokenTypeSUB, scanner.TokenTypeEXCL:
+		// Unary prefix on a value
+		isStructExpr = true
+	case scanner.TokenTypeLPAREN:
+		// Parenthesized expression as positional arg
+		isStructExpr = true
+	}
+
+	if !isStructExpr {
+		return
+	}
+
+	// Now consume the { token
 	_, ok = p.expectToken(scanner.TokenTypeLBRACE)
 	if !ok {
 		p.unread()
@@ -65,8 +145,8 @@ func (p *Parser) parseStructExpression(expr ast.Expression) (node *ast.StructExp
 
 	args := make([]*ast.CallArgument, 0)
 	for {
-		arg, ok := p.parseCallArgument()
-		if !ok {
+		arg, argOk := p.parseCallArgument()
+		if !argOk {
 			break
 		}
 

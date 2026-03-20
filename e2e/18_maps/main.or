@@ -1,0 +1,22 @@
+
+extern printf(fmt: string, args: ...anything) => int32
+
+fn main() {
+    // Map creation
+    var m = map[string]int32{
+        "one": 1,    
+    }
+
+    // Insertion
+    m["two"] = 2
+    m["three"] = 3
+
+    // Retrieval
+    var v1 = m["one"]
+    var v2 = m["two"]
+    var v3 = m["three"]
+
+    printf("one: %d\n", v1)
+    printf("two: %d\n", v2)
+    printf("three: %d\n", v3)
+}

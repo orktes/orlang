@@ -74,6 +74,18 @@ const (
 	TokenTypeSLASH
 	// TokenTypeBACKSLASH backslash
 	TokenTypeBACKSLASH
+	// TokenTypePERCENT percent/modulo %
+	TokenTypePERCENT
+	// TokenTypePIPE bitwise OR |
+	TokenTypePIPE
+	// TokenTypeCARET bitwise XOR ^
+	TokenTypeCARET
+	// TokenTypeLSHIFT left shift <<
+	TokenTypeLSHIFT
+	// TokenTypeRSHIFT right shift >>
+	TokenTypeRSHIFT
+	// TokenTypeTILDE bitwise NOT ~
+	TokenTypeTILDE
 
 	// TokenTypeEqual ==
 	TokenTypeEqual
@@ -91,6 +103,17 @@ const (
 	TokenTypeOr
 	// TokenTypeAnd logical AND &&
 	TokenTypeAnd
+
+	// TokenTypeAddAssign +=
+	TokenTypeAddAssign
+	// TokenTypeSubAssign -=
+	TokenTypeSubAssign
+	// TokenTypeMulAssign *=
+	TokenTypeMulAssign
+	// TokenTypeDivAssign /=
+	TokenTypeDivAssign
+	// TokenTypeModAssign %=
+	TokenTypeModAssign
 
 	// TokenTypeIncrement ++
 	TokenTypeIncrement
@@ -113,6 +136,18 @@ const (
 	TokenTypeInclude
 	// TokenTypeAs as
 	TokenTypeAs
+	// TokenTypeBreak break
+	TokenTypeBreak
+	// TokenTypeContinue continue
+	TokenTypeContinue
+	// TokenTypeSwitch switch
+	TokenTypeSwitch
+	// TokenTypeCase case
+	TokenTypeCase
+	// TokenTypeDefault default
+	TokenTypeDefault
+	// TokenTypeDefer defer
+	TokenTypeDefer
 )
 
 var tokenNames = [...]string{
@@ -158,6 +193,12 @@ var tokenNames = [...]string{
 
 	TokenTypeSLASH:     "SLASH",
 	TokenTypeBACKSLASH: "BACKSLASH",
+	TokenTypePERCENT:   "PERCENT",
+	TokenTypePIPE:      "PIPE",
+	TokenTypeCARET:     "CARET",
+	TokenTypeLSHIFT:    "LSHIFT",
+	TokenTypeRSHIFT:    "RSHIFT",
+	TokenTypeTILDE:     "TILDE",
 
 	TokenTypeEqual:          "EQUAL",
 	TokenTypeNotEqual:       "NOTEQUAL",
@@ -166,6 +207,12 @@ var tokenNames = [...]string{
 	TokenTypeIs:             "IS",
 	TokenTypeOr:             "OR",
 	TokenTypeAnd:            "AND",
+
+	TokenTypeAddAssign: "ADDASSIGN",
+	TokenTypeSubAssign: "SUBASSIGN",
+	TokenTypeMulAssign: "MULASSIGN",
+	TokenTypeDivAssign: "DIVASSIGN",
+	TokenTypeModAssign: "MODASSIGN",
 
 	TokenTypeIncrement: "INCREMENT",
 	TokenTypeDecrement: "DECREMENT",
@@ -177,6 +224,12 @@ var tokenNames = [...]string{
 	TokenTypeFrom:     "FROM",
 	TokenTypeInclude:  "INCLUDE",
 	TokenTypeAs:       "AS",
+	TokenTypeBreak:    "BREAK",
+	TokenTypeContinue: "CONTINUE",
+	TokenTypeSwitch:   "SWITCH",
+	TokenTypeCase:     "CASE",
+	TokenTypeDefault:  "DEFAULT",
+	TokenTypeDefer:    "DEFER",
 }
 
 func (typ TokenType) String() string {

@@ -1,0 +1,86 @@
+import {
+    route_index,
+    route_health,
+    route_stats,
+    route_todo_list,
+    route_todo_get,
+    route_todo_add,
+    route_todo_toggle,
+    route_todo_delete,
+    route_not_found
+} from "routes.or"
+
+extern printf(fmt: string, args: ...anything) => int32
+extern getchar() => int32
+
+// HTTP runtime
+extern http_listen(port: int32) => &int8
+extern http_close(server: &int8)
+
+// String helpers
+extern str_eq(a: string, b: string) => int32
+extern str_starts_with(s: string, prefix: string) => int32
+
+// Global request counter
+var request_count: int32 = 0
+
+fn handle_request(method: string, url: string, conn: &int8) => int32 {
+    request_count = request_count + 1
+    printf("  %s %s\n", method, url)
+
+    if str_eq(method, "GET") == 1 {
+        if str_eq(url, "/") == 1 {
+            return route_index(conn)
+        }
+        if str_eq(url, "/health") == 1 {
+            return route_health(conn)
+        }
+        if str_eq(url, "/stats") == 1 {
+            return route_stats(conn, request_count)
+        }
+        if str_eq(url, "/todos") == 1 {
+            return route_todo_list(conn)
+        }
+        if str_starts_with(url, "/todos/") == 1 {
+            return route_todo_get(conn, url)
+        }
+    }
+
+    if str_eq(method, "POST") == 1 {
+        if str_starts_with(url, "/todos/add/") == 1 {
+            return route_todo_add(conn, url)
+        }
+        if str_starts_with(url, "/todos/toggle/") == 1 {
+            return route_todo_toggle(conn, url)
+        }
+        if str_starts_with(url, "/todos/delete/") == 1 {
+            return route_todo_delete(conn, url)
+        }
+    }
+
+    return route_not_found(conn)
+}
+
+fn main() {
+    printf("\n")
+    printf("  Orlang HTTP Server\n")
+    printf("  ==================\n")
+    printf("\n")
+    printf("  Todo REST API on http://localhost:8080\n")
+    printf("\n")
+    printf("  Try:\n")
+    printf("    curl localhost:8080/health\n")
+    printf("    curl -X POST localhost:8080/todos/add/Buy%%20milk\n")
+    printf("    curl localhost:8080/todos\n")
+    printf("    curl -X POST localhost:8080/todos/toggle/1\n")
+    printf("    curl localhost:8080/todos/1\n")
+    printf("    curl -X POST localhost:8080/todos/delete/1\n")
+    printf("\n")
+    printf("  Press Enter to stop.\n")
+    printf("\n")
+
+    var server: &int8 = http_listen(8080)
+    getchar()
+    http_close(server)
+    printf("Server stopped.\n")
+}

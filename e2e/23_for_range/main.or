@@ -1,0 +1,26 @@
+extern printf(fmt: string, args: ...anything) => int32
+
+fn main() {
+    // Test for-range with slice (value only)
+    var names = []string{"alice", "bob", "charlie"}
+    for var name in names {
+        printf("%s\n", name)
+    }
+
+    // Test for-range with index and value
+    var nums = []int32{10, 20, 30}
+    for var idx, val in nums {
+        printf("%d: %d\n", idx, val)
+    }
+
+    // Test break in for-range
+    var items = []int32{1, 2, 3, 4, 5}
+    for var x in items {
+        if x == 3 {
+            break
+        }
+        printf("%d\n", x)
+    }
+
+    printf("done\n")
+}

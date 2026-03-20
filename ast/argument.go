@@ -3,8 +3,8 @@ package ast
 type Argument struct {
 	Name         *Identifier
 	Type         Type
-	DefaultValue Node
-	Variadic     bool // True if this is a variadic parameter (...)
+	DefaultValue Expression
+	Variadic     bool
 }
 
 func (Argument) declarationNode() {}

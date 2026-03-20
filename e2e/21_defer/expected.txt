@@ -1,0 +1,11 @@
+before
+deferred
+---
+start
+first
+second
+third
+---
+working
+cleanup
+result: 42

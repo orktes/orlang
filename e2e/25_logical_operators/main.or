@@ -1,0 +1,48 @@
+extern printf(fmt: string, args: ...anything) => int32
+
+fn main() {
+    var a = true
+    var b = false
+
+    if a && true {
+        printf("and1: true\n")
+    }
+    if a && b {
+        printf("should not print\n")
+    } else {
+        printf("and2: false\n")
+    }
+
+    if b || a {
+        printf("or1: true\n")
+    }
+    if b || false {
+        printf("should not print\n")
+    } else {
+        printf("or2: false\n")
+    }
+
+    if !b {
+        printf("not1: true\n")
+    }
+    if !a {
+        printf("should not print\n")
+    } else {
+        printf("not2: true\n")
+    }
+
+    var x: int32 = 5
+    var y: int32 = -x
+    printf("neg: %d\n", y)
+
+    if (a || b) && !b {
+        printf("combined: true\n")
+    }
+
+    if false && b {
+        printf("should not print\n")
+    }
+    if true || b {
+        printf("short-circuit: ok\n")
+    }
+}

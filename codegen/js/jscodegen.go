@@ -317,6 +317,12 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 
 		ast.Walk(jscg, n.Block)
 		return nil
+	case *ast.ForRangeLoop:
+		// TODO: implement JS codegen for for-range
+		return nil
+	case *ast.Enum:
+		// TODO: implement JS codegen for enums
+		return nil
 	case *ast.FunctionDeclaration:
 		var name string
 		var args []string

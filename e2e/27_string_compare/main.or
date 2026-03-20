@@ -1,0 +1,31 @@
+extern printf(fmt: string, args: ...anything) => int32
+
+fn greet(name: string) {
+    if name == "Alice" {
+        printf("Hello Alice!\n")
+    } else if name == "Bob" {
+        printf("Hey Bob!\n")
+    } else {
+        printf("Hi %s!\n", name)
+    }
+}
+
+fn main() {
+    greet("Alice")
+    greet("Bob")
+    greet("Charlie")
+
+    var a = "test"
+    var b = "test"
+    var c = "other"
+
+    if a == b {
+        printf("a == b: true\n")
+    }
+    if a != c {
+        printf("a != c: true\n")
+    }
+    if a == c {
+        printf("should not print\n")
+    }
+}

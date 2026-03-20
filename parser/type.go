@@ -21,6 +21,8 @@ func (p *Parser) parseType() (typ ast.Type, ok bool) {
 		return
 	} else if typ, ok = p.parseArrayType(); ok {
 		return
+	} else if typ, ok = p.parseMapType(); ok {
+		return
 	}
 
 	return
@@ -96,13 +98,44 @@ func (p *Parser) parseTupleOrSignatureType() (node ast.Type, ok bool) {
 		return
 	}
 
-	typeList, typeListOk := p.parseTypeList()
+	// Check for empty parameter list: () => ReturnType
+	var typeList []ast.Type
+	rightToken, rightTokenOk := p.expectToken(scanner.TokenTypeRPAREN)
+	if rightTokenOk {
+		// Empty parens — check for arrow to make it a zero-arg function type
+		_, arrowOk := p.expectToken(scanner.TokenTypeArrow)
+		if arrowOk {
+			if returnType, returnTypeOk := p.parseType(); returnTypeOk {
+				ok = true
+				signature := &ast.FunctionSignature{}
+				signature.Start = ast.Position{Line: leftToken.StartLine, Column: leftToken.StartColumn}
+				signature.ReturnType = returnType
+				node = signature
+				return
+			}
+			p.error(unexpected(p.read().StringValue(), "function return type"))
+			return
+		}
+		p.unread()
+		// Empty tuple — not valid, fall through
+		ok = true
+		node = &ast.TupleType{
+			LeftParen:  leftToken,
+			RightParen: rightToken,
+		}
+		return
+	}
+	// Non-empty parens: put back the token we consumed
+	p.unread()
+
+	typeListParsed, typeListOk := p.parseTypeList()
 	if !typeListOk {
 		p.error(unexpected(p.read().StringValue(), "type"))
 		return
 	}
+	typeList = typeListParsed
 
-	rightToken, rightTokenOk := p.expectToken(scanner.TokenTypeRPAREN)
+	rightToken, rightTokenOk = p.expectToken(scanner.TokenTypeRPAREN)
 	if !rightTokenOk {
 		p.error(unexpectedToken(rightToken, scanner.TokenTypeRPAREN))
 		return
@@ -187,5 +220,49 @@ parseType:
 		Type:         typ,
 	}
 
+	return
+}
+
+func (p *Parser) parseMapType() (node ast.Type, ok bool) {
+	token := p.read()
+	if token.Type != scanner.TokenTypeIdent || token.Text != "map" {
+		p.unread()
+		return
+	}
+	mapKeyword := token
+
+	leftBracket, ok := p.expectToken(scanner.TokenTypeLBRACK)
+	if !ok {
+		p.unread() // Unread map keyword
+		p.error(unexpected(p.read().StringValue(), "["))
+		return
+	}
+
+	keyType, ok := p.parseType()
+	if !ok {
+		p.error(unexpected(p.read().StringValue(), "key type"))
+		return
+	}
+
+	rightBracket, ok := p.expectToken(scanner.TokenTypeRBRACK)
+	if !ok {
+		p.error(unexpected(p.read().StringValue(), "]"))
+		return
+	}
+
+	valueType, ok := p.parseType()
+	if !ok {
+		p.error(unexpected(p.read().StringValue(), "value type"))
+		return
+	}
+
+	node = &ast.MapType{
+		MapKeyword:   mapKeyword,
+		LeftBracket:  leftBracket,
+		RightBracket: rightBracket,
+		KeyType:      keyType,
+		ValueType:    valueType,
+	}
+	ok = true
 	return
 }

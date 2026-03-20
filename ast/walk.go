@@ -62,6 +62,9 @@ func Walk(v Visitor, node Node) {
 		Walk(v, n.Condition)
 		Walk(v, n.After)
 		Walk(v, n.Block)
+	case *ForRangeLoop:
+		Walk(v, n.Iterable)
+		Walk(v, n.Block)
 	case *FunctionCall:
 		Walk(v, n.Callee)
 		for _, nb := range n.Arguments {
@@ -110,6 +113,18 @@ func Walk(v Visitor, node Node) {
 	case *Identifier:
 	case *ReturnStatement:
 		Walk(v, n.Expression)
+	case *BreakStatement:
+	case *ContinueStatement:
+	case *DeferStatement:
+		Walk(v, n.Call)
+	case *Enum:
+		Walk(v, n.Name)
+	case *SwitchStatement:
+		Walk(v, n.Expression)
+		for _, c := range n.Cases {
+			Walk(v, c.Value)
+			Walk(v, c.Block)
+		}
 	case *TuplePattern:
 		for _, e := range n.Patterns {
 			Walk(v, e)
@@ -138,9 +153,18 @@ func Walk(v Visitor, node Node) {
 			Walk(v, n.Length)
 		}
 		Walk(v, n.Type)
+	case *MapType:
+		Walk(v, n.KeyType)
+		Walk(v, n.ValueType)
 	case *PointerType:
 		if n.Type != nil {
 			Walk(v, n.Type)
+		}
+	case *MapExpression:
+		Walk(v, n.Type)
+		for _, entry := range n.Entries {
+			Walk(v, entry.Key)
+			Walk(v, entry.Value)
 		}
 
 	case *Struct:
