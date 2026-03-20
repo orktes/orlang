@@ -31,6 +31,25 @@ func (lcg *LLVMCodeGen) visitImportStatement(n *ast.ImportStatement) {
 			continue
 		}
 
+		// If it's a struct type, register the LLVM type
+		if structTyp, ok := nodeInfo.Type.(*ortypes.StructType); ok {
+			// Create the LLVM struct type from the semantic type
+			if _, exists := lcg.structs[item.Name.Text]; !exists {
+				var fields []types.Type
+				fieldIndices := make(map[string]int)
+				for i, v := range structTyp.Variables {
+					fields = append(fields, lcg.getLLVMTypeFromSemantic(v.Type))
+					fieldIndices[v.Name] = i
+				}
+				llvmStructType := types.NewStruct(fields...)
+				typeDef := lcg.module.NewTypeDef(item.Name.Text, llvmStructType)
+				lcg.structs[item.Name.Text] = typeDef
+				lcg.structDefinitions[item.Name.Text] = llvmStructType
+				lcg.structFields[item.Name.Text] = fieldIndices
+			}
+			continue
+		}
+
 		// If it's a function, declare it as external
 		if sig, ok := nodeInfo.Type.(*ortypes.SignatureType); ok {
 			// The LLVM function name should be MANGLED if it's from a non-main module
@@ -48,8 +67,8 @@ func (lcg *LLVMCodeGen) visitImportStatement(n *ast.ImportStatement) {
 				continue
 			}
 
-			// Generate LLVM function type
-			returnType := lcg.getLLVMTypeFromSemantic(sig.ReturnType)
+			// Generate LLVM function type (use getLLVMReturnType to match definition)
+			returnType := lcg.getLLVMReturnType(sig.ReturnType)
 			var paramTypes []types.Type
 			for _, arg := range sig.ArgumentTypes {
 				paramTypes = append(paramTypes, lcg.getLLVMTypeFromSemantic(arg))

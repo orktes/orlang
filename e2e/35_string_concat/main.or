@@ -1,0 +1,32 @@
+
+extern printf(fmt: string, args: ...anything) => int32
+
+fn main() {
+    // Basic string concatenation
+    var greeting = "Hello" + " " + "World"
+    printf("%s\n", greeting)
+
+    // String concat with variables
+    var first = "foo"
+    var second = "bar"
+    var combined = first + second
+    printf("%s\n", combined)
+
+    // String offset (substring from position)
+    var message = "Hello World"
+    var world = message + 6
+    printf("%s\n", world)
+
+    // str() builtin - int to string
+    var num = 42
+    var numStr = str(num)
+    printf("num: %s\n", numStr)
+
+    // Combined: concat + str()
+    var result = "count=" + str(100)
+    printf("%s\n", result)
+
+    // Multiple concatenations
+    var json = "{\"name\": \"" + "test" + "\", \"value\": " + str(7) + "}"
+    printf("%s\n", json)
+}

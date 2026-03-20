@@ -13,6 +13,11 @@ fi
 # Build the orlang compiler
 (cd ../../ && go install .)
 
+echo "=== Compiling todo.or ==="
+orlang build todo.or --target llvm
+clang $CLANG_TARGET -w -c -o todo.o todo.ll
+rm todo.ll
+
 echo "=== Compiling routes.or ==="
 orlang build routes.or --target llvm
 clang $CLANG_TARGET -w -c -o routes.o routes.ll
@@ -27,8 +32,8 @@ echo "=== Compiling http.c ==="
 clang $CLANG_TARGET -w -c -o http.o http.c $(pkg-config --cflags libmicrohttpd)
 
 echo "=== Linking ==="
-clang $CLANG_TARGET -Wno-override-module -o server main.o routes.o http.o \
+clang $CLANG_TARGET -Wno-override-module -o server main.o routes.o todo.o http.o \
     $(pkg-config --libs libmicrohttpd) $(pkg-config --libs bdw-gc)
 
-rm -f main.o routes.o http.o
+rm -f main.o routes.o todo.o http.o
 echo "=== Build complete: ./server ==="

@@ -149,6 +149,13 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			if typ != nil {
 				return typ
 			}
+			// Builtin functions
+			if ident.Text == "str" {
+				return types.PrimitiveType{Type: "string"}
+			}
+			if ident.Text == "len" {
+				return types.Int32Type
+			}
 		}
 
 		typ := v.getTypeForNode(n.Callee)
@@ -638,6 +645,10 @@ typeCheck:
 
 		scopeItem := v.scope.Get(n.Text, true)
 		if scopeItem == nil {
+			// Skip error for builtin functions
+			if n.Text == "len" || n.Text == "append" || n.Text == "str" {
+				break
+			}
 			v.emitError(n, fmt.Sprintf("undefined: %s", n), true)
 			break
 		}
@@ -671,6 +682,19 @@ typeCheck:
 
 			// Set return type to int32
 			nodeInfo.Type = types.Int32Type
+			break
+		}
+
+		if ident, ok := n.Callee.(*ast.Identifier); ok && ident.Text == "str" {
+			if len(n.Arguments) != 1 {
+				v.emitError(n, "str() takes exactly one argument", true)
+				break
+			}
+			arg := n.Arguments[0]
+			v.Visit(arg.Expression)
+
+			// Set return type to string
+			nodeInfo.Type = types.PrimitiveType{Type: "string"}
 			break
 		}
 
@@ -1021,6 +1045,12 @@ typeCheck:
 		}
 
 		if !equal {
+			// Allow string + int (substring offset)
+			if n.Operator.Text == "+" && aType.GetName() == "string" {
+				if bName := bType.GetName(); bName == "int32" || bName == "int64" {
+					break
+				}
+			}
 			v.emitError(n, fmt.Sprintf(
 				"invalid operation: %s (mismatched types %s and %s)",
 				n,

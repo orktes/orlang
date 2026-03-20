@@ -1,0 +1,97 @@
+extern atoi(s: string) => int32
+
+export struct Todo {
+    var id: int32
+    var title: string
+    var done: int32
+    var active: int32
+}
+
+var todos: [64]Todo
+var todo_used: int32 = 0
+var next_id: int32 = 1
+
+export fn todo_add(title: string) => Todo {
+    // Reuse an inactive slot
+    for var i = 0; i < todo_used; i = i + 1 {
+        if todos[i].active == 0 {
+            todos[i] = Todo{id: next_id, title: "" + title, done: 0, active: 1}
+            next_id = next_id + 1
+            return todos[i]
+        }
+    }
+    // Use the next unused slot
+    if todo_used < 64 {
+        todos[todo_used] = Todo{id: next_id, title: "" + title, done: 0, active: 1}
+        next_id = next_id + 1
+        var idx = todo_used
+        todo_used = todo_used + 1
+        return todos[idx]
+    }
+    return Todo{id: -1, title: "", done: 0, active: 0}
+}
+
+export fn todo_toggle(id: int32) => int32 {
+    for var j = 0; j < todo_used; j = j + 1 {
+        if todos[j].active == 1 && todos[j].id == id {
+            if todos[j].done == 0 {
+                todos[j].done = 1
+            } else {
+                todos[j].done = 0
+            }
+            return 1
+        }
+    }
+    return 0
+}
+
+export fn todo_delete(id: int32) => int32 {
+    for var k = 0; k < todo_used; k = k + 1 {
+        if todos[k].active == 1 && todos[k].id == id {
+            todos[k].active = 0
+            return 1
+        }
+    }
+    return 0
+}
+
+export fn todo_get(id: int32) => Todo {
+    for var l = 0; l < todo_used; l = l + 1 {
+        if todos[l].active == 1 && todos[l].id == id {
+            return todos[l]
+        }
+    }
+    return Todo{id: -1, title: "", done: 0, active: 0}
+}
+
+export fn todo_slot_count() => int32 {
+    return todo_used
+}
+
+export fn todo_at(index: int32) => Todo {
+    return todos[index]
+}
+
+// String helpers
+export fn str_starts_with(s: string, prefix: string) => int32 {
+    var plen = len(prefix)
+    if len(s) < plen {
+        return 0
+    }
+    for var c = 0; c < plen; c = c + 1 {
+        if s[c] != prefix[c] {
+            return 0
+        }
+    }
+    return 1
+}
+
+// URL parsing
+export fn url_suffix(url: string, prefix: string) => string {
+    return url + len(prefix)
+}
+
+export fn url_param_int(url: string, prefix: string) => int32 {
+    var suffix = url + len(prefix)
+    return atoi(suffix)
+}

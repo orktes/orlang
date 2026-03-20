@@ -1,28 +1,43 @@
+import {
+    Todo,
+    todo_add,
+    todo_toggle,
+    todo_delete,
+    todo_get,
+    todo_slot_count,
+    todo_at,
+    str_starts_with,
+    url_suffix,
+    url_param_int
+} from "todo.or"
+
 extern printf(fmt: string, args: ...anything) => int32
 
-// HTTP runtime
+// HTTP runtime (only C dependency)
 extern http_send(conn: &int8, status: int32, content_type: string, body: string) => int32
 
-// String helpers
-extern str_eq(a: string, b: string) => int32
-extern str_starts_with(s: string, prefix: string) => int32
-extern url_suffix(url: string, prefix: string) => string
+// JSON helpers
+fn json_ok(message: string) => string {
+    return "{\"status\": \"ok\", \"message\": \"" + message + "\"}"
+}
 
-// JSON formatting
-extern json_ok(message: string) => string
-extern json_error(message: string) => string
-extern json_int(key: string, value: int32) => string
+fn json_error(message: string) => string {
+    return "{\"error\": \"" + message + "\"}"
+}
 
-// Todo storage
-extern todo_add(title: string) => int32
-extern todo_toggle(id: int32) => int32
-extern todo_delete(id: int32) => int32
-extern todo_get(id: int32) => string
-extern todo_list() => string
-extern todo_count() => int32
-extern url_param_int(url: string, prefix: string) => int32
+fn json_int(key: string, value: int32) => string {
+    return "{\"" + key + "\": " + str(value) + "}"
+}
 
-export fn send_json(conn: &int8, status: int32, body: string) => int32 {
+fn todo_to_json(t: Todo) => string {
+    var done_str = "false"
+    if t.done == 1 {
+        done_str = "true"
+    }
+    return "{\"id\": " + str(t.id) + ", \"title\": \"" + t.title + "\", \"done\": " + done_str + "}"
+}
+
+fn send_json(conn: &int8, status: int32, body: string) => int32 {
     return http_send(conn, status, "application/json", body)
 }
 
@@ -40,7 +55,20 @@ export fn route_stats(conn: &int8, request_count: int32) => int32 {
 }
 
 export fn route_todo_list(conn: &int8) => int32 {
-    return send_json(conn, 200, todo_list())
+    var result = "["
+    var first: int32 = 1
+    var slots = todo_slot_count()
+    for var i = 0; i < slots; i = i + 1 {
+        var t = todo_at(i)
+        if t.active == 1 {
+            if first == 0 {
+                result = result + ", "
+            }
+            result = result + todo_to_json(t)
+            first = 0
+        }
+    }
+    return send_json(conn, 200, result + "]")
 }
 
 export fn route_todo_get(conn: &int8, url: string) => int32 {
@@ -48,23 +76,23 @@ export fn route_todo_get(conn: &int8, url: string) => int32 {
     if id < 0 {
         return send_json(conn, 400, json_error("invalid id"))
     }
-    var item: string = todo_get(id)
-    if str_eq(item, "") == 1 {
+    var t = todo_get(id)
+    if t.id < 0 {
         return send_json(conn, 404, json_error("not found"))
     }
-    return send_json(conn, 200, item)
+    return send_json(conn, 200, todo_to_json(t))
 }
 
 export fn route_todo_add(conn: &int8, url: string) => int32 {
     var title: string = url_suffix(url, "/todos/add/")
-    if str_eq(title, "") == 1 {
+    if title == "" {
         return send_json(conn, 400, json_error("title required"))
     }
-    var id: int32 = todo_add(title)
-    if id < 0 {
+    var t = todo_add(title)
+    if t.id < 0 {
         return send_json(conn, 500, json_error("storage full"))
     }
-    return send_json(conn, 201, json_int("id", id))
+    return send_json(conn, 201, json_int("id", t.id))
 }
 
 export fn route_todo_toggle(conn: &int8, url: string) => int32 {

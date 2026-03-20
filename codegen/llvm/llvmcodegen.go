@@ -394,8 +394,11 @@ func (lcg *LLVMCodeGen) visitStructExpression(n *ast.StructExpression) {
 		}
 	}
 
-	// Allocate struct
-	alloca := lcg.currentBlock.NewAlloca(structType)
+	// Allocate struct on the heap (GC-managed)
+	mallocFn := lcg.getOrDeclareGCMalloc()
+	structSize := lcg.getSizeOf(structType)
+	rawPtr := lcg.currentBlock.NewCall(mallocFn, constant.NewInt(types.I64, structSize))
+	alloca := lcg.currentBlock.NewBitCast(rawPtr, types.NewPointer(structType))
 
 	// Initialize fields
 	fieldIndices := lcg.structFields[name]
@@ -765,11 +768,12 @@ func (lcg *LLVMCodeGen) getAddress(n ast.Node) value.Value {
 			if details != nil {
 				if val, ok := lcg.values[details.DefineIdentifier]; ok {
 					return val
-				} else {
 				}
-			} else {
 			}
-		} else {
+		}
+		// Fallback: check if the value was stored under this identifier directly
+		if val, ok := lcg.values[n]; ok {
+			return val
 		}
 		// Check if it's 'this'
 		if ident.Text == "this" {
@@ -1266,25 +1270,41 @@ func (lcg *LLVMCodeGen) visitVariableDeclaration(n *ast.VariableDeclaration) {
 		ast.Walk(lcg, n.DefaultValue)
 		val = lcg.values[n.DefaultValue]
 
-		// If the value is already an alloca (e.g., for arrays/structs),
+		// If the value is already a struct/array pointer (from alloca or GC_malloc+bitcast),
 		// just use it directly instead of creating a new alloca
+		var directPtr bool
+		var elemType types.Type
 		if allocaInst, isAlloca := val.(*ir.InstAlloca); isAlloca {
+			directPtr = true
+			elemType = allocaInst.ElemType
+		} else if ptrType, isPtr := val.Type().(*types.PointerType); isPtr {
+			if _, isStruct := ptrType.ElemType.(*types.StructType); isStruct {
+				_, isBitCast := val.(*ir.InstBitCast)
+				_, isGEP := val.(*ir.InstGetElementPtr)
+				_, isCall := val.(*ir.InstCall)
+				_, isLoad := val.(*ir.InstLoad)
+				if isBitCast || isGEP || isCall || isLoad {
+					directPtr = true
+					elemType = ptrType.ElemType
+				}
+			}
+		}
+		if directPtr {
 			lcg.values[n.Name] = val
 
-			// Store metadata for this reused alloca
+			// Store metadata
 			var semType ortypes.Type
 			nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n.Name]
 			if nodeInfo != nil {
 				semType = nodeInfo.Type
 			}
-			// If we don't have type from Name, try DefaultValue
 			if semType == nil && n.DefaultValue != nil {
 				defaultNodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n.DefaultValue]
 				if defaultNodeInfo != nil {
 					semType = defaultNodeInfo.Type
 				}
 			}
-			category := GetTypeCategory(semType, allocaInst.ElemType)
+			category := GetTypeCategory(semType, elemType)
 
 			lcg.allocaMetadata[val] = &AllocaMetadata{
 				SemanticType: semType,
@@ -1373,7 +1393,18 @@ func (lcg *LLVMCodeGen) visitGlobalVariableDeclaration(n *ast.VariableDeclaratio
 
 	// Determine type from explicit annotation or analyser
 	if n.Type != nil {
-		typ = lcg.getLLVMType(n.Type)
+		// For globals, use actual array type (not pointer-decayed)
+		if arrType, isArray := n.Type.(*ast.ArrayType); isArray && arrType.Length != nil {
+			elemType := lcg.getLLVMType(arrType.Type)
+			if lenExpr, ok := arrType.Length.(*ast.ValueExpression); ok {
+				if length, ok := lenExpr.Token.Value.(int64); ok {
+					typ = types.NewArray(uint64(length), elemType)
+				}
+			}
+		}
+		if typ == nil {
+			typ = lcg.getLLVMType(n.Type)
+		}
 	}
 	if typ == nil {
 		nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n.Name]
@@ -1584,6 +1615,23 @@ func (lcg *LLVMCodeGen) visitBinaryExpression(n *ast.BinaryExpression) {
 				rightPtr := ensurePtr(rightVal)
 				val = lcg.currentBlock.NewCall(fn, leftPtr, leftPtr, rightPtr)
 				lcg.values[n] = val
+				return
+			}
+		}
+	}
+
+	// String operations
+	if ptrL, ok := leftVal.Type().(*types.PointerType); ok && ptrL.ElemType.Equal(types.I8) {
+		if n.Operator.Text == "+" {
+			// string + string = concatenation
+			if ptrR, ok := rightVal.Type().(*types.PointerType); ok && ptrR.ElemType.Equal(types.I8) {
+				lcg.visitStringConcat(n, leftVal, rightVal)
+				return
+			}
+			// string + int = substring offset (pointer arithmetic)
+			if _, ok := rightVal.Type().(*types.IntType); ok {
+				gep := lcg.currentBlock.NewGetElementPtr(types.I8, leftVal, rightVal)
+				lcg.values[n] = gep
 				return
 			}
 		}
@@ -2093,6 +2141,46 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 			lcg.values[n] = newSlice
 			return
 		}
+
+		if ident.Text == "str" {
+			// Handle str(int) -> string conversion
+			if len(n.Arguments) != 1 {
+				return
+			}
+			arg := n.Arguments[0]
+			ast.Walk(lcg, arg.Expression)
+			val := lcg.values[arg.Expression]
+			if val == nil {
+				return
+			}
+
+			// Allocate buffer (20 bytes is enough for any 64-bit int)
+			mallocFn := lcg.getOrDeclareGCMalloc()
+			bufSize := constant.NewInt(types.I64, 20)
+			buf := lcg.currentBlock.NewCall(mallocFn, bufSize)
+
+			// Declare snprintf if not exists
+			var snprintfFn *ir.Func
+			if fn, ok := lcg.functions["snprintf"]; ok {
+				snprintfFn = fn
+			} else {
+				snprintfFn = lcg.module.NewFunc("snprintf", types.I32,
+					ir.NewParam("buf", types.I8Ptr),
+					ir.NewParam("size", types.I64),
+					ir.NewParam("fmt", types.I8Ptr))
+				snprintfFn.Sig.Variadic = true
+				lcg.functions["snprintf"] = snprintfFn
+			}
+
+			// Create format string "%d"
+			fmtStr := lcg.addStringConstant("%d")
+
+			// Call snprintf(buf, 20, "%d", val)
+			lcg.currentBlock.NewCall(snprintfFn, buf, bufSize, fmtStr, val)
+
+			lcg.values[n] = buf
+			return
+		}
 	}
 
 	// Check if this is a type cast (e.g., int64(x), int32(y))
@@ -2586,6 +2674,53 @@ func (lcg *LLVMCodeGen) addStringConstant(str string) value.Value {
 	// Get pointer to first element
 	zero := constant.NewInt(types.I32, 0)
 	return constant.NewGetElementPtr(c.Type(), g, zero, zero)
+}
+
+func (lcg *LLVMCodeGen) visitStringConcat(n ast.Node, left, right value.Value) {
+	// Declare strlen
+	var strlenFn *ir.Func
+	if fn, ok := lcg.functions["strlen"]; ok {
+		strlenFn = fn
+	} else {
+		strlenFn = lcg.module.NewFunc("strlen", types.I32, ir.NewParam("str", types.I8Ptr))
+		lcg.functions["strlen"] = strlenFn
+	}
+	// Declare memcpy
+	var memcpyFn *ir.Func
+	if fn, ok := lcg.functions["memcpy"]; ok {
+		memcpyFn = fn
+	} else {
+		memcpyFn = lcg.module.NewFunc("memcpy", types.I8Ptr,
+			ir.NewParam("dest", types.I8Ptr),
+			ir.NewParam("src", types.I8Ptr),
+			ir.NewParam("n", types.I64))
+		lcg.functions["memcpy"] = memcpyFn
+	}
+
+	// 1. Get lengths
+	len1 := lcg.currentBlock.NewCall(strlenFn, left)
+	len2 := lcg.currentBlock.NewCall(strlenFn, right)
+
+	// 2. Calculate total length + 1 for null terminator
+	totalLen := lcg.currentBlock.NewAdd(len1, len2)
+	totalLenPlus1 := lcg.currentBlock.NewAdd(totalLen, constant.NewInt(types.I32, 1))
+	totalLenI64 := lcg.currentBlock.NewSExt(totalLenPlus1, types.I64)
+
+	// 3. Allocate new buffer via GC
+	mallocFn := lcg.getOrDeclareGCMalloc()
+	newBuf := lcg.currentBlock.NewCall(mallocFn, totalLenI64)
+
+	// 4. Copy first string
+	len1I64 := lcg.currentBlock.NewSExt(len1, types.I64)
+	lcg.currentBlock.NewCall(memcpyFn, newBuf, left, len1I64)
+
+	// 5. Copy second string (including null terminator)
+	offset := lcg.currentBlock.NewGetElementPtr(types.I8, newBuf, len1)
+	len2Plus1 := lcg.currentBlock.NewAdd(len2, constant.NewInt(types.I32, 1))
+	len2Plus1I64 := lcg.currentBlock.NewSExt(len2Plus1, types.I64)
+	lcg.currentBlock.NewCall(memcpyFn, offset, right, len2Plus1I64)
+
+	lcg.values[n] = newBuf
 }
 
 func (lcg *LLVMCodeGen) isTerminator(term ir.Terminator) bool {

@@ -10,16 +10,14 @@ import {
     route_not_found
 } from "routes.or"
 
+import { str_starts_with } from "todo.or"
+
 extern printf(fmt: string, args: ...anything) => int32
 extern getchar() => int32
 
 // HTTP runtime
 extern http_listen(port: int32) => &int8
 extern http_close(server: &int8)
-
-// String helpers
-extern str_eq(a: string, b: string) => int32
-extern str_starts_with(s: string, prefix: string) => int32
 
 // Global request counter
 var request_count: int32 = 0
@@ -28,17 +26,17 @@ fn handle_request(method: string, url: string, conn: &int8) => int32 {
     request_count = request_count + 1
     printf("  %s %s\n", method, url)
 
-    if str_eq(method, "GET") == 1 {
-        if str_eq(url, "/") == 1 {
+    if method == "GET" {
+        if url == "/" {
             return route_index(conn)
         }
-        if str_eq(url, "/health") == 1 {
+        if url == "/health" {
             return route_health(conn)
         }
-        if str_eq(url, "/stats") == 1 {
+        if url == "/stats" {
             return route_stats(conn, request_count)
         }
-        if str_eq(url, "/todos") == 1 {
+        if url == "/todos" {
             return route_todo_list(conn)
         }
         if str_starts_with(url, "/todos/") == 1 {
@@ -46,7 +44,7 @@ fn handle_request(method: string, url: string, conn: &int8) => int32 {
         }
     }
 
-    if str_eq(method, "POST") == 1 {
+    if method == "POST" {
         if str_starts_with(url, "/todos/add/") == 1 {
             return route_todo_add(conn, url)
         }
