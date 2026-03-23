@@ -65,6 +65,7 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 	nodeInfo := jscg.analyserInfo.FileInfo[jscg.currentFile].NodeInfo[node]
 	switch n := node.(type) {
 	case *ast.Macro:
+	case *ast.LinkStatement:
 	case *ast.CallArgument:
 		ast.Walk(jscg, n.Expression)
 		return nil

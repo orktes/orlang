@@ -2,6 +2,7 @@ package llvm
 
 import (
 	"fmt"
+	"math"
 	"runtime"
 	"strings"
 
@@ -294,6 +295,9 @@ func (lcg *LLVMCodeGen) getLLVMTypeFromSemantic(t ortypes.Type) types.Type {
 	case *ortypes.SignatureType:
 		// Closure struct: { fn_ptr as i8*, env_ptr as i8* }
 		return lcg.getClosureType()
+	case *ortypes.MapType:
+		// Maps are opaque pointers (i8*) to the C runtime Map struct
+		return types.NewPointer(types.I8)
 	}
 
 	return types.I32
@@ -497,7 +501,7 @@ func (lcg *LLVMCodeGen) visitIndexExpression(n *ast.IndexExpression) {
 	// Check if this is a map access by looking at semantic type info
 	nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n.Target]
 	if nodeInfo != nil {
-		if _, isMapType := nodeInfo.Type.(*ortypes.MapType); isMapType {
+		if mapType, isMapType := nodeInfo.Type.(*ortypes.MapType); isMapType {
 			// Handle map get operation
 			ast.Walk(lcg, n.Target)
 			mapPtr := lcg.values[n.Target]
@@ -512,21 +516,24 @@ func (lcg *LLVMCodeGen) visitIndexExpression(n *ast.IndexExpression) {
 				return
 			}
 
-			// Declare map_get function
+			// Declare map_get function (returns i64 for generic value storage)
 			var mapGetFn *ir.Func
 			if fn, ok := lcg.functions["map_get"]; ok {
 				mapGetFn = fn
 			} else {
 				mapStructPtr := types.NewPointer(types.I8)
-				mapGetFn = lcg.module.NewFunc("map_get", types.I32,
+				mapGetFn = lcg.module.NewFunc("map_get", types.I64,
 					ir.NewParam("map", mapStructPtr),
 					ir.NewParam("key", types.I8Ptr))
 				lcg.functions["map_get"] = mapGetFn
 			}
 
-			// Call map_get
-			result := lcg.currentBlock.NewCall(mapGetFn, mapPtr, keyVal)
-			lcg.values[n] = result
+			// Call map_get (returns i64)
+			rawResult := lcg.currentBlock.NewCall(mapGetFn, mapPtr, keyVal)
+
+			// Convert i64 result to the actual value type
+			valType := lcg.getLLVMTypeFromSemantic(mapType.ValueType)
+			lcg.values[n] = lcg.convertMapValueFromI64(rawResult, valType)
 			return
 		}
 	}
@@ -729,18 +736,8 @@ func (lcg *LLVMCodeGen) visitMapExpression(n *ast.MapExpression) {
 
 	// Insert each entry
 	if len(n.Entries) > 0 {
-		// Declare map_insert function
-		var mapInsertFn *ir.Func
-		if fn, ok := lcg.functions["map_insert"]; ok {
-			mapInsertFn = fn
-		} else {
-			mapStructPtr := types.NewPointer(types.I8)
-			mapInsertFn = lcg.module.NewFunc("map_insert", types.Void,
-				ir.NewParam("map", mapStructPtr),
-				ir.NewParam("key", types.I8Ptr),
-				ir.NewParam("value", types.I32))
-			lcg.functions["map_insert"] = mapInsertFn
-		}
+		// Declare map_insert function (takes i64 for generic value storage)
+		mapInsertFn := lcg.getMapInsertFn()
 
 		for _, entry := range n.Entries {
 			// Evaluate key (should be a string)
@@ -751,13 +748,66 @@ func (lcg *LLVMCodeGen) visitMapExpression(n *ast.MapExpression) {
 			ast.Walk(lcg, entry.Value)
 			valueVal := lcg.values[entry.Value]
 
+			// Convert value to i64 for storage
+			i64Val := lcg.convertMapValueToI64(valueVal)
+
 			// Call map_insert
-			lcg.currentBlock.NewCall(mapInsertFn, mapPtr, keyVal, valueVal)
+			lcg.currentBlock.NewCall(mapInsertFn, mapPtr, keyVal, i64Val)
 		}
 	}
 
 	// Store the map pointer as the result
 	lcg.values[n] = mapPtr
+}
+
+// getMapInsertFn returns (or declares) the map_insert function.
+// map_insert takes i64 values for generic storage.
+func (lcg *LLVMCodeGen) getMapInsertFn() *ir.Func {
+	if fn, ok := lcg.functions["map_insert"]; ok {
+		return fn
+	}
+	mapStructPtr := types.NewPointer(types.I8)
+	fn := lcg.module.NewFunc("map_insert", types.Void,
+		ir.NewParam("map", mapStructPtr),
+		ir.NewParam("key", types.I8Ptr),
+		ir.NewParam("value", types.I64))
+	lcg.functions["map_insert"] = fn
+	return fn
+}
+
+// convertMapValueToI64 converts a value to i64 for map storage.
+func (lcg *LLVMCodeGen) convertMapValueToI64(val value.Value) value.Value {
+	valType := val.Type()
+	if valType.Equal(types.I64) {
+		return val
+	}
+	if _, ok := valType.(*types.IntType); ok {
+		// Sign-extend smaller integers to i64
+		return lcg.currentBlock.NewSExt(val, types.I64)
+	}
+	if _, ok := valType.(*types.PointerType); ok {
+		// Pointer (e.g., string i8*) → ptrtoint i64
+		return lcg.currentBlock.NewPtrToInt(val, types.I64)
+	}
+	// Fallback: try sext (covers i1/bool etc)
+	return lcg.currentBlock.NewSExt(val, types.I64)
+}
+
+// convertMapValueFromI64 converts an i64 from map storage to the target type.
+func (lcg *LLVMCodeGen) convertMapValueFromI64(val value.Value, targetType types.Type) value.Value {
+	if targetType.Equal(types.I64) {
+		return val
+	}
+	if intType, ok := targetType.(*types.IntType); ok {
+		// Truncate i64 to smaller integer
+		return lcg.currentBlock.NewTrunc(val, intType)
+	}
+	if _, ok := targetType.(*types.PointerType); ok {
+		// i64 → pointer (e.g., string i8*)
+		return lcg.currentBlock.NewIntToPtr(val, targetType)
+	}
+	// Fallback: truncate to i32
+	return lcg.currentBlock.NewTrunc(val, types.I32)
 }
 
 func (lcg *LLVMCodeGen) getAddress(n ast.Node) value.Value {
@@ -922,6 +972,9 @@ func (lcg *LLVMCodeGen) Visit(node ast.Node) ast.Visitor {
 		return nil
 	case *ast.IncludeStatement:
 		lcg.visitIncludeStatement(n)
+		return nil
+	case *ast.LinkStatement:
+		// Link directives are handled by the compile pipeline
 		return nil
 	case *ast.Struct:
 		lcg.visitStruct(n)
@@ -1512,21 +1565,12 @@ func (lcg *LLVMCodeGen) visitAssigment(n *ast.Assigment) {
 					return
 				}
 
-				// Declare map_insert function
-				var mapInsertFn *ir.Func
-				if fn, ok := lcg.functions["map_insert"]; ok {
-					mapInsertFn = fn
-				} else {
-					mapStructPtr := types.NewPointer(types.I8)
-					mapInsertFn = lcg.module.NewFunc("map_insert", types.Void,
-						ir.NewParam("map", mapStructPtr),
-						ir.NewParam("key", types.I8Ptr),
-						ir.NewParam("value", types.I32))
-					lcg.functions["map_insert"] = mapInsertFn
-				}
+				// Convert value to i64 for storage
+				i64Val := lcg.convertMapValueToI64(valueVal)
 
 				// Call map_insert
-				lcg.currentBlock.NewCall(mapInsertFn, mapPtr, keyVal, valueVal)
+				mapInsertFn := lcg.getMapInsertFn()
+				lcg.currentBlock.NewCall(mapInsertFn, mapPtr, keyVal, i64Val)
 				return
 			}
 		}
@@ -2625,7 +2669,17 @@ func (lcg *LLVMCodeGen) visitValueExpression(n *ast.ValueExpression) {
 		val = lcg.addStringConstant(strVal)
 	} else if n.Token.Value != nil {
 		if i, ok := n.Token.Value.(int64); ok {
-			val = constant.NewInt(types.I32, i)
+			// Check semantic type to determine int width
+			intType := types.I32
+			if i > math.MaxInt32 || i < math.MinInt32 {
+				intType = types.I64
+			}
+			if nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n]; nodeInfo != nil && nodeInfo.Type != nil {
+				if resolved, ok := lcg.getLLVMTypeFromSemantic(nodeInfo.Type).(*types.IntType); ok {
+					intType = resolved
+				}
+			}
+			val = constant.NewInt(intType, i)
 		} else if b, ok := n.Token.Value.(bool); ok {
 			intVal := int64(0)
 			if b {

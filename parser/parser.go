@@ -63,6 +63,7 @@ loop:
 		case check(p.parseImportDecl()):
 		case check(p.parseExportDecl()):
 		case check(p.parseIncludeDecl()):
+		case check(p.parseLinkDecl()):
 		case p.eof():
 			break loop
 		case check(p.parseMacro()):
@@ -204,6 +205,44 @@ func (p *Parser) parseIncludeDecl() (node ast.Node, ok bool) {
 	}
 
 	return &ast.IncludeStatement{Path: path.(*ast.ValueExpression)}, true
+}
+
+func (p *Parser) parseLinkDecl() (node ast.Node, ok bool) {
+	var linkToken scanner.Token
+	if linkToken, ok = p.expectToken(scanner.TokenTypeLink); !ok {
+		p.unread()
+		return
+	}
+
+	// Check for optional sub-keyword: pkg or lib
+	kind := ast.LinkKindFile
+	token := p.read()
+	if token.Type == scanner.TokenTypeIdent {
+		switch token.Text {
+		case "pkg":
+			kind = ast.LinkKindPkg
+		case "lib":
+			kind = ast.LinkKindLib
+		default:
+			p.error(unexpectedToken(token, scanner.TokenTypeString))
+			return
+		}
+	} else {
+		// Not a sub-keyword, put it back — must be a string literal
+		p.unread()
+	}
+
+	var path ast.Node
+	if path, ok = p.parseValueExpression(); !ok {
+		p.error(unexpectedToken(p.read(), scanner.TokenTypeString))
+		return
+	}
+
+	return &ast.LinkStatement{
+		LinkToken: linkToken,
+		Kind:      kind,
+		Path:      path.(*ast.ValueExpression),
+	}, true
 }
 
 func (p *Parser) eof() (ok bool) {

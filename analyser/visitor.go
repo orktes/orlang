@@ -995,21 +995,30 @@ typeCheck:
 		// Walk is handled by ast.Walk
 		break
 
+	case *ast.ForLoop:
+		// Create a subscope so init variables (e.g., var i = 0) don't leak
+		// into the parent scope. This prevents the bug where reusing the same
+		// variable name across multiple for-loops references the wrong alloca.
+		return v.subVisitor(node, v.scope.SubScope(node))
+
 	case *ast.ForRangeLoop:
-		// Register iteration variables in scope
+		// Create a subscope for iteration variables
+		loopScope := v.scope.SubScope(node)
+		// Register iteration variables in the new scope
 		iterableType := v.getTypeForNode(n.Iterable)
 		if arrType, ok := iterableType.(*types.ArrayType); ok {
 			// Register value variable: scope item is ForRangeLoop, type is element type
-			v.scope.Set(n.ValueName, n)
+			loopScope.Set(n.ValueName, n)
 			v.info.NodeInfo[n.ValueName] = &NodeInfo{Type: arrType.Type}
 			// Set type on ForRangeLoop itself so getTypeForNode returns element type
 			v.getNodeInfo(n).Type = arrType.Type
 			// Register index variable with int32 type
 			if n.IndexName != nil {
-				v.scope.Set(n.IndexName, n.IndexName)
+				loopScope.Set(n.IndexName, n.IndexName)
 				v.info.NodeInfo[n.IndexName] = &NodeInfo{Type: types.Int32Type}
 			}
 		}
+		return v.subVisitor(node, loopScope)
 
 	case *ast.BinaryExpression:
 		equal, aType, bType := v.isEqualType(n.Left, n.Right)
@@ -1197,6 +1206,10 @@ typeCheck:
 	case *ast.IncludeStatement:
 		// For now, we don't validate include statements
 		// The functions will be declared as extern by codegen
+		break
+
+	case *ast.LinkStatement:
+		// Link directives are handled by the compile pipeline
 		break
 
 	case *ast.Block:

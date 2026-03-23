@@ -1,3 +1,6 @@
+link "http.c"
+link pkg "libmicrohttpd"
+
 import {
     route_index,
     route_health,

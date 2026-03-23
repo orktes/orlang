@@ -1,0 +1,21 @@
+
+link "math_helper.c"
+link lib "m"
+
+extern printf(fmt: string, args: ...anything) => int32
+extern add_numbers(a: int32, b: int32) => int32
+extern multiply_numbers(a: int32, b: int32) => int32
+extern sqrt(x: float64) => float64
+
+fn main() {
+    // Test link "file.c" - C source file
+    var sum = add_numbers(10, 20)
+    printf("add: %d\n", sum)
+
+    var product = multiply_numbers(6, 7)
+    printf("mul: %d\n", product)
+
+    // Test link lib "m" - math library
+    var root = sqrt(144.0 as float64)
+    printf("sqrt: %.0f\n", root)
+}

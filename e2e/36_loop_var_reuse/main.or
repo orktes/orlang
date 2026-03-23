@@ -1,0 +1,21 @@
+
+extern printf(fmt: string, args: ...anything) => int32
+
+fn main() {
+    // Two for-loops reusing the same variable name 'i'
+    // This previously caused the second loop to reference the first loop's alloca
+    for var i = 0; i < 3; i++ {
+        printf("a%d\n", i)
+    }
+    for var i = 10; i < 13; i++ {
+        printf("b%d\n", i)
+    }
+
+    // Also test with a different variable name reused
+    for var j = 100; j < 102; j++ {
+        printf("c%d\n", j)
+    }
+    for var j = 200; j < 202; j++ {
+        printf("d%d\n", j)
+    }
+}

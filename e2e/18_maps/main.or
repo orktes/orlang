@@ -1,4 +1,6 @@
 
+link "map_runtime.c"
+
 extern printf(fmt: string, args: ...anything) => int32
 
 fn main() {

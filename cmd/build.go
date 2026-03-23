@@ -1,23 +1,11 @@
-// Copyright © 2017 NAME HERE <EMAIL ADDRESS>
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package cmd
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path"
+	"path/filepath"
 
 	"github.com/orktes/orlang/ast"
 
@@ -30,87 +18,141 @@ import (
 
 // buildCmd represents the build command
 var buildCmd = &cobra.Command{
-	Use:   "build",
+	Use:   "build [files...]",
 	Short: "Build Orlang application",
-	Long:  `Build Orlang application`,
+	Long: `Build Orlang application.
+
+By default, compiles to a native binary via LLVM:
+  orlang build main.or              # produces ./main binary
+  orlang build main.or -o myapp     # produces ./myapp binary
+
+Use --target to emit intermediate formats only (no linking):
+  orlang build main.or --target llvm  # produces main.ll
+  orlang build main.or --target js    # produces main.js`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		files := args
-
-		for _, filePath := range files {
-			file, err := os.Open(filePath)
-			if err != nil {
-				return err
-			}
-
-			fileNode, err := parser.Parse(file)
-			if err != nil {
-				return err
-			}
-
-			an, err := analyser.New(fileNode)
-			if err != nil {
-				return err
-			}
-			basePath := path.Dir(filePath)
-			an.FileLoader = func(importPath string) (*ast.File, error) {
-				// Resolve relative to the importing file
-				fullPath := path.Join(basePath, importPath)
-				f, err := os.Open(fullPath)
-				if err != nil {
-					return nil, err
-				}
-				defer f.Close()
-				return parser.Parse(f)
-			}
-
-			fileInfo, err := an.Analyse()
-			if err != nil {
-				return err
-			}
-
-			target := cmd.Flag("target").Value.String()
-			switch target {
-			case "js":
-				jscg := js.New(fileInfo)
-				code := jscg.Generate(fileNode)
-				ext := path.Ext(filePath)
-				outfile := filePath[0:len(filePath)-len(ext)] + ".js"
-				err := ioutil.WriteFile(outfile, code, 0644)
-				if err != nil {
-					return err
-				}
-			case "llvm":
-				llvmcg := llvm.New(fileInfo)
-				// Extract module name from file path (e.g., "lib.or" -> "lib")
-				ext := path.Ext(filePath)
-				baseName := path.Base(filePath)
-				moduleName := baseName[0 : len(baseName)-len(ext)]
-				llvmcg.SetModuleName(moduleName)
-				code := llvmcg.Generate(fileNode)
-				outfile := filePath[0:len(filePath)-len(ext)] + ".ll"
-				err := ioutil.WriteFile(outfile, []byte(code), 0644)
-				if err != nil {
-					return err
-				}
-			}
+		if len(args) == 0 {
+			return fmt.Errorf("no source files specified")
 		}
 
-		return nil
+		target, _ := cmd.Flags().GetString("target")
+		output, _ := cmd.Flags().GetString("output")
+
+		switch target {
+		case "js":
+			return buildJS(args)
+		case "llvm":
+			// Emit .ll only (backward compatible)
+			return buildLLVMIR(args)
+		case "":
+			// Default: full native binary compilation
+			result, err := compileLLVM(args, output)
+			if err != nil {
+				return err
+			}
+			// Clean up intermediate files
+			cleanupFiles(result.TempFiles)
+			fmt.Println(result.Binary)
+			return nil
+		default:
+			return fmt.Errorf("unknown target: %s", target)
+		}
 	},
+}
+
+// buildJS compiles .or files to JavaScript (legacy behavior).
+func buildJS(files []string) error {
+	for _, filePath := range files {
+		file, err := os.Open(filePath)
+		if err != nil {
+			return err
+		}
+
+		fileNode, err := parser.Parse(file)
+		if err != nil {
+			return err
+		}
+
+		an, err := analyser.New(fileNode)
+		if err != nil {
+			return err
+		}
+		basePath := path.Dir(filePath)
+		an.FileLoader = func(importPath string) (*ast.File, error) {
+			fullPath := path.Join(basePath, importPath)
+			f, err := os.Open(fullPath)
+			if err != nil {
+				return nil, err
+			}
+			defer f.Close()
+			return parser.Parse(f)
+		}
+
+		fileInfo, err := an.Analyse()
+		if err != nil {
+			return err
+		}
+
+		jscg := js.New(fileInfo)
+		code := jscg.Generate(fileNode)
+		ext := path.Ext(filePath)
+		outfile := filePath[0:len(filePath)-len(ext)] + ".js"
+		if err := ioutil.WriteFile(outfile, code, 0644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// buildLLVMIR compiles .or files to .ll only (no clang/linking).
+func buildLLVMIR(files []string) error {
+	for _, filePath := range files {
+		file, err := os.Open(filePath)
+		if err != nil {
+			return err
+		}
+
+		fileNode, err := parser.Parse(file)
+		if err != nil {
+			return err
+		}
+
+		an, err := analyser.New(fileNode)
+		if err != nil {
+			return err
+		}
+		basePath := filepath.Dir(filePath)
+		an.FileLoader = func(importPath string) (*ast.File, error) {
+			fullPath := filepath.Join(basePath, importPath)
+			f, err := os.Open(fullPath)
+			if err != nil {
+				return nil, err
+			}
+			defer f.Close()
+			return parser.Parse(f)
+		}
+
+		fileInfo, err := an.Analyse()
+		if err != nil {
+			return err
+		}
+
+		llvmcg := llvm.New(fileInfo)
+		ext := filepath.Ext(filePath)
+		baseName := filepath.Base(filePath)
+		moduleName := baseName[0 : len(baseName)-len(ext)]
+		llvmcg.SetModuleName(moduleName)
+		code := llvmcg.Generate(fileNode)
+		outfile := filePath[0:len(filePath)-len(ext)] + ".ll"
+		if err := os.WriteFile(outfile, []byte(code), 0644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func init() {
 	RootCmd.AddCommand(buildCmd)
 
-	buildCmd.PersistentFlags().String("target", "js", "Target platform")
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// buildCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// buildCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-
+	buildCmd.Flags().String("target", "", "Emit intermediate format only (llvm, js)")
+	buildCmd.Flags().StringP("output", "o", "", "Output binary path")
 }

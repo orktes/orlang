@@ -148,6 +148,8 @@ const (
 	TokenTypeDefault
 	// TokenTypeDefer defer
 	TokenTypeDefer
+	// TokenTypeLink link
+	TokenTypeLink
 )
 
 var tokenNames = [...]string{
@@ -230,6 +232,7 @@ var tokenNames = [...]string{
 	TokenTypeCase:     "CASE",
 	TokenTypeDefault:  "DEFAULT",
 	TokenTypeDefer:    "DEFER",
+	TokenTypeLink:     "LINK",
 }
 
 func (typ TokenType) String() string {
