@@ -1,0 +1,31 @@
+
+link "map_runtime.c"
+
+extern printf(fmt: string, args: ...anything) => int32
+
+fn main() {
+    // Map with string values (previously only int32 was supported)
+    var m = map[string]string{
+        "greeting": "hello",
+    }
+
+    // Insert more string values
+    m["name"] = "world"
+
+    // Retrieve and print
+    var g = m["greeting"]
+    var n = m["name"]
+
+    printf("%s %s\n", g, n)
+
+    // Map with int64 values
+    var m2 = map[string]int64{
+        "big": 1000000000000,
+    }
+
+    m2["also_big"] = 2000000000000
+    var v1 = m2["big"]
+    var v2 = m2["also_big"]
+
+    printf("%ld %ld\n", v1, v2)
+}

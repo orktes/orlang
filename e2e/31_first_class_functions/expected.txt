@@ -1,0 +1,12 @@
+double(5) = 10
+triple(5) = 15
+add(3,4) = 7
+sub(3,4) = -1
+x2(7) = 14
+x3(7) = 21
+compute add: 13
+compute sub: 7
+lambda x10: 50
+lambda add: 7
+lambda mul: 12
+doubler(8): 16

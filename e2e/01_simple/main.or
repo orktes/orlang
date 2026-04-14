@@ -1,0 +1,11 @@
+extern puts(format: string) => int64
+
+fn main() {
+  var a : int64 = int64(1)
+  var b : int64 = int64(2)
+  var c : int64 = a + b
+
+  if c == int64(3) {
+    puts("success")
+  }
+}

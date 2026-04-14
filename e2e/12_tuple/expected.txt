@@ -1,0 +1,2 @@
+1-0.500000-string
+int: 1, float: 0.500000, string: string

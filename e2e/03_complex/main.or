@@ -1,0 +1,61 @@
+extern puts(s: string) => int64
+
+// Example of an interface that defines a reset function
+interface Resetable {
+  fn reset()
+}
+
+// Example of a struct
+struct Point {
+  var x = 0
+  var y = 0
+
+  // Example of an operator overload
+  fn +(left:Point, right:Point) => Point {
+    var newPoint = Point{}
+    newPoint.x = left.x + right.x
+    newPoint.y = left.y + right.y
+    return newPoint
+  }
+
+  // Example of an operator overload
+  fn -(left:Point, right:Point) => Point {
+    var newPoint = Point{}
+    newPoint.x = left.x - right.x
+    newPoint.y = left.y - right.y
+    return newPoint
+  }
+
+  // Implement Resetable interface
+  fn reset() {
+    this.x = 0
+    this.y = 0
+  }
+}
+
+fn reset(resetable : Resetable) {
+  resetable.reset()
+}
+
+fn main() {
+  var pointA : Point
+  pointA = Point{10, 10}
+
+  // Type can be omitted when default value is used
+  var pointB = Point{20, 30}
+
+  // This is using the operator overload defined in the Point struct
+  var combined = pointA + pointB
+
+  // Check combined values
+  if combined.x == 30 {
+    puts("X is correct")
+  }
+
+  // Example usage of an interface
+  reset(combined)
+  
+  if combined.x == 0 {
+    puts("Reset worked")
+  }
+}

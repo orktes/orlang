@@ -1,0 +1,66 @@
+extern printf(fmt: string, args: ...anything) => int32
+
+fn double(x: int32) => int32 {
+    return x * 2
+}
+
+fn triple(x: int32) => int32 {
+    return x * 3
+}
+
+fn add(a: int32, b: int32) => int32 {
+    return a + b
+}
+
+fn sub(a: int32, b: int32) => int32 {
+    return a - b
+}
+
+// Pass function as argument
+fn apply(x: int32, f: (int32) => int32) => int32 {
+    return f(x)
+}
+
+// Return function as value
+fn getMultiplier(n: int32) => (int32) => int32 {
+    if n == 2 {
+        return double
+    }
+    return triple
+}
+
+// Higher-order: apply binary operator
+fn compute(a: int32, b: int32, op: (int32, int32) => int32) => int32 {
+    return op(a, b)
+}
+
+fn main() {
+    // Pass named functions as arguments
+    printf("double(5) = %d\n", apply(5, double))
+    printf("triple(5) = %d\n", apply(5, triple))
+
+    // Store function in variable
+    var op: (int32, int32) => int32 = add
+    printf("add(3,4) = %d\n", op(3, 4))
+    op = sub
+    printf("sub(3,4) = %d\n", op(3, 4))
+
+    // Return function from function
+    var f: (int32) => int32 = getMultiplier(2)
+    printf("x2(7) = %d\n", f(7))
+    f = getMultiplier(3)
+    printf("x3(7) = %d\n", f(7))
+
+    // Higher-order with binary functions
+    printf("compute add: %d\n", compute(10, 3, add))
+    printf("compute sub: %d\n", compute(10, 3, sub))
+
+    // Anonymous lambda functions
+    printf("lambda x10: %d\n", apply(5, fn(x: int32) => int32 { return x * 10 }))
+    printf("lambda add: %d\n", compute(3, 4, fn(a: int32, b: int32) => int32 { return a + b }))
+    printf("lambda mul: %d\n", compute(3, 4, fn(a: int32, b: int32) => int32 { return a * b }))
+
+    // Lambda assigned to variable
+    var doubler: (int32) => int32 = fn(x: int32) => int32 { return x * 2 }
+    printf("doubler(8): %d\n", doubler(8))
+}

@@ -1,0 +1,39 @@
+extern printf(fmt: string, args: ...anything) => int32
+
+fn main() {
+    var a: int32 = 0xFF
+    var b: int32 = 0x0F
+
+    printf("a & b: %d\n", a & b)
+    printf("a | b: %d\n", a | b)
+    printf("a ^ b: %d\n", a ^ b)
+
+    var c: int32 = 1
+    printf("c << 4: %d\n", c << 4)
+    printf("c << 8: %d\n", c << 8)
+
+    var d: int32 = 256
+    printf("d >> 4: %d\n", d >> 4)
+    printf("d >> 8: %d\n", d >> 8)
+
+    // Bitwise NOT
+    var zero: int32 = 0
+    printf("~0: %d\n", ~zero)
+    printf("~255: %d\n", ~a)
+
+    // Flags pattern
+    var flags: int32 = 0
+    flags = flags | 1
+    flags = flags | 4
+    printf("flags: %d\n", flags)
+
+    if (flags & 1) != 0 {
+        printf("bit 0: set\n")
+    }
+    if (flags & 2) == 0 {
+        printf("bit 1: clear\n")
+    }
+    if (flags & 4) != 0 {
+        printf("bit 2: set\n")
+    }
+}

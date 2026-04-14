@@ -1,0 +1,27 @@
+extern printf(fmt: string, args: ...anything) => int32
+extern puts(s: string) => int64
+
+fn print_array(arr: []string) {
+    printf("len: %d\n", len(arr))
+    for var i = 0; i < len(arr); i++ {
+        puts(arr[i])
+    }
+}
+
+
+fn main() {
+    printf("start\n")
+	var arr = []string{"foo", "bar", "baz"} // create array with length of 3
+	print_array(arr)
+
+    var arrWithSize = [3]string{} // create array with length of 3 and initialized with default values ""
+    print_array(arrWithSize)
+
+    arrWithSize[0] = "foo"
+    arrWithSize[1] = "bar"
+    arrWithSize[2] = "baz"
+    print_array(arrWithSize)
+
+    puts(arrWithSize[2])
+
+}

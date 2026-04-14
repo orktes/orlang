@@ -74,6 +74,18 @@ const (
 	TokenTypeSLASH
 	// TokenTypeBACKSLASH backslash
 	TokenTypeBACKSLASH
+	// TokenTypePERCENT percent/modulo %
+	TokenTypePERCENT
+	// TokenTypePIPE bitwise OR |
+	TokenTypePIPE
+	// TokenTypeCARET bitwise XOR ^
+	TokenTypeCARET
+	// TokenTypeLSHIFT left shift <<
+	TokenTypeLSHIFT
+	// TokenTypeRSHIFT right shift >>
+	TokenTypeRSHIFT
+	// TokenTypeTILDE bitwise NOT ~
+	TokenTypeTILDE
 
 	// TokenTypeEqual ==
 	TokenTypeEqual
@@ -83,6 +95,25 @@ const (
 	TokenTypeLessOrEqual
 	// TokenTypeGreaterOrEqual >=
 	TokenTypeGreaterOrEqual
+
+	// TokenTypeIs is (type assertion)
+	TokenTypeIs
+
+	// TokenTypeOr logical OR ||
+	TokenTypeOr
+	// TokenTypeAnd logical AND &&
+	TokenTypeAnd
+
+	// TokenTypeAddAssign +=
+	TokenTypeAddAssign
+	// TokenTypeSubAssign -=
+	TokenTypeSubAssign
+	// TokenTypeMulAssign *=
+	TokenTypeMulAssign
+	// TokenTypeDivAssign /=
+	TokenTypeDivAssign
+	// TokenTypeModAssign %=
+	TokenTypeModAssign
 
 	// TokenTypeIncrement ++
 	TokenTypeIncrement
@@ -94,6 +125,31 @@ const (
 
 	// TokenTypeArrow =>
 	TokenTypeArrow
+
+	// TokenTypeImport import
+	TokenTypeImport
+	// TokenTypeExport export
+	TokenTypeExport
+	// TokenTypeFrom from
+	TokenTypeFrom
+	// TokenTypeInclude include
+	TokenTypeInclude
+	// TokenTypeAs as
+	TokenTypeAs
+	// TokenTypeBreak break
+	TokenTypeBreak
+	// TokenTypeContinue continue
+	TokenTypeContinue
+	// TokenTypeSwitch switch
+	TokenTypeSwitch
+	// TokenTypeCase case
+	TokenTypeCase
+	// TokenTypeDefault default
+	TokenTypeDefault
+	// TokenTypeDefer defer
+	TokenTypeDefer
+	// TokenTypeLink link
+	TokenTypeLink
 )
 
 var tokenNames = [...]string{
@@ -125,7 +181,8 @@ var tokenNames = [...]string{
 	TokenTypeCOLON:     "COLON",
 	TokenTypeSEMICOLON: "SEMICOLON",
 
-	TokenTypeASSIGN:       "ASSIGN",
+	TokenTypeASSIGN: "ASSIGN",
+
 	TokenTypeADD:          "ADD",
 	TokenTypeSUB:          "SUB",
 	TokenTypeAMPERSAND:    "AMPERSAND",
@@ -138,17 +195,44 @@ var tokenNames = [...]string{
 
 	TokenTypeSLASH:     "SLASH",
 	TokenTypeBACKSLASH: "BACKSLASH",
+	TokenTypePERCENT:   "PERCENT",
+	TokenTypePIPE:      "PIPE",
+	TokenTypeCARET:     "CARET",
+	TokenTypeLSHIFT:    "LSHIFT",
+	TokenTypeRSHIFT:    "RSHIFT",
+	TokenTypeTILDE:     "TILDE",
 
 	TokenTypeEqual:          "EQUAL",
 	TokenTypeNotEqual:       "NOTEQUAL",
 	TokenTypeLessOrEqual:    "LESSOREQUAL",
 	TokenTypeGreaterOrEqual: "GREATEROREQUAL",
+	TokenTypeIs:             "IS",
+	TokenTypeOr:             "OR",
+	TokenTypeAnd:            "AND",
+
+	TokenTypeAddAssign: "ADDASSIGN",
+	TokenTypeSubAssign: "SUBASSIGN",
+	TokenTypeMulAssign: "MULASSIGN",
+	TokenTypeDivAssign: "DIVASSIGN",
+	TokenTypeModAssign: "MODASSIGN",
 
 	TokenTypeIncrement: "INCREMENT",
 	TokenTypeDecrement: "DECREMENT",
 
 	TokenTypeEllipsis: "ELLIPSIS",
 	TokenTypeArrow:    "ARROW",
+	TokenTypeImport:   "IMPORT",
+	TokenTypeExport:   "EXPORT",
+	TokenTypeFrom:     "FROM",
+	TokenTypeInclude:  "INCLUDE",
+	TokenTypeAs:       "AS",
+	TokenTypeBreak:    "BREAK",
+	TokenTypeContinue: "CONTINUE",
+	TokenTypeSwitch:   "SWITCH",
+	TokenTypeCase:     "CASE",
+	TokenTypeDefault:  "DEFAULT",
+	TokenTypeDefer:    "DEFER",
+	TokenTypeLink:     "LINK",
 }
 
 func (typ TokenType) String() string {

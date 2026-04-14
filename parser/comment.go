@@ -37,6 +37,4 @@ func (p *Parser) checkCommentForNode(node ast.Node, afterNode bool) {
 	if afterNode {
 		p.commentAfterNodeCheck = node
 	}
-
-	return
 }

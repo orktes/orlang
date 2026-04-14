@@ -1,4 +1,4 @@
-- warn about uninitialized variables
+- [x] warn about uninitialized variables (linter)
 - tuple member access expressions
 - tuple extract in assignments
 - pass by value (pointers?)?
@@ -19,5 +19,5 @@
 - import and export statements
 - JSCodegen numbertypes?
 - Proper extern support
-- LLVM codegen
+- [x] LLVM codegen
 - VM?

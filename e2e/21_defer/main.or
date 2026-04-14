@@ -1,0 +1,28 @@
+extern printf(fmt: string, args: ...anything) => int32
+
+fn basic() {
+    defer printf("deferred\n")
+    printf("before\n")
+}
+
+fn lifo() {
+    defer printf("third\n")
+    defer printf("second\n")
+    defer printf("first\n")
+    printf("start\n")
+}
+
+fn with_return() => int32 {
+    defer printf("cleanup\n")
+    printf("working\n")
+    return 42
+}
+
+fn main() {
+    basic()
+    printf("---\n")
+    lifo()
+    printf("---\n")
+    var result = with_return()
+    printf("result: %d\n", result)
+}

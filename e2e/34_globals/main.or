@@ -1,0 +1,32 @@
+extern printf(fmt: string, args: ...anything) => int32
+
+var counter: int32 = 0
+var pi: float32 = 3.14
+var flag: bool = true
+
+fn increment() => int32 {
+    counter = counter + 1
+    return counter
+}
+
+fn decrement() => int32 {
+    counter = counter - 1
+    return counter
+}
+
+fn main() {
+    printf("counter = %d\n", counter)
+    printf("pi = %.2f\n", pi)
+    printf("flag = %d\n", flag)
+
+    increment()
+    increment()
+    increment()
+    printf("after 3 increments: %d\n", counter)
+
+    decrement()
+    printf("after 1 decrement: %d\n", counter)
+
+    counter = 100
+    printf("after set to 100: %d\n", counter)
+}

@@ -1,0 +1,6 @@
+Hello World
+foobar
+World
+num: 42
+count=100
+{"name": "test", "value": 7}

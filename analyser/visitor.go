@@ -18,6 +18,7 @@ type visitor struct {
 	parent         *visitor
 	errorCb        func(node ast.Node, msg string, fatal bool)
 	autocompleteCb func([]AutoCompleteInfo)
+	fileLoader     func(path string) (*ast.File, error)
 }
 
 func (v *visitor) subVisitor(node ast.Node, scope *Scope) *visitor {
@@ -28,6 +29,7 @@ func (v *visitor) subVisitor(node ast.Node, scope *Scope) *visitor {
 		scope:          scope,
 		errorCb:        v.errorCb,
 		autocompleteCb: v.autocompleteCb,
+		fileLoader:     v.fileLoader,
 	}
 }
 
@@ -59,7 +61,8 @@ func (v *visitor) getTypeForTypeName(typName string) types.Type {
 	}
 
 	if typNode := v.info.Types[typName]; typNode != nil {
-		return v.getTypeForNode(typNode)
+		resolvedType := v.getTypeForNode(typNode)
+		return resolvedType
 	}
 
 	return &types.LazyType{Resolver: func() types.Type {
@@ -88,10 +91,28 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			Type:   v.getTypeForNode(n.Type),
 			Length: arrLength,
 		}
+	case *ast.MapType:
+		return &types.MapType{
+			KeyType:   v.getTypeForNode(n.KeyType),
+			ValueType: v.getTypeForNode(n.ValueType),
+		}
 	case *ast.ArrayExpression:
+		length := int64(len(n.Expressions))
+		if n.Type.Length != nil {
+			if valExpr, ok := n.Type.Length.(*ast.ValueExpression); ok {
+				if valExpr.Token.Type == scanner.TokenTypeNumber {
+					length = valExpr.Token.Value.(int64)
+				}
+			}
+		}
 		return &types.ArrayType{
 			Type:   v.getTypeForNode(n.Type.Type),
-			Length: int64(len(n.Expressions)),
+			Length: length,
+		}
+	case *ast.MapExpression:
+		return &types.MapType{
+			KeyType:   v.getTypeForNode(n.Type.KeyType),
+			ValueType: v.getTypeForNode(n.Type.ValueType),
 		}
 	case *ast.VariableDeclaration:
 		if n.Type != nil {
@@ -127,6 +148,13 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			typ := v.getType(ident.Text)
 			if typ != nil {
 				return typ
+			}
+			// Builtin functions
+			if ident.Text == "str" {
+				return types.PrimitiveType{Type: "string"}
+			}
+			if ident.Text == "len" {
+				return types.Int32Type
 			}
 		}
 
@@ -269,6 +297,15 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 		}
 
 		return typ
+	case *ast.Enum:
+		enumType := &types.EnumType{
+			Name:   n.Name.Text,
+			Values: make(map[string]int32),
+		}
+		for i, val := range n.Values {
+			enumType.Values[val.Name.Text] = int32(i)
+		}
+		return enumType
 	case *ast.MemberExpression:
 		targetType := v.getTypeForNode(n.Target)
 		if typeWithMembersType, ok := targetType.(types.TypeWithMembers); ok {
@@ -283,10 +320,36 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			targetType.GetName(),
 			n.Property.Text,
 		), true)
+	case *ast.IndexExpression:
+		// Get the type of the target (should be an array or map)
+		targetType := v.getTypeForNode(n.Target)
+		if arrayType, ok := targetType.(*types.ArrayType); ok {
+			// Return the element type
+			return arrayType.Type
+		}
+		if mapType, ok := targetType.(*types.MapType); ok {
+			return mapType.ValueType
+		}
+
+		v.emitError(n, fmt.Sprintf(
+			"invalid operation: %s (type %s does not support indexing)",
+			n,
+			targetType.GetName(),
+		), true)
+		return types.UnknownType("cannot index")
 	case *CustomTypeResolvingScopeItem:
 		return n.ResolvedType
+	case *ast.PointerType:
+		// Resolve the pointed-to type
+		pointedType := v.getTypeForNode(n.Type)
+		return &types.PointerType{Type: pointedType}
+	case *ast.TypeAssertionExpression:
+		// Type assertions always return bool
+		return types.BoolType
+	case *ast.CastExpression:
+		return v.getTypeForNode(n.Type)
 	default:
-		panic(fmt.Errorf("Could not resolve type for %s", reflect.TypeOf(node)))
+		panic("Could not resolve type for " + reflect.TypeOf(n).String())
 	}
 
 	return types.UnknownType("undefined")
@@ -325,7 +388,20 @@ func (v *visitor) getParentFuncDecl() *ast.FunctionDeclaration {
 		if funDecl, ok := parent.node.(*ast.FunctionDeclaration); ok {
 			return funDecl
 		}
-		return parent.getParentFuncDecl()
+		parent = parent.parent
+	}
+
+	return nil
+}
+
+func (v *visitor) getParentForLoop() ast.Node {
+	parent := v.parent
+	for parent != nil {
+		switch parent.node.(type) {
+		case *ast.ForLoop, *ast.ForRangeLoop:
+			return parent.node
+		}
+		parent = parent.parent
 	}
 
 	return nil
@@ -383,9 +459,9 @@ func (v *visitor) validateTypeConversion(call *ast.FunctionCall) bool {
 
 			conversionOk := false
 			switch exprType {
-			case types.Float32Type, types.Float64Type, types.Int32Type, types.Int64Type:
+			case types.Float32Type, types.Float64Type, types.Int32Type, types.Int64Type, types.Int16Type, types.Int8Type, types.UInt64Type, types.UInt32Type, types.UInt16Type, types.UInt8Type:
 				switch typ {
-				case types.Float32Type, types.Float64Type, types.Int32Type, types.Int64Type:
+				case types.Float32Type, types.Float64Type, types.Int32Type, types.Int64Type, types.Int16Type, types.Int8Type, types.UInt64Type, types.UInt32Type, types.UInt16Type, types.UInt8Type:
 					conversionOk = true
 				}
 			}
@@ -548,7 +624,16 @@ typeCheck:
 				}
 			}
 		case ast.Declaration, *ast.StructExpression, *ast.Struct, *ast.Interface, *ast.TypeReference:
-			break typeCheck
+			shouldCheck := false
+			if varDecl, ok := v.node.(*ast.VariableDeclaration); ok {
+				if varDecl.DefaultValue == node {
+					shouldCheck = true
+				}
+			}
+
+			if !shouldCheck {
+				break typeCheck
+			}
 		}
 
 		if n.Text == "this" {
@@ -560,12 +645,95 @@ typeCheck:
 
 		scopeItem := v.scope.Get(n.Text, true)
 		if scopeItem == nil {
+			// Skip error for builtin functions
+			if n.Text == "len" || n.Text == "append" || n.Text == "str" {
+				break
+			}
 			v.emitError(n, fmt.Sprintf("undefined: %s", n), true)
 			break
 		}
 
 		v.scope.MarkUsage(scopeItem, n)
+
+		if details := v.scope.GetDetails(n.Text, true); details != nil {
+			if _, ok := details.ScopeItem.(*ast.VariableDeclaration); ok {
+				if !details.Initialized {
+					v.emitError(n, fmt.Sprintf("variable %s used before initialized", n), false)
+				}
+			}
+		}
 	case *ast.FunctionCall:
+		// Check for builtin functions
+		if ident, ok := n.Callee.(*ast.Identifier); ok && ident.Text == "len" {
+			if len(n.Arguments) != 1 {
+				v.emitError(n, "len() takes exactly one argument", true)
+				break
+			}
+			arg := n.Arguments[0]
+			v.Visit(arg.Expression)
+
+			// Check argument type
+			argType := v.getTypeForNode(arg.Expression)
+			if _, isArray := argType.(*types.ArrayType); !isArray {
+				if argType.GetName() != "string" {
+					v.emitError(arg.Expression, "len() argument must be array or string", true)
+				}
+			}
+
+			// Set return type to int32
+			nodeInfo.Type = types.Int32Type
+			break
+		}
+
+		if ident, ok := n.Callee.(*ast.Identifier); ok && ident.Text == "str" {
+			if len(n.Arguments) != 1 {
+				v.emitError(n, "str() takes exactly one argument", true)
+				break
+			}
+			arg := n.Arguments[0]
+			v.Visit(arg.Expression)
+
+			// Set return type to string
+			nodeInfo.Type = types.PrimitiveType{Type: "string"}
+			break
+		}
+
+		if ident, ok := n.Callee.(*ast.Identifier); ok && ident.Text == "append" {
+			if len(n.Arguments) < 2 {
+				v.emitError(n, "append() requires at least 2 arguments", true)
+				break
+			}
+
+			// First argument is the slice
+			sliceArg := n.Arguments[0]
+			v.Visit(sliceArg.Expression)
+
+			// Check argument type
+			sliceType := v.getTypeForNode(sliceArg.Expression)
+			arrayType, isArray := sliceType.(*types.ArrayType)
+			if !isArray {
+				v.emitError(sliceArg.Expression, "append() first argument must be a slice", true)
+				break
+			}
+
+			// Visit remaining arguments and check they match element type
+			for i := 1; i < len(n.Arguments); i++ {
+				v.Visit(n.Arguments[i].Expression)
+				argType := v.getTypeForNode(n.Arguments[i].Expression)
+				if !argType.IsEqual(arrayType.Type) {
+					v.emitError(n.Arguments[i].Expression, fmt.Sprintf("append() argument type mismatch: expected %s, got %s", arrayType.Type.GetName(), argType.GetName()), true)
+				}
+			}
+
+			// Return type is a dynamic slice (not fixed array)
+			// Create a new ArrayType with Length=-1 to indicate slice
+			nodeInfo.Type = &types.ArrayType{
+				Type:   arrayType.Type,
+				Length: -1, // Dynamic slice
+			}
+			break
+		}
+
 		// Check if function call is a typecast
 		if ident, ok := n.Callee.(*ast.Identifier); ok {
 			typ := v.getType(ident.Text)
@@ -614,18 +782,49 @@ typeCheck:
 
 				if len(signType.ArgumentNames) > i {
 					argName := signType.ArgumentNames[i]
-					if _, ok := usedArgs[argName]; ok {
-						v.emitError(
-							callArg,
-							fmt.Sprintf("argument %s already defined", argName),
-							true)
+					if argName != "" {
+						if _, ok := usedArgs[argName]; ok {
+							v.emitError(
+								callArg,
+								fmt.Sprintf("argument %s already defined", argName),
+								true)
+						}
+						usedArgs[argName] = true
 					}
-
-					usedArgs[argName] = true
 
 					fnArgType := signType.ArgumentTypes[i]
 					exprType := v.getTypeForNode(callArg.Expression)
 					equal := fnArgType.IsEqual(exprType)
+
+					// Allow &int8 to be passed as string (C-style strings)
+					if !equal {
+						if ptrType, ok := exprType.(*types.PointerType); ok {
+							if primitive, ok := ptrType.Type.(types.PrimitiveType); ok {
+								if primitive.Type == "int8" && fnArgType.GetName() == "string" {
+									equal = true
+								}
+							}
+						}
+					}
+
+					// Allow string to be passed as &int8
+					if !equal {
+						if ptrType, ok := fnArgType.(*types.PointerType); ok {
+							if primitive, ok := ptrType.Type.(types.PrimitiveType); ok {
+								if primitive.Type == "int8" && exprType.GetName() == "string" {
+									equal = true
+								}
+							}
+						}
+					}
+
+					// Allow int literal to be promoted to int64
+					if !equal && exprType.GetName() == "int32" && fnArgType.GetName() == "int64" {
+						if _, ok := callArg.Expression.(*ast.ValueExpression); ok {
+							// It's a literal (simplification, ideally check value range)
+							equal = true
+						}
+					}
 
 					if !equal {
 						v.emitError(callArg.Expression, fmt.Sprintf(
@@ -639,12 +838,30 @@ typeCheck:
 			}
 
 			if !namedArgs {
-				if len(n.Arguments) < len(signType.ArgumentTypes) {
+				// Check if function is variadic by looking at the last argument
+				isVariadic := false
+				var funDecl *ast.FunctionDeclaration
+				if ident, ok := n.Callee.(*ast.Identifier); ok {
+					if item := v.scope.Get(ident.Text, true); item != nil {
+						funDecl, _ = item.(*ast.FunctionDeclaration)
+					}
+				}
+				if funDecl != nil && len(funDecl.Signature.Arguments) > 0 {
+					lastArg := funDecl.Signature.Arguments[len(funDecl.Signature.Arguments)-1]
+					isVariadic = lastArg.Variadic
+				}
+
+				minArgs := len(signType.ArgumentTypes)
+				if isVariadic {
+					minArgs-- // Variadic parameter is optional
+				}
+
+				if len(n.Arguments) < minArgs {
 					v.emitError(n, fmt.Sprintf(
 						"too few arguments in call to %s",
 						n.Callee,
 					), true)
-				} else if len(n.Arguments) > len(signType.ArgumentTypes) {
+				} else if !isVariadic && len(n.Arguments) > len(signType.ArgumentTypes) {
 					v.emitError(n, fmt.Sprintf(
 						"too many arguments in call to %s",
 						n.Callee,
@@ -760,6 +977,49 @@ typeCheck:
 			break
 		}
 
+	case *ast.BreakStatement:
+		if v.getParentForLoop() == nil {
+			v.emitError(n, "break outside of loop", true)
+		}
+
+	case *ast.ContinueStatement:
+		if v.getParentForLoop() == nil {
+			v.emitError(n, "continue outside of loop", true)
+		}
+
+	case *ast.SwitchStatement:
+		// Walk is handled by ast.Walk; just validate here
+		break
+
+	case *ast.DeferStatement:
+		// Walk is handled by ast.Walk
+		break
+
+	case *ast.ForLoop:
+		// Create a subscope so init variables (e.g., var i = 0) don't leak
+		// into the parent scope. This prevents the bug where reusing the same
+		// variable name across multiple for-loops references the wrong alloca.
+		return v.subVisitor(node, v.scope.SubScope(node))
+
+	case *ast.ForRangeLoop:
+		// Create a subscope for iteration variables
+		loopScope := v.scope.SubScope(node)
+		// Register iteration variables in the new scope
+		iterableType := v.getTypeForNode(n.Iterable)
+		if arrType, ok := iterableType.(*types.ArrayType); ok {
+			// Register value variable: scope item is ForRangeLoop, type is element type
+			loopScope.Set(n.ValueName, n)
+			v.info.NodeInfo[n.ValueName] = &NodeInfo{Type: arrType.Type}
+			// Set type on ForRangeLoop itself so getTypeForNode returns element type
+			v.getNodeInfo(n).Type = arrType.Type
+			// Register index variable with int32 type
+			if n.IndexName != nil {
+				loopScope.Set(n.IndexName, n.IndexName)
+				v.info.NodeInfo[n.IndexName] = &NodeInfo{Type: types.Int32Type}
+			}
+		}
+		return v.subVisitor(node, loopScope)
+
 	case *ast.BinaryExpression:
 		equal, aType, bType := v.isEqualType(n.Left, n.Right)
 		aType, bType = types.LazyResolve(aType), types.LazyResolve(bType)
@@ -794,6 +1054,12 @@ typeCheck:
 		}
 
 		if !equal {
+			// Allow string + int (substring offset)
+			if n.Operator.Text == "+" && aType.GetName() == "string" {
+				if bName := bType.GetName(); bName == "int32" || bName == "int64" {
+					break
+				}
+			}
 			v.emitError(n, fmt.Sprintf(
 				"invalid operation: %s (mismatched types %s and %s)",
 				n,
@@ -814,6 +1080,8 @@ typeCheck:
 			), true)
 			break
 		}
+	case *ast.CastExpression:
+		v.getTypeForNode(n.Left)
 	case *ast.Argument:
 		if n.DefaultValue != nil {
 			if n.Type != nil {
@@ -841,6 +1109,109 @@ typeCheck:
 		}
 
 		v.scope.Set(n.Name, n)
+	case *ast.ImportStatement:
+		path := n.Path.Token.Value.(string)
+
+		if v.fileLoader == nil {
+			v.emitError(n, "imports not supported (no file loader)", true)
+			break
+		}
+
+		importedFile, err := v.fileLoader(path)
+		if err != nil {
+			v.emitError(n, fmt.Sprintf("failed to load import: %s", err), true)
+			break
+		}
+
+		importedAnalyser, err := New(importedFile)
+		if err != nil {
+			v.emitError(n, fmt.Sprintf("failed to create analyser for import: %s", err), true)
+			break
+		}
+		importedAnalyser.FileLoader = v.fileLoader
+
+		_, err = importedAnalyser.Analyse()
+		if err != nil {
+			v.emitError(n, fmt.Sprintf("failed to analyse import: %s", err), true)
+			break
+		}
+
+		// Import symbols
+		importedScope := importedAnalyser.scope
+		for _, item := range n.Items {
+			importName := item.Name.Text
+			localName := importName
+			if item.Alias != nil {
+				localName = item.Alias.Text
+			}
+
+			details := importedScope.GetDetails(importName, true)
+			if details == nil {
+				v.emitError(item.Name, fmt.Sprintf("symbol %s not found in %s", importName, path), true)
+				continue
+			}
+
+			if !details.Exported {
+				v.emitError(item.Name, fmt.Sprintf("symbol %s is not exported from %s", importName, path), true)
+				continue
+			}
+
+			// Add to current scope using the alias (or original name if no alias)
+			localIdent := item.Name
+			if item.Alias != nil {
+				localIdent = item.Alias
+			}
+			v.scope.Set(localIdent, details.ScopeItem)
+
+			// If it is a type, add it to v.info.Types
+			if _, ok := details.ScopeItem.(*ast.Struct); ok {
+				v.info.Types[localName] = details.ScopeItem
+			} else if _, ok := details.ScopeItem.(*ast.Interface); ok {
+				v.info.Types[localName] = details.ScopeItem
+			}
+
+			// Mark as initialized since it comes from another file
+			v.scope.GetDetails(localName, false).Initialized = true
+
+			// Populate NodeInfo
+			typ := v.getTypeForNode(details.ScopeItem)
+			v.info.NodeInfo[localIdent] = &NodeInfo{Type: typ}
+		}
+
+	case *ast.ExportStatement:
+		ast.Walk(v, n.Declaration)
+
+		var name string
+		if fn, ok := n.Declaration.(*ast.FunctionDeclaration); ok {
+			if fn.Signature.Identifier != nil {
+				name = fn.Signature.Identifier.Text
+			}
+		} else if variable, ok := n.Declaration.(*ast.VariableDeclaration); ok {
+			name = variable.Name.Text
+		} else if struc, ok := n.Declaration.(*ast.Struct); ok {
+			name = struc.Name.Text
+		} else if iface, ok := n.Declaration.(*ast.Interface); ok {
+			name = iface.Name.Text
+		}
+
+		if name != "" {
+			details := v.scope.GetDetails(name, false)
+			if details != nil {
+				details.Exported = true
+			}
+		}
+
+		return nil
+
+	case *ast.IncludeStatement:
+		// For now, we don't validate include statements
+		// The functions will be declared as extern by codegen
+		break
+
+	case *ast.LinkStatement:
+		// Link directives are handled by the compile pipeline
+		break
+
 	case *ast.Block:
 		if _, fundeclOk := v.node.(*ast.FunctionDeclaration); fundeclOk {
 			break
@@ -961,6 +1332,9 @@ typeCheck:
 		}
 
 		v.scope.Set(n.Name, n)
+		if n.DefaultValue != nil {
+			v.scope.SetInitialized(n.Name.Text, true)
+		}
 	case *ast.Assigment:
 		equal, leftType, rightType := v.isEqualType(n.Left, n.Right)
 		if !equal {
@@ -971,12 +1345,23 @@ typeCheck:
 				leftType.GetName(),
 			), true)
 		}
+
+		if ident, ok := n.Left.(*ast.Identifier); ok {
+			v.scope.SetInitialized(ident.Text, true)
+		}
 	case *ast.Struct:
 		nodeInfo.Type = v.getTypeForNode(node)
 		// TODO check that it is not redeclared
 		// TODO check that no property or function is double declared
 		if n.Name != nil {
 			v.info.Types[n.Name.Text] = n
+			v.scope.Set(n.Name, n)
+		}
+	case *ast.Enum:
+		nodeInfo.Type = v.getTypeForNode(node)
+		if n.Name != nil {
+			v.info.Types[n.Name.Text] = n
+			v.scope.Set(n.Name, n)
 		}
 	case *ast.Interface:
 		// TODO check that it is not redeclared
@@ -984,6 +1369,7 @@ typeCheck:
 		nodeInfo.Type = v.getTypeForNode(node)
 		if n.Name != nil {
 			v.info.Types[n.Name.Text] = n
+			v.scope.Set(n.Name, n)
 		}
 	case *ast.MemberExpression:
 		nodeInfo.Type = v.getTypeForNode(node)
@@ -1000,6 +1386,30 @@ typeCheck:
 			targetType.GetName(),
 			n.Property.Text,
 		), true)
+	case *ast.IndexExpression:
+		nodeInfo.Type = v.getTypeForNode(node)
+		// Verify target is indexable (array or map type)
+		targetType := v.getTypeForNode(n.Target)
+		_, isArray := targetType.(*types.ArrayType)
+		_, isMap := targetType.(*types.MapType)
+		if !isArray && !isMap {
+			v.emitError(n, fmt.Sprintf(
+				"invalid operation: %s (type %s does not support indexing)",
+				n,
+				targetType.GetName(),
+			), true)
+		}
+		// Verify index is an integer for arrays (maps allow string keys)
+		if !isMap {
+			indexType := v.getTypeForNode(n.Index)
+			if !strings.HasPrefix(indexType.GetName(), "int") && !strings.HasPrefix(indexType.GetName(), "uint") {
+				v.emitError(n, fmt.Sprintf(
+					"non-integer index %s (type %s)",
+					n.Index,
+					indexType.GetName(),
+				), true)
+			}
+		}
 	}
 
 	return v.subVisitor(node, v.scope)

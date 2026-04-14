@@ -65,6 +65,7 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 	nodeInfo := jscg.analyserInfo.FileInfo[jscg.currentFile].NodeInfo[node]
 	switch n := node.(type) {
 	case *ast.Macro:
+	case *ast.LinkStatement:
 	case *ast.CallArgument:
 		ast.Walk(jscg, n.Expression)
 		return nil
@@ -316,6 +317,12 @@ func (jscg *JSCodeGen) Visit(node ast.Node) ast.Visitor {
 		jscg.write(")")
 
 		ast.Walk(jscg, n.Block)
+		return nil
+	case *ast.ForRangeLoop:
+		// TODO: implement JS codegen for for-range
+		return nil
+	case *ast.Enum:
+		// TODO: implement JS codegen for enums
 		return nil
 	case *ast.FunctionDeclaration:
 		var name string

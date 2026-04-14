@@ -1,0 +1,5 @@
+extern printf(format: string, args: ...anything) => int64
+
+fn main() {
+	printf("Hello, World %d%d!\n",4,2)
+}

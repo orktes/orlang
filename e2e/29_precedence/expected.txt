@@ -1,0 +1,7 @@
+range: ok
+exact: ok
+either: ok
+mixed: ok
+arith: 14
+combined: ok
+not-gt: ok

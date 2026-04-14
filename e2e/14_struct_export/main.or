@@ -1,0 +1,9 @@
+import { Foo } from "lib.or"
+
+extern puts(format: string) => int64
+
+fn main() => int32 {
+  var foo = Foo{}
+  puts(foo.bar())
+  return 0
+}

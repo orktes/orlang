@@ -1,0 +1,37 @@
+extern printf(format: string, args: ...anything) => int64
+
+fn main() {
+    // Int casts
+    var i64: int64 = int64(100)
+    var i32: int32 = int32(i64)
+    var i16: int16 = int16(i64)
+    var i8: int8 = int8(i64)
+    
+    printf("i64: %d, i32: %d, i16: %d, i8: %d\n", i64, i32, i16, i8)
+
+    // Unsigned casts (simulated with positive numbers for now as printf %d prints signed)
+    var u64: uint64 = uint64(200)
+    var u32: uint32 = uint32(u64)
+    var u16: uint16 = uint16(u64)
+    var u8: uint8 = uint8(u64)
+    
+    printf("u64: %d, u32: %d, u16: %d, u8: %d\n", u64, u32, u16, u8)
+
+    // Float casts
+    var f64: float64 = float64(123.456)
+    var f32: float32 = float32(f64)
+    
+    printf("f64: %f, f32: %f\n", f64, f32)
+
+    // Int <-> Float
+    var i_to_f: float32 = float32(i32)
+    var f_to_i: int32 = int32(f32)
+    
+    printf("i_to_f: %f, f_to_i: %d\n", i_to_f, f_to_i)
+    
+    // Unsigned <-> Float
+    var u_to_f: float32 = float32(u32)
+    // var f_to_u: uint32 = uint32(f32) // TODO: Implement uint32 cast support
+    
+    printf("u_to_f: %f\n", u_to_f)
+}

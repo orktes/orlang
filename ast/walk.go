@@ -62,6 +62,9 @@ func Walk(v Visitor, node Node) {
 		Walk(v, n.Condition)
 		Walk(v, n.After)
 		Walk(v, n.Block)
+	case *ForRangeLoop:
+		Walk(v, n.Iterable)
+		Walk(v, n.Block)
 	case *FunctionCall:
 		Walk(v, n.Callee)
 		for _, nb := range n.Arguments {
@@ -90,11 +93,12 @@ func Walk(v Visitor, node Node) {
 		if n.Else != nil {
 			Walk(v, n.Else)
 		}
-	case *Macro:
-		// TODO macro
 	case *MemberExpression:
 		Walk(v, n.Target)
 		Walk(v, n.Property)
+	case *IndexExpression:
+		Walk(v, n.Target)
+		Walk(v, n.Index)
 	case *TypeReference:
 		Walk(v, n.Name)
 	case *UnaryExpression:
@@ -109,6 +113,18 @@ func Walk(v Visitor, node Node) {
 	case *Identifier:
 	case *ReturnStatement:
 		Walk(v, n.Expression)
+	case *BreakStatement:
+	case *ContinueStatement:
+	case *DeferStatement:
+		Walk(v, n.Call)
+	case *Enum:
+		Walk(v, n.Name)
+	case *SwitchStatement:
+		Walk(v, n.Expression)
+		for _, c := range n.Cases {
+			Walk(v, c.Value)
+			Walk(v, c.Block)
+		}
 	case *TuplePattern:
 		for _, e := range n.Patterns {
 			Walk(v, e)
@@ -125,6 +141,8 @@ func Walk(v Visitor, node Node) {
 		Walk(v, n.Pattern)
 		Walk(v, n.Type)
 		Walk(v, n.DefaultValue)
+	case *Macro:
+		// TODO macro
 	case *ArrayExpression:
 		Walk(v, n.Type)
 		for _, e := range n.Expressions {
@@ -135,6 +153,19 @@ func Walk(v Visitor, node Node) {
 			Walk(v, n.Length)
 		}
 		Walk(v, n.Type)
+	case *MapType:
+		Walk(v, n.KeyType)
+		Walk(v, n.ValueType)
+	case *PointerType:
+		if n.Type != nil {
+			Walk(v, n.Type)
+		}
+	case *MapExpression:
+		Walk(v, n.Type)
+		for _, entry := range n.Entries {
+			Walk(v, entry.Key)
+			Walk(v, entry.Value)
+		}
 
 	case *Struct:
 		Walk(v, n.Name)
@@ -154,6 +185,26 @@ func Walk(v Visitor, node Node) {
 		for _, fn := range n.Functions {
 			Walk(v, fn)
 		}
+	case *ImportStatement:
+		for _, item := range n.Items {
+			Walk(v, item.Name)
+			if item.Alias != nil {
+				Walk(v, item.Alias)
+			}
+		}
+		Walk(v, n.Path)
+	case *ExportStatement:
+		Walk(v, n.Declaration)
+	case *IncludeStatement:
+		Walk(v, n.Path)
+	case *LinkStatement:
+		Walk(v, n.Path)
+	case *TypeAssertionExpression:
+		Walk(v, n.Expression)
+		Walk(v, n.Type)
+	case *CastExpression:
+		Walk(v, n.Left)
+		Walk(v, n.Type)
 	default:
 		panic(fmt.Errorf("Unknown node type: %s", reflect.TypeOf(n)))
 	}

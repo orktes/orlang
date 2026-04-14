@@ -1,0 +1,122 @@
+Running test 01_simple/
+~/Development/orlang/e2e/01_simple ~/Development/orlang/e2e
+Linting 01_simple/
+Building 01_simple/
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+success
+Test produced expected result
+~/Development/orlang/e2e
+Running test 02_interfaces/
+~/Development/orlang/e2e/02_interfaces ~/Development/orlang/e2e
+Linting 02_interfaces/
+main.or:3:11 Resetable declared but not used
+main.or:7:8 Point declared but not used
+main.or:1:8 puts declared but not used
+main.or:1:8 puts declared but not used
+main.or:3:11 Resetable declared but not used
+main.or:7:8 Point declared but not used
+Building 02_interfaces/
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+Sum is 30
+Test produced expected result
+~/Development/orlang/e2e
+Running test 03_complex/
+~/Development/orlang/e2e/03_complex ~/Development/orlang/e2e
+Linting 03_complex/
+main.or:1:8 puts declared but not used
+main.or:4:11 Resetable declared but not used
+main.or:9:8 Point declared but not used
+main.or:4:11 Resetable declared but not used
+main.or:9:8 Point declared but not used
+Building 03_complex/
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+X is correct
+Reset worked
+Test produced expected result
+~/Development/orlang/e2e
+Running test 04_export_import/
+~/Development/orlang/e2e/04_export_import ~/Development/orlang/e2e
+Linting 04_export_import/
+Building 04_export_import/
+Compiling lib.or
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+bar
+Test produced expected result
+~/Development/orlang/e2e
+Running test 05_include_c_header/
+~/Development/orlang/e2e/05_include_c_header ~/Development/orlang/e2e
+Linting 05_include_c_header/
+main.or:4:5 puts (type unknown (undefined)) is not a function
+main.or:4:5 undefined: puts
+Building 05_include_c_header/
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+foobar
+Test produced expected result
+~/Development/orlang/e2e
+Running test 06_import_as/
+~/Development/orlang/e2e/06_import_as ~/Development/orlang/e2e
+Linting 06_import_as/
+main.or:1:10 undefined: foo
+main.or:2:10 undefined: foo
+Building 06_import_as/
+Compiling lib.or
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Compiling lib2.or
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+bar
+biz
+Test produced expected result
+~/Development/orlang/e2e
+Running test 07_printf/
+~/Development/orlang/e2e/07_printf ~/Development/orlang/e2e
+Linting 07_printf/
+Building 07_printf/
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+Hello, World 42!
+Test produced expected result
+~/Development/orlang/e2e
+Running test 08_macro/
+~/Development/orlang/e2e/08_macro ~/Development/orlang/e2e
+Linting 08_macro/
+Building 08_macro/
+warning: overriding the module target triple with x86_64-apple-macosx14.0.0 [-Woverride-module]
+1 warning generated.
+Linking
+Running
+Hello, World 42!
+Test produced expected result
+~/Development/orlang/e2e
+Running test 09_sprintf/
+~/Development/orlang/e2e/09_sprintf ~/Development/orlang/e2e
+Linting 09_sprintf/
+Building 09_sprintf/
+main.ll:20:16: error: '@puts' defined with type 'i64 (i8*)*' but expected 'i64 (i32)*'
+        %7 = call i64 @puts(i32 %6)
+                      ^
+1 error generated.

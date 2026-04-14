@@ -16,8 +16,12 @@ func (p *Parser) parseStatement(block bool) (node ast.Statement, ok bool) {
 
 	switch {
 	case block && check(p.parseReturnStatement()):
+	case block && check(p.parseBreakStatement()):
+	case block && check(p.parseContinueStatement()):
 	case block && check(p.parseForLoop()):
 	case block && check(p.parseIfStatement()):
+	case block && check(p.parseSwitchStatement()):
+	case block && check(p.parseDeferStatement()):
 	case check(p.parseMacroSubstitutionStatement()):
 	case check(p.parseVarDecl()):
 	default:
@@ -27,11 +31,22 @@ func (p *Parser) parseStatement(block bool) (node ast.Statement, ok bool) {
 	return
 }
 
-func (p *Parser) parseForLoop() (node *ast.ForLoop, nodeOk bool) {
+func (p *Parser) parseForLoop() (stmt ast.Statement, nodeOk bool) {
 	token := p.read()
 	if token.Type == scanner.TokenTypeIdent && token.Text == keywordFor {
+		// Try for-range syntax: for var val in expr { ... } or for var idx, val in expr { ... }
+		p.snapshot()
+		if rangeNode, rangeOk := p.tryParseForRange(token); rangeOk {
+			p.commit()
+			stmt = rangeNode
+			nodeOk = true
+			return
+		}
+		p.restore()
+
+		// Regular for-loop
 		nodeOk = true
-		node = &ast.ForLoop{
+		node := &ast.ForLoop{
 			Start: ast.StartPositionFromToken(token),
 		}
 		var condition ast.Node
@@ -87,10 +102,89 @@ func (p *Parser) parseForLoop() (node *ast.ForLoop, nodeOk bool) {
 		node.Block = block
 
 		p.checkCommentForNode(node, false)
-
+		stmt = node
 	} else {
 		p.unread()
 	}
+	return
+}
+
+func (p *Parser) tryParseForRange(forToken scanner.Token) (node *ast.ForRangeLoop, ok bool) {
+	// Expect: var ident in expr  OR  var ident , ident in expr
+	varToken := p.read()
+	if varToken.Type != scanner.TokenTypeIdent || varToken.Text != keywordVar {
+		return
+	}
+
+	firstName, firstOk := p.expectToken(scanner.TokenTypeIdent)
+	if !firstOk {
+		return
+	}
+
+	var indexName *ast.Identifier
+	var valueName *ast.Identifier
+
+	// Check for comma (two-variable form)
+	commaToken := p.read()
+	if commaToken.Type == scanner.TokenTypeCOMMA {
+		secondName, secondOk := p.expectToken(scanner.TokenTypeIdent)
+		if !secondOk {
+			return
+		}
+		indexName = &ast.Identifier{Token: firstName}
+		valueName = &ast.Identifier{Token: secondName}
+	} else {
+		p.unread()
+		valueName = &ast.Identifier{Token: firstName}
+	}
+
+	// Expect 'in' keyword
+	inToken := p.read()
+	if inToken.Type != scanner.TokenTypeIdent || inToken.Text != keywordIn {
+		return
+	}
+
+	// Parse iterable expression without the right-loop to avoid
+	// identifier { being parsed as a struct expression.
+	var iterable ast.Expression
+	var iterOk bool
+	if iterable, iterOk = p.parseParenExpressionOrTuple(); !iterOk {
+		if iterable, iterOk = p.parseIdentfier(); !iterOk {
+			if iterable, iterOk = p.parseValueExpression(); !iterOk {
+				return
+			}
+		}
+	}
+	// Allow member access and index chains
+	for {
+		if memberExpr, memberOk := p.parseMemberExpression(iterable); memberOk {
+			iterable = memberExpr
+		} else if indexExpr, indexOk := p.parseIndexExpression(iterable); indexOk {
+			iterable = indexExpr
+		} else if callExpr, callOk := p.parseCallExpression(iterable); callOk {
+			iterable = callExpr
+		} else {
+			break
+		}
+	}
+	if !iterOk {
+		return
+	}
+
+	// Parse block
+	block, blockOk := p.parseBlock()
+	if !blockOk {
+		return
+	}
+
+	node = &ast.ForRangeLoop{
+		Start:     ast.StartPositionFromToken(forToken),
+		IndexName: indexName,
+		ValueName: valueName,
+		Iterable:  iterable,
+		Block:     block,
+	}
+	ok = true
 	return
 }
 
@@ -145,7 +239,14 @@ func (p *Parser) parseIfStatement() (node *ast.IfStatement, nodeOk bool) {
 }
 
 func (p *Parser) parseAssigment(left ast.Expression) (node ast.Expression, ok bool) {
-	_, ok = p.expectToken(scanner.TokenTypeASSIGN)
+	token, ok := p.expectToken(
+		scanner.TokenTypeASSIGN,
+		scanner.TokenTypeAddAssign,
+		scanner.TokenTypeSubAssign,
+		scanner.TokenTypeMulAssign,
+		scanner.TokenTypeDivAssign,
+		scanner.TokenTypeModAssign,
+	)
 	if !ok {
 		p.unread()
 		return
@@ -155,6 +256,28 @@ func (p *Parser) parseAssigment(left ast.Expression) (node ast.Expression, ok bo
 	if !exprOk {
 		p.error(unexpected(p.read().StringValue(), "expression"))
 		return
+	}
+
+	// Desugar compound assignments: a += b  -->  a = a + b
+	if token.Type != scanner.TokenTypeASSIGN {
+		var opToken scanner.Token
+		switch token.Type {
+		case scanner.TokenTypeAddAssign:
+			opToken = scanner.Token{Type: scanner.TokenTypeADD, Text: "+"}
+		case scanner.TokenTypeSubAssign:
+			opToken = scanner.Token{Type: scanner.TokenTypeSUB, Text: "-"}
+		case scanner.TokenTypeMulAssign:
+			opToken = scanner.Token{Type: scanner.TokenTypeASTERISK, Text: "*"}
+		case scanner.TokenTypeDivAssign:
+			opToken = scanner.Token{Type: scanner.TokenTypeSLASH, Text: "/"}
+		case scanner.TokenTypeModAssign:
+			opToken = scanner.Token{Type: scanner.TokenTypePERCENT, Text: "%"}
+		}
+		expression = &ast.BinaryExpression{
+			Left:     left,
+			Operator: opToken,
+			Right:    expression,
+		}
 	}
 
 	node = &ast.Assigment{Left: left, Right: expression}
@@ -298,6 +421,160 @@ func (p *Parser) parseReturnStatement() (rtrnStmt *ast.ReturnStatement, ok bool)
 	}
 
 	ok = true
+
+	return
+}
+
+func (p *Parser) parseBreakStatement() (stmt *ast.BreakStatement, ok bool) {
+	token := p.read()
+
+	if token.Type != scanner.TokenTypeBreak {
+		p.unread()
+		return
+	}
+
+	stmt = &ast.BreakStatement{
+		Start:    ast.StartPositionFromToken(token),
+		BreakEnd: ast.EndPositionFromToken(token),
+	}
+
+	ok = true
+	return
+}
+
+func (p *Parser) parseContinueStatement() (stmt *ast.ContinueStatement, ok bool) {
+	token := p.read()
+
+	if token.Type != scanner.TokenTypeContinue {
+		p.unread()
+		return
+	}
+
+	stmt = &ast.ContinueStatement{
+		Start:       ast.StartPositionFromToken(token),
+		ContinueEnd: ast.EndPositionFromToken(token),
+	}
+
+	ok = true
+	return
+}
+
+func (p *Parser) parseDeferStatement() (stmt *ast.DeferStatement, ok bool) {
+	token := p.read()
+
+	if token.Type != scanner.TokenTypeDefer {
+		p.unread()
+		return
+	}
+
+	expr, exprOk := p.parseExpression()
+	if !exprOk {
+		p.error(unexpected(p.read().StringValue(), "function call"))
+		return
+	}
+
+	call, isCall := expr.(*ast.FunctionCall)
+	if !isCall {
+		p.error(unexpected("expression", "function call after defer"))
+		return
+	}
+
+	stmt = &ast.DeferStatement{
+		Start:    ast.StartPositionFromToken(token),
+		DeferEnd: ast.EndPositionFromToken(token),
+		Call:     call,
+	}
+
+	ok = true
+	return
+}
+
+func (p *Parser) parseSwitchStatement() (node *ast.SwitchStatement, ok bool) {
+	token := p.read()
+	if token.Type != scanner.TokenTypeSwitch {
+		p.unread()
+		return
+	}
+
+	ok = true
+	node = &ast.SwitchStatement{
+		Start: ast.StartPositionFromToken(token),
+	}
+
+	// Parse the switch expression without the right-loop to avoid
+	// identifier { being parsed as a struct expression.
+	// We parse the primary expression (identifier, value, paren) and then
+	// handle member expressions manually.
+	var expr ast.Expression
+	var exprOk bool
+	if expr, exprOk = p.parseParenExpressionOrTuple(); !exprOk {
+		if expr, exprOk = p.parseIdentfier(); !exprOk {
+			if expr, exprOk = p.parseValueExpression(); !exprOk {
+				p.error(unexpected(p.read().StringValue(), "expression"))
+				return
+			}
+		}
+	}
+	// Allow member access chains (e.g., switch obj.field { ... })
+	for {
+		memberExpr, memberOk := p.parseMemberExpression(expr)
+		if !memberOk {
+			break
+		}
+		expr = memberExpr
+	}
+	node.Expression = expr
+
+	// Expect opening brace for switch body
+	if _, braceOk := p.expectToken(scanner.TokenTypeLBRACE); !braceOk {
+		p.error(unexpected(p.read().StringValue(), "{"))
+		return
+	}
+
+	// Parse cases
+	for {
+		token = p.read()
+
+		if token.Type == scanner.TokenTypeRBRACE {
+			break
+		}
+
+		if token.Type == scanner.TokenTypeCase {
+			// Parse case value
+			caseExpr, caseExprOk := p.parseExpression()
+			if !caseExprOk {
+				p.error(unexpected(p.read().StringValue(), "expression"))
+				return
+			}
+
+			block, blockOk := p.parseBlock()
+			if !blockOk {
+				p.error(unexpected(p.read().StringValue(), "code block"))
+				return
+			}
+
+			node.Cases = append(node.Cases, &ast.SwitchCase{
+				Start: ast.StartPositionFromToken(token),
+				Value: caseExpr,
+				Block: block,
+			})
+		} else if token.Type == scanner.TokenTypeDefault {
+			block, blockOk := p.parseBlock()
+			if !blockOk {
+				p.error(unexpected(p.read().StringValue(), "code block"))
+				return
+			}
+
+			node.Cases = append(node.Cases, &ast.SwitchCase{
+				Start:     ast.StartPositionFromToken(token),
+				Block:     block,
+				IsDefault: true,
+			})
+		} else {
+			p.error(unexpected(token.StringValue(), "case or default"))
+			return
+		}
+	}
 
 	return
 }

@@ -1,0 +1,63 @@
+extern printf(fmt: string, args: ...anything) => int32
+
+fn apply(x: int32, f: (int32) => int32) => int32 {
+    return f(x)
+}
+
+// Closure capturing a parameter
+fn makeAdder(base: int32) => (int32) => int32 {
+    return fn(x: int32) => int32 {
+        return base + x
+    }
+}
+
+// Closure capturing a local variable
+fn makeCounter(start: int32) => () => int32 {
+    var count: int32 = start
+    return fn() => int32 {
+        return count
+    }
+}
+
+// Closure capturing function-typed variables (closures of closures)
+fn compose(f: (int32) => int32, g: (int32) => int32) => (int32) => int32 {
+    return fn(x: int32) => int32 {
+        return f(g(x))
+    }
+}
+
+// Closure capturing multiple variables
+fn makeLinear(slope: int32, intercept: int32) => (int32) => int32 {
+    return fn(x: int32) => int32 {
+        return slope * x + intercept
+    }
+}
+
+fn main() {
+    // Basic closure: capture parameter
+    var add10: (int32) => int32 = makeAdder(10)
+    var add20: (int32) => int32 = makeAdder(20)
+    printf("add10(5) = %d\n", add10(5))
+    printf("add20(5) = %d\n", add20(5))
+
+    // Capture local variable
+    var counter: () => int32 = makeCounter(42)
+    printf("counter() = %d\n", counter())
+
+    // Pass closure to higher-order function
+    printf("apply(7, add10) = %d\n", apply(7, add10))
+
+    // Compose closures
+    var add30: (int32) => int32 = compose(add20, add10)
+    printf("add30(5) = %d\n", add30(5))
+
+    // Capture multiple variables
+    var f: (int32) => int32 = makeLinear(3, 7)
+    printf("3*4+7 = %d\n", f(4))
+    printf("3*10+7 = %d\n", f(10))
+
+    // Independent closures don't interfere
+    var g: (int32) => int32 = makeLinear(2, 1)
+    printf("2*4+1 = %d\n", g(4))
+    printf("3*4+7 = %d\n", f(4))
+}

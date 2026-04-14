@@ -18,6 +18,7 @@ var unaryPrefix = []scanner.TokenType{
 	scanner.TokenTypeIncrement,
 	scanner.TokenTypeDecrement,
 	scanner.TokenTypeEXCL,
+	scanner.TokenTypeTILDE,
 }
 
 var unarySuffix = []scanner.TokenType{
@@ -46,6 +47,35 @@ func (p *Parser) parseMemberExpression(target ast.Expression) (node *ast.MemberE
 	node = &ast.MemberExpression{
 		Target:   target,
 		Property: &ast.Identifier{Token: token},
+	}
+
+	return
+}
+
+func (p *Parser) parseIndexExpression(target ast.Expression) (node *ast.IndexExpression, ok bool) {
+	leftBracket, ok := p.expectToken(scanner.TokenTypeLBRACK)
+	if !ok {
+		p.unread()
+		return
+	}
+
+	index, indexOk := p.parseExpression()
+	if !indexOk {
+		p.error("expected index expression")
+		return
+	}
+
+	rightBracket, rBracketOk := p.expectToken(scanner.TokenTypeRBRACK)
+	if !rBracketOk {
+		p.error(unexpectedToken(rightBracket, scanner.TokenTypeRBRACK))
+		return
+	}
+
+	node = &ast.IndexExpression{
+		Target:       target,
+		Index:        index,
+		LeftBracket:  leftBracket,
+		RightBracket: rightBracket,
 	}
 
 	return
@@ -169,6 +199,7 @@ func (p *Parser) parseUnaryExpression() (expression ast.Expression, ok bool) {
 	case check(p.parseParenExpressionOrTuple()):
 	case check(p.parseFuncDecl()):
 	case check(p.parseArrayExpression()):
+	case check(p.parseMapExpression()):
 	case check(p.parseIdentfier()):
 	case check(p.parseValueExpression()):
 	// case check(p.parseBlock()): this messes up for loops
@@ -179,12 +210,13 @@ func (p *Parser) parseUnaryExpression() (expression ast.Expression, ok bool) {
 
 rightLoop:
 	for {
-		// Parse function calls, member expressions and type casts
+		// Parse function calls, member expressions, index expressions and type casts
 		switch {
 		case check(p.parseAssigment(expression)):
 		case check(p.parseCallExpression(expression)):
 		case check(p.parseStructExpression(expression)):
 		case check(p.parseMemberExpression(expression)):
+		case check(p.parseIndexExpression(expression)):
 		case check(p.parseComparisonExpression(expression)):
 		default:
 			break rightLoop
@@ -208,13 +240,25 @@ rightLoop:
 	return
 }
 
+func isHighPrecedence(t scanner.TokenType) bool {
+	return t == scanner.TokenTypeASTERISK || t == scanner.TokenTypeSLASH || t == scanner.TokenTypePERCENT
+}
+
+var binaryOperators = []scanner.TokenType{
+	scanner.TokenTypeADD,
+	scanner.TokenTypeSUB,
+	scanner.TokenTypeASTERISK,
+	scanner.TokenTypeSLASH,
+	scanner.TokenTypePERCENT,
+	scanner.TokenTypeAMPERSAND,
+	scanner.TokenTypePIPE,
+	scanner.TokenTypeCARET,
+	scanner.TokenTypeLSHIFT,
+	scanner.TokenTypeRSHIFT,
+}
+
 func (p *Parser) parseBinaryExpression(left ast.Expression) (node *ast.BinaryExpression, ok bool) {
-	token, ok := p.expectToken(
-		scanner.TokenTypeADD,
-		scanner.TokenTypeSUB,
-		scanner.TokenTypeASTERISK,
-		scanner.TokenTypeSLASH,
-	)
+	token, ok := p.expectToken(binaryOperators...)
 
 	if !ok {
 		p.unread()
@@ -229,15 +273,9 @@ func (p *Parser) parseBinaryExpression(left ast.Expression) (node *ast.BinaryExp
 		return
 	}
 
-	if nextToken, nextTokenOk := p.expectToken(
-		scanner.TokenTypeADD,
-		scanner.TokenTypeSUB,
-		scanner.TokenTypeASTERISK,
-		scanner.TokenTypeSLASH,
-	); nextTokenOk {
+	if nextToken, nextTokenOk := p.expectToken(binaryOperators...); nextTokenOk {
 		p.unread()
-		// TODO use proper weights
-		if !(token.Type == scanner.TokenTypeASTERISK || token.Type == scanner.TokenTypeSLASH) && (nextToken.Type == scanner.TokenTypeASTERISK || nextToken.Type == scanner.TokenTypeSLASH) {
+		if !isHighPrecedence(token.Type) && isHighPrecedence(nextToken.Type) {
 			right, exprOk = p.parseBinaryExpression(right)
 			if !exprOk {
 				p.error(unexpected(p.read().StringValue(), "expression"))
@@ -269,6 +307,39 @@ func (p *Parser) parseExpression() (expression ast.Expression, ok bool) {
 			expression = binaryExpression
 		}
 	}
+
+	if !ok {
+		return
+	}
+
+	// Handle logical operators (&&, ||) at the lowest precedence level
+	for {
+		token, logOk := p.expectToken(scanner.TokenTypeAnd, scanner.TokenTypeOr)
+		if !logOk {
+			p.unread()
+			break
+		}
+
+		// Parse right side as everything up to (but not including) another && or ||
+		var right ast.Expression
+		var rightOk bool
+		if right, rightOk = p.parseUnaryExpression(); rightOk {
+			if binaryExpr, binaryOk := p.parseBinaryExpression(right); binaryOk {
+				right = binaryExpr
+			}
+		}
+		if !rightOk {
+			p.error(unexpected(p.read().StringValue(), "expression"))
+			return
+		}
+
+		expression = &ast.ComparisonExpression{
+			Left:     expression,
+			Right:    right,
+			Operator: token,
+		}
+	}
+
 	return
 }
 
@@ -280,6 +351,8 @@ func (p *Parser) parseComparisonExpression(left ast.Expression) (node ast.Expres
 		scanner.TokenTypeGreater,
 		scanner.TokenTypeLessOrEqual,
 		scanner.TokenTypeGreaterOrEqual,
+		scanner.TokenTypeIs,
+		scanner.TokenTypeAs,
 	)
 
 	if !ok {
@@ -287,8 +360,49 @@ func (p *Parser) parseComparisonExpression(left ast.Expression) (node ast.Expres
 		return
 	}
 
-	right, expressionOk := p.parseExpression()
-	if !expressionOk {
+	// Handle type assertion (is operator)
+	if token.Type == scanner.TokenTypeIs {
+		typ, typeOk := p.parseType()
+		if !typeOk {
+			p.error(unexpected(p.read().StringValue(), "type"))
+			return
+		}
+
+		node = &ast.TypeAssertionExpression{
+			Expression: left,
+			IsToken:    token,
+			Type:       typ,
+		}
+		ok = true
+		return
+	}
+
+	// Handle type cast (as operator)
+	if token.Type == scanner.TokenTypeAs {
+		typ, typeOk := p.parseType()
+		if !typeOk {
+			p.error(unexpected(p.read().StringValue(), "type"))
+			return
+		}
+
+		node = &ast.CastExpression{
+			Left:  left,
+			Token: token,
+			Type:  typ,
+		}
+		ok = true
+		return
+	}
+
+	// Handle regular comparison — right side is unary+binary only (not logical &&/||)
+	var right ast.Expression
+	var rightOk bool
+	if right, rightOk = p.parseUnaryExpression(); rightOk {
+		if binaryExpr, binaryOk := p.parseBinaryExpression(right); binaryOk {
+			right = binaryExpr
+		}
+	}
+	if !rightOk {
 		p.error(unexpected(p.read().StringValue(), "expression"))
 		return
 	}
@@ -395,6 +509,83 @@ func (p *Parser) parseArrayExpression() (node ast.Expression, ok bool) {
 		LeftBrace:   lBrace,
 		Expressions: expresList,
 		Type:        typ.(*ast.ArrayType),
+	}
+
+	return
+}
+
+func (p *Parser) parseMapExpression() (node ast.Expression, ok bool) {
+	typ, typOk := p.parseMapType()
+	if !typOk {
+		return
+	}
+
+	lBrace, lBraceOk := p.expectToken(scanner.TokenTypeLBRACE)
+	if !lBraceOk {
+		p.unread() // Unread to allow other parsing attempts
+		return
+	}
+
+	var entries []*ast.MapEntry
+
+	// Parse key-value pairs
+	for {
+		// Check for closing brace (empty map or end of entries)
+		token := p.peek()
+		if token.Type == scanner.TokenTypeRBRACE {
+			break
+		}
+
+		// Parse key expression
+		keyExpr, keyOk := p.parseExpression()
+		if !keyOk {
+			p.error(unexpected(p.read().StringValue(), "key expression"))
+			return
+		}
+
+		// Expect colon
+		colon, colonOk := p.expectToken(scanner.TokenTypeCOLON)
+		if !colonOk {
+			p.error(unexpectedToken(colon, scanner.TokenTypeCOLON))
+			return
+		}
+
+		// Parse value expression
+		valueExpr, valueOk := p.parseExpression()
+		if !valueOk {
+			p.error(unexpected(p.read().StringValue(), "value expression"))
+			return
+		}
+
+		entries = append(entries, &ast.MapEntry{
+			Key:   keyExpr,
+			Colon: colon,
+			Value: valueExpr,
+		})
+
+		// Check for comma (more entries) or closing brace
+		nextToken := p.read()
+		if nextToken.Type == scanner.TokenTypeRBRACE {
+			p.unread()
+			break
+		} else if nextToken.Type != scanner.TokenTypeCOMMA {
+			p.error(unexpectedToken(nextToken, scanner.TokenTypeCOMMA, scanner.TokenTypeRBRACE))
+			return
+		}
+	}
+
+	rBrace, rBraceOk := p.expectToken(scanner.TokenTypeRBRACE)
+	if !rBraceOk {
+		p.error(unexpectedToken(rBrace, scanner.TokenTypeRBRACE))
+		return
+	}
+
+	ok = true
+	node = &ast.MapExpression{
+		Type:       typ.(*ast.MapType),
+		LeftBrace:  lBrace,
+		RightBrace: rBrace,
+		Entries:    entries,
 	}
 
 	return

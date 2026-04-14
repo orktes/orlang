@@ -1,0 +1,25 @@
+extern printf(fmt: string, args: ...anything) => int32
+
+fn check(val: int32) {
+    switch val {
+        case 1 {
+            printf("one\n")
+        }
+        case 2 {
+            printf("two\n")
+        }
+        case 3 {
+            printf("three\n")
+        }
+        default {
+            printf("other: %d\n", val)
+        }
+    }
+}
+
+fn main() {
+    check(1)
+    check(2)
+    check(3)
+    check(42)
+}

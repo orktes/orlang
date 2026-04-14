@@ -1,0 +1,69 @@
+extern printf(fmt: string, args: ...anything) => int32
+
+struct Vec2 {
+    var x: int32 = 0
+    var y: int32 = 0
+
+    fn +(a: Vec2, b: Vec2) => Vec2 {
+        var result = Vec2{}
+        result.x = a.x + b.x
+        result.y = a.y + b.y
+        return result
+    }
+
+    fn -(a: Vec2, b: Vec2) => Vec2 {
+        var result = Vec2{}
+        result.x = a.x - b.x
+        result.y = a.y - b.y
+        return result
+    }
+
+    fn *(a: Vec2, b: Vec2) => Vec2 {
+        var result = Vec2{}
+        result.x = a.x * b.x
+        result.y = a.y * b.y
+        return result
+    }
+
+    fn print() {
+        printf("(%d, %d)\n", this.x, this.y)
+    }
+}
+
+fn main() {
+    var a = Vec2{3, 4}
+    var b = Vec2{1, 2}
+
+    // Addition
+    var c = a + b
+    printf("a + b = (%d, %d)\n", c.x, c.y)
+
+    // Subtraction
+    var d = a - b
+    printf("a - b = (%d, %d)\n", d.x, d.y)
+
+    // Multiplication
+    var e = a * b
+    printf("a * b = (%d, %d)\n", e.x, e.y)
+
+    // Method call
+    a.print()
+    b.print()
+
+    // Chained operations
+    var f = a + b + Vec2{10, 20}
+    printf("a + b + (10,20) = (%d, %d)\n", f.x, f.y)
+
+    // Equality check via fields
+    var g = Vec2{3, 4}
+    if a.x == g.x {
+        if a.y == g.y {
+            printf("a == g: true\n")
+        }
+    }
+    if a.x == b.x {
+        printf("should not print\n")
+    } else {
+        printf("a != b: true\n")
+    }
+}

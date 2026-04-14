@@ -1,0 +1,22 @@
+extern printf(format: string, args: ...anything) => int64
+
+macro print {
+  ($a:expr) : (
+    printf($a)
+    printf("\n")
+  )
+
+  ($a:expr, $( $b:expr ),*) : (
+    printf($a)
+    $(
+      printf(" ")
+      printf($b)
+    )*
+    printf("\n")
+  )
+}
+
+fn main() => int32 {
+	print!("Hello, World", "42!")
+	return 0
+}

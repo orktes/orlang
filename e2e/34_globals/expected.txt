@@ -1,0 +1,6 @@
+counter = 0
+pi = 3.14
+flag = 1
+after 3 increments: 3
+after 1 decrement: 2
+after set to 100: 100

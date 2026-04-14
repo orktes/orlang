@@ -58,9 +58,12 @@ loop:
 		case check(p.parseFuncDecl()):
 		case check(p.parseVarDecl()):
 		case check(p.parseStruct()):
+		case check(p.parseEnum()):
 		case check(p.parseInterface()):
 		case check(p.parseImportDecl()):
 		case check(p.parseExportDecl()):
+		case check(p.parseIncludeDecl()):
+		case check(p.parseLinkDecl()):
 		case p.eof():
 			break loop
 		case check(p.parseMacro()):
@@ -105,11 +108,141 @@ func (p *Parser) parseStatementOrExpression(block bool) (node ast.Node, ok bool)
 }
 
 func (p *Parser) parseImportDecl() (node ast.Node, ok bool) {
-	return
+	if _, ok = p.expectToken(scanner.TokenTypeImport); !ok {
+		p.unread()
+		return
+	}
+
+	importStmt := &ast.ImportStatement{}
+
+	if _, ok = p.expectToken(scanner.TokenTypeLBRACE); !ok {
+		p.unread()
+		p.error(unexpectedToken(p.read(), scanner.TokenTypeLBRACE))
+		return
+	}
+
+	for {
+		var ident *ast.Identifier
+		if ident, ok = p.parseIdentfier(); !ok {
+			p.error(unexpectedToken(p.read(), scanner.TokenTypeIdent))
+			return
+		}
+
+		item := &ast.ImportItem{Name: ident}
+
+		// Check for "as alias"
+		tok := p.read()
+		if tok.Type == scanner.TokenTypeAs {
+			var alias *ast.Identifier
+			if alias, ok = p.parseIdentfier(); !ok {
+				p.error(unexpectedToken(p.read(), scanner.TokenTypeIdent))
+				return
+			}
+			item.Alias = alias
+			// Read next token after alias
+			tok = p.read()
+		}
+
+		importStmt.Items = append(importStmt.Items, item)
+
+		if tok.Type == scanner.TokenTypeCOMMA {
+			// Continue to next identifier
+			continue
+		} else if tok.Type == scanner.TokenTypeRBRACE {
+			// End of imports list
+			break
+		} else {
+			p.error(unexpectedToken(tok, scanner.TokenTypeCOMMA, scanner.TokenTypeRBRACE))
+			return
+		}
+	}
+
+	if _, ok = p.expectToken(scanner.TokenTypeFrom); !ok {
+		p.unread()
+		p.error(unexpectedToken(p.read(), scanner.TokenTypeFrom))
+		return
+	}
+
+	var path ast.Node
+	if path, ok = p.parseValueExpression(); !ok {
+		p.error(unexpectedToken(p.read(), scanner.TokenTypeString))
+		return
+	}
+	importStmt.Path = path.(*ast.ValueExpression)
+
+	return importStmt, true
 }
 
 func (p *Parser) parseExportDecl() (node ast.Node, ok bool) {
-	return
+	if _, ok = p.expectToken(scanner.TokenTypeExport); !ok {
+		p.unread()
+		return
+	}
+
+	var decl ast.Node
+	if decl, ok = p.parseFuncDecl(); ok {
+	} else if decl, ok = p.parseVarDecl(); ok {
+	} else if decl, ok = p.parseStruct(); ok {
+	} else if decl, ok = p.parseInterface(); ok {
+	} else {
+		p.error("expected declaration after export")
+		return
+	}
+
+	return &ast.ExportStatement{Declaration: decl}, true
+}
+
+func (p *Parser) parseIncludeDecl() (node ast.Node, ok bool) {
+	if _, ok = p.expectToken(scanner.TokenTypeInclude); !ok {
+		p.unread()
+		return
+	}
+
+	var path ast.Node
+	if path, ok = p.parseValueExpression(); !ok {
+		p.error(unexpectedToken(p.read(), scanner.TokenTypeString))
+		return
+	}
+
+	return &ast.IncludeStatement{Path: path.(*ast.ValueExpression)}, true
+}
+
+func (p *Parser) parseLinkDecl() (node ast.Node, ok bool) {
+	var linkToken scanner.Token
+	if linkToken, ok = p.expectToken(scanner.TokenTypeLink); !ok {
+		p.unread()
+		return
+	}
+
+	// Check for optional sub-keyword: pkg or lib
+	kind := ast.LinkKindFile
+	token := p.read()
+	if token.Type == scanner.TokenTypeIdent {
+		switch token.Text {
+		case "pkg":
+			kind = ast.LinkKindPkg
+		case "lib":
+			kind = ast.LinkKindLib
+		default:
+			p.error(unexpectedToken(token, scanner.TokenTypeString))
+			return
+		}
+	} else {
+		// Not a sub-keyword, put it back — must be a string literal
+		p.unread()
+	}
+
+	var path ast.Node
+	if path, ok = p.parseValueExpression(); !ok {
+		p.error(unexpectedToken(p.read(), scanner.TokenTypeString))
+		return
+	}
+
+	return &ast.LinkStatement{
+		LinkToken: linkToken,
+		Kind:      kind,
+		Path:      path.(*ast.ValueExpression),
+	}, true
 }
 
 func (p *Parser) eof() (ok bool) {
