@@ -1,23 +1,29 @@
 - [x] warn about uninitialized variables (linter)
+- [x] map type (built-in runtime with len/contains/delete/iteration)
+- [x] LLVM codegen
+- [x] self-contained binaries (embedded GC + map runtime, no external deps)
+- [x] proper operator precedence (Go-style levels)
+- [x] implicit safe numeric widening + literal adaptation
+- [x] const immutability enforcement
+- [x] bool-typed conditions for if/for
+- [x] print/println/str builtins
+- [x] float exponent / binary / octal / digit-separator literals
 - tuple member access expressions
 - tuple extract in assignments
 - pass by value (pointers?)?
-- map type
 - code formatting utility
 - IR?
 - JSCodegen map support
 - variable zero values
 - interfaces containing other interfaces
 - templated string literals
-- type assertion
-- closures and escape analysis
+- type assertion for arbitrary expressions
+- closures and escape analysis improvements (stack promotion)
 - implicit returns
-- ARC
-- Make JSCodegen fake "heap" allocation to an global object to better test closures, arc and stack escape.
+- uint64 literals above int64 max
+- generational / incremental GC (current: conservative mark-and-sweep)
 - make macros hygienic
 - make variadic arguments work (required for INLINE_JS and other compiler instructions)
-- import and export statements
+- missing-return-on-all-paths control flow analysis
 - JSCodegen numbertypes?
-- Proper extern support
-- [x] LLVM codegen
 - VM?

@@ -1,0 +1,28 @@
+fn main() {
+    var m = map[string]int32{
+        "a": 1,
+    }
+    m["b"] = 2
+    m["c"] = 3
+
+    println("len:", len(m))
+    println("has a:", contains(m, "a"))
+    println("has x:", contains(m, "x"))
+
+    delete(m, "b")
+    println("after delete:", len(m), contains(m, "b"))
+
+    var sum: int32 = 0
+    var keylen: int32 = 0
+    for var k, v in m {
+        sum = sum + v
+        keylen = keylen + len(k)
+    }
+    println("sum:", sum, "keylen:", keylen)
+
+    var count: int32 = 0
+    for var k in m {
+        count = count + len(k)
+    }
+    println("count:", count)
+}

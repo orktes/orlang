@@ -1,6 +1,8 @@
 package analyser
 
 import (
+	"sort"
+
 	"github.com/orktes/orlang/types"
 
 	"github.com/orktes/orlang/ast"
@@ -94,6 +96,17 @@ func (s *Scope) UnusedScopeItems() (scopeItems []*ScopeItemDetails) {
 			scopeItems = append(scopeItems, scopeItemInfo)
 		}
 	}
+
+	// s.items is a map, so sort by definition position for deterministic
+	// diagnostics ordering.
+	sort.Slice(scopeItems, func(i, j int) bool {
+		a := scopeItems[i].DefineIdentifier.StartPos()
+		b := scopeItems[j].DefineIdentifier.StartPos()
+		if a.Line != b.Line {
+			return a.Line < b.Line
+		}
+		return a.Column < b.Column
+	})
 
 	return
 }

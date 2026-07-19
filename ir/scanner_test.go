@@ -23,7 +23,7 @@ func TestScannerExtensions(t *testing.T) {
 	}
 
 	s.Scan()
-	if s.Scan().String() != "3:0 UNKNOWN(%)" {
+	if s.Scan().String() != "3:0 PERCENT(%)" {
 		t.Error("Wrong token returned")
 	}
 

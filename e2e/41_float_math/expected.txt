@@ -1,0 +1,11 @@
+f64 lt
+f64 gt
+f64 ne
+sum: 4
+div: 1.66667
+f32 eq
+neg: -1.25
+mixed: 3 3.5 3.5
+str float: 2.75
+str i64: 1234567890123
+switch f64 works

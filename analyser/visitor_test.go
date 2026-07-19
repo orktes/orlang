@@ -212,6 +212,28 @@ func TestVisitorErrors(t *testing.T) {
 			}
 		`, "3:5 undefined: bar"},
 		{`
+			fn foo() {
+				const x = 5
+				x = 6
+			}
+		`, "4:5 cannot assign to constant x"},
+		{`
+			fn foo() {
+				var x = 1
+				if x {
+					x = 2
+				}
+			}
+		`, "4:8 non-bool x (type int32) used as condition"},
+		{`
+			struct Dup {
+				var a = 1
+			}
+			struct Dup {
+				var b = 2
+			}
+		`, "5:15 Dup already declared"},
+		{`
 			fn foo(x: int32) {
 
 			}

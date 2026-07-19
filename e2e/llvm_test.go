@@ -11,6 +11,7 @@ import (
 	"github.com/orktes/orlang/analyser"
 	"github.com/orktes/orlang/codegen/llvm"
 	"github.com/orktes/orlang/parser"
+	"github.com/orktes/orlang/runtimelib"
 )
 
 func TestLLVMCodegenSmokeTest(t *testing.T) {
@@ -75,9 +76,14 @@ func TestLLVMCodegenSmokeTest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 8. Compile with clang to verify IR is valid
+	// 8. Compile with clang together with the embedded runtime (provides
+	// GC_init/GC_malloc) to verify IR is valid
+	runtimePath := filepath.Join(tmpDir, "runtime.c")
+	if err := ioutil.WriteFile(runtimePath, runtimelib.Source, 0644); err != nil {
+		t.Fatal(err)
+	}
 	exePath := filepath.Join(tmpDir, "test_exe")
-	cmd := exec.Command("clang", "-Wno-override-module", "-o", exePath, llPath)
+	cmd := exec.Command("clang", "-w", "-Wno-override-module", "-o", exePath, llPath, runtimePath)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("clang failed: %s\n%s", err, out)
 	}

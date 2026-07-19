@@ -1391,11 +1391,21 @@ func (lcg *LLVMCodeGen) visitVariableDeclaration(n *ast.VariableDeclaration) {
 		}
 
 		if typ == nil || typ == types.I32 { // I32 is fallback in getLLVMTypeFromSemantic
-			// Use value type
-			// But we need to be careful. val.Type() returns LLVM type.
-			// If val is a pointer to struct, we want that.
+			// Use the value's type, but only when it isn't a plain numeric:
+			// a declared int32/uint32 must keep its width even when the
+			// initializer expression was analysed at a wider type (the
+			// store below converts the value). The fallback exists for
+			// structs/arrays/closures whose semantic mapping degraded to
+			// the I32 default.
 			if val != nil {
-				typ = val.Type()
+				switch val.Type().(type) {
+				case *types.IntType, *types.FloatType:
+					if typ == nil {
+						typ = val.Type()
+					}
+				default:
+					typ = val.Type()
+				}
 			}
 		}
 	}

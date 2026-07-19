@@ -1,0 +1,6 @@
+hello world
+int: 42 negative: -7
+int64: 1234567890124
+float: 2.5 bool: true and false
+nonewline
+from var

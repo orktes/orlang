@@ -1,0 +1,22 @@
+fn main() {
+    println("hex:", 0xFF, 0x10)
+    println("bin:", 0b1010, 0b11111111)
+    println("oct:", 0o17, 0o777)
+    println("sep:", 1_000_000, 12_34)
+    println("exp:", 1e3, 2.5e-2, 1E+2)
+
+    // implicit widening: literals adapt to their context
+    var a: int64 = 5
+    var b: int16 = 300
+    var c: uint32 = 7
+    var d: float64 = 1.5
+    var e: float32 = 2
+    println(a, b, c, d, e)
+
+    // mixed-width arithmetic widens automatically
+    var big: int64 = 10000000000
+    println("mixed:", big + 1, a + 2)
+    if big > 5 {
+        println("cmp works")
+    }
+}

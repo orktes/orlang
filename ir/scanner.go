@@ -19,7 +19,9 @@ func (s *Scanner) Scan() (token scanner.Token) {
 	}
 
 	token = s.scanner.Scan()
-	if token.Type == scanner.TokenTypeUnknown && token.Text == "%" {
+	// % lexes as the modulo operator in the base scanner; an identifier
+	// immediately following it forms an IR local name like %temp1.
+	if token.Type == scanner.TokenTypePERCENT || (token.Type == scanner.TokenTypeUnknown && token.Text == "%") {
 		next := s.scanner.Scan()
 		if next.Type == scanner.TokenTypeIdent {
 			next.StartColumn = token.StartColumn

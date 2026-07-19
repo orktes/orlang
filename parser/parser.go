@@ -364,8 +364,10 @@ func (p *Parser) peekMultiple(amount int) (tokens []scanner.Token) {
 		tokens[i] = p.read()
 	}
 
-	p.tokenBuffer = append(p.tokenBuffer, tokens...)
-	p.lastTokens = []scanner.Token{}
+	// Return the peeked tokens to the FRONT of the buffer. Appending them
+	// instead would reorder the stream whenever the buffer already holds
+	// tokens (e.g. a macro expansion), corrupting subsequent parsing.
+	p.returnToBuffer(tokens)
 	return
 }
 
