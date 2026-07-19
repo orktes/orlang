@@ -141,7 +141,8 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 		case scanner.TokenTypeBoolean:
 			return types.BoolType
 		default:
-			panic(fmt.Errorf("Could not resolve type for token %s", n.Token.String()))
+			v.emitError(n, fmt.Sprintf("could not resolve type for token %s", n.Token.String()), true)
+			return types.UnknownType("unresolved")
 		}
 	case *ast.FunctionCall:
 		// check if function calls is a typecast
@@ -359,7 +360,9 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 	case *ast.CastExpression:
 		return v.getTypeForNode(n.Type)
 	default:
-		panic("Could not resolve type for " + reflect.TypeOf(n).String())
+		// Previously this panicked, crashing the whole compiler; a fatal
+		// diagnostic keeps the process alive and points at the location.
+		v.emitError(node, fmt.Sprintf("internal: cannot resolve type for %s", reflect.TypeOf(n).String()), true)
 	}
 
 	return types.UnknownType("undefined")
@@ -1005,7 +1008,11 @@ typeCheck:
 		// Walk is handled by ast.Walk
 		break
 
+	case *ast.IfStatement:
+		v.checkBoolCondition(n.Condition)
+
 	case *ast.ForLoop:
+		v.checkBoolCondition(n.Condition)
 		// Create a subscope so init variables (e.g., var i = 0) don't leak
 		// into the parent scope. This prevents the bug where reusing the same
 		// variable name across multiple for-loops references the wrong alloca.
@@ -1392,13 +1399,23 @@ typeCheck:
 		}
 
 		if ident, ok := n.Left.(*ast.Identifier); ok {
+			v.checkConstAssignment(n, ident)
 			v.scope.SetInitialized(ident.Text, true)
+		}
+	case *ast.UnaryExpression:
+		// ++ and -- mutate their operand
+		if n.Operator.Type == scanner.TokenTypeIncrement || n.Operator.Type == scanner.TokenTypeDecrement {
+			if ident, ok := n.Expression.(*ast.Identifier); ok {
+				v.checkConstAssignment(n, ident)
+			}
 		}
 	case *ast.Struct:
 		nodeInfo.Type = v.getTypeForNode(node)
-		// TODO check that it is not redeclared
-		// TODO check that no property or function is double declared
 		if n.Name != nil {
+			if _, exists := v.info.Types[n.Name.Text]; exists {
+				v.emitError(n, fmt.Sprintf("%s already declared", n.Name.Text), true)
+				break
+			}
 			v.info.Types[n.Name.Text] = n
 			v.scope.Set(n.Name, n)
 		}
@@ -1409,10 +1426,12 @@ typeCheck:
 			v.scope.Set(n.Name, n)
 		}
 	case *ast.Interface:
-		// TODO check that it is not redeclared
-		// TODO check that no property or function is double declared
 		nodeInfo.Type = v.getTypeForNode(node)
 		if n.Name != nil {
+			if _, exists := v.info.Types[n.Name.Text]; exists {
+				v.emitError(n, fmt.Sprintf("%s already declared", n.Name.Text), true)
+				break
+			}
 			v.info.Types[n.Name.Text] = n
 			v.scope.Set(n.Name, n)
 		}

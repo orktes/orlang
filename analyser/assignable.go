@@ -1,6 +1,7 @@
 package analyser
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/orktes/orlang/ast"
@@ -158,6 +159,45 @@ func isAssignable(srcNode ast.Node, src, dst types.Type) bool {
 		return true
 	}
 	return isSafeNumericWidening(src, dst)
+}
+
+// checkBoolCondition reports an error when a condition expression has a
+// known non-bool type. Unresolvable types are skipped: they are either
+// already reported as undefined identifiers or (in for-loop init clauses)
+// not yet in scope when the loop node itself is visited.
+func (v *visitor) checkBoolCondition(expr ast.Expression) {
+	if expr == nil {
+		return
+	}
+	typ := types.LazyResolve(v.getTypeForNode(expr))
+	if typ == nil {
+		return
+	}
+	if _, unknown := typ.(types.UnknownType); unknown {
+		return
+	}
+	if !typ.IsEqual(types.BoolType) {
+		v.emitError(expr, fmt.Sprintf(
+			"non-bool %s (type %s) used as condition",
+			expr,
+			typ.GetName(),
+		), true)
+	}
+}
+
+// checkConstAssignment reports an error when assigning to a variable that
+// was declared const (its declaring initialization is allowed).
+func (v *visitor) checkConstAssignment(n ast.Node, ident *ast.Identifier) {
+	item := v.scope.Get(ident.Text, true)
+	varDecl, ok := item.(*ast.VariableDeclaration)
+	if !ok || !varDecl.Constant {
+		return
+	}
+	if details := v.scope.GetDetails(ident.Text, true); details != nil && !details.Initialized {
+		// First assignment initializes a const declared without a value.
+		return
+	}
+	v.emitError(n, fmt.Sprintf("cannot assign to constant %s", ident.Text), true)
 }
 
 // numericOperandsCompatible reports whether two operands of a binary or
