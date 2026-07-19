@@ -142,6 +142,12 @@ func buildLLVMIR(files []string) error {
 		moduleName := baseName[0 : len(baseName)-len(ext)]
 		llvmcg.SetModuleName(moduleName)
 		code := llvmcg.Generate(fileNode)
+		if errs := llvmcg.Errors(); len(errs) > 0 {
+			for _, e := range errs {
+				fmt.Fprintf(os.Stderr, "%s: %s\n", filePath, e)
+			}
+			return fmt.Errorf("code generation failed with %d error(s)", len(errs))
+		}
 		outfile := filePath[0:len(filePath)-len(ext)] + ".ll"
 		if err := os.WriteFile(outfile, []byte(code), 0644); err != nil {
 			return err

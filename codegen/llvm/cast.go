@@ -54,11 +54,57 @@ func (lcg *LLVMCodeGen) castIfNeeded(val value.Value, sourceTyp, targetTyp ortyp
 	return val
 }
 
+// numericTypeInfo describes an orlang numeric primitive for promotion
+// purposes.
+var numericTypeInfo = map[string]struct {
+	bits     int
+	unsigned bool
+	float    bool
+}{
+	"int8":    {8, false, false},
+	"int16":   {16, false, false},
+	"int32":   {32, false, false},
+	"int64":   {64, false, false},
+	"uint8":   {8, true, false},
+	"uint16":  {16, true, false},
+	"uint32":  {32, true, false},
+	"uint64":  {64, true, false},
+	"float32": {32, false, true},
+	"float64": {64, false, true},
+}
+
+// promoteNumeric performs implicit widening conversions between numeric
+// types: smaller ints widen to larger ints (zero- or sign-extended based
+// on the source's signedness), float32 widens to float64, and ints convert
+// to floats. Narrowing is never implicit — that requires an explicit cast.
 func (lcg *LLVMCodeGen) promoteNumeric(val value.Value, sourceTyp, targetTyp ortypes.Type) (value.Value, bool) {
-	// Handle int32 -> int64 promotion
-	if sourceTyp.GetName() == "int32" && targetTyp.GetName() == "int64" {
-		return lcg.currentBlock.NewSExt(val, types.I64), true
+	src, srcOk := numericTypeInfo[sourceTyp.GetName()]
+	dst, dstOk := numericTypeInfo[targetTyp.GetName()]
+	if !srcOk || !dstOk || sourceTyp.GetName() == targetTyp.GetName() {
+		return nil, false
 	}
+
+	dstLLVM := lcg.getLLVMTypeFromSemantic(targetTyp)
+	if val.Type().Equal(dstLLVM) {
+		return val, true
+	}
+
+	// int -> float
+	if !src.float && dst.float {
+		return lcg.castValue(val, dstLLVM, !src.unsigned, true), true
+	}
+	// float32 -> float64
+	if src.float && dst.float && src.bits < dst.bits {
+		return lcg.currentBlock.NewFPExt(val, dstLLVM), true
+	}
+	// small int -> larger int
+	if !src.float && !dst.float && src.bits < dst.bits {
+		if src.unsigned {
+			return lcg.currentBlock.NewZExt(val, dstLLVM), true
+		}
+		return lcg.currentBlock.NewSExt(val, dstLLVM), true
+	}
+
 	return nil, false
 }
 

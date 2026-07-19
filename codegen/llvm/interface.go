@@ -107,9 +107,8 @@ func (lcg *LLVMCodeGen) getOrCreateItable(sourceTyp ortypes.Type, targetTyp *ort
 			fn, ok := lcg.functions[structMethodName]
 			if !ok {
 				// Should not happen if type checking passed
-				// But maybe it's defined in another file?
-				// For now assume it exists or panic/error
-				panic(fmt.Sprintf("Method %s not found for struct %s", structMethodName, structTyp.Name))
+				lcg.errorf(nil, "method %s not found for struct %s", methodName, structTyp.Name)
+				return constant.NewNull(types.I8Ptr)
 			}
 
 			// Create thunk

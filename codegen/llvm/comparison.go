@@ -42,6 +42,12 @@ func (lcg *LLVMCodeGen) visitComparisonExpression(n *ast.ComparisonExpression) {
 		}
 	}
 
+	preds, knownOp := comparisonPredicates[n.Operator.Text]
+	if !knownOp {
+		lcg.errorf(n, "unsupported comparison operator %q", n.Operator.Text)
+		return
+	}
+
 	if isString {
 		// Use strcmp for string comparison
 		var strcmpFn *ir.Func
@@ -54,39 +60,39 @@ func (lcg *LLVMCodeGen) visitComparisonExpression(n *ast.ComparisonExpression) {
 			lcg.functions["strcmp"] = strcmpFn
 		}
 		cmpResult := lcg.currentBlock.NewCall(strcmpFn, leftVal, rightVal)
-
-		switch n.Operator.Text {
-		case "==":
-			val = lcg.currentBlock.NewICmp(enum.IPredEQ, cmpResult, constant.NewInt(types.I32, 0))
-		case "!=":
-			val = lcg.currentBlock.NewICmp(enum.IPredNE, cmpResult, constant.NewInt(types.I32, 0))
-		case "<":
-			val = lcg.currentBlock.NewICmp(enum.IPredSLT, cmpResult, constant.NewInt(types.I32, 0))
-		case "<=":
-			val = lcg.currentBlock.NewICmp(enum.IPredSLE, cmpResult, constant.NewInt(types.I32, 0))
-		case ">":
-			val = lcg.currentBlock.NewICmp(enum.IPredSGT, cmpResult, constant.NewInt(types.I32, 0))
-		case ">=":
-			val = lcg.currentBlock.NewICmp(enum.IPredSGE, cmpResult, constant.NewInt(types.I32, 0))
-		}
+		val = lcg.currentBlock.NewICmp(preds.signed, cmpResult, constant.NewInt(types.I32, 0))
+	} else if isFloatLLVMType(leftVal.Type()) || isFloatLLVMType(rightVal.Type()) {
+		leftVal, rightVal = lcg.unifyFloatOperands(leftVal, rightVal, n.Left, n.Right)
+		val = lcg.currentBlock.NewFCmp(preds.float, leftVal, rightVal)
+	} else if lcg.operandsUnsigned(n.Left, n.Right) {
+		val = lcg.currentBlock.NewICmp(preds.unsigned, leftVal, rightVal)
 	} else {
-		switch n.Operator.Text {
-		case "==":
-			val = lcg.currentBlock.NewICmp(enum.IPredEQ, leftVal, rightVal)
-		case "!=":
-			val = lcg.currentBlock.NewICmp(enum.IPredNE, leftVal, rightVal)
-		case "<":
-			val = lcg.currentBlock.NewICmp(enum.IPredSLT, leftVal, rightVal)
-		case "<=":
-			val = lcg.currentBlock.NewICmp(enum.IPredSLE, leftVal, rightVal)
-		case ">":
-			val = lcg.currentBlock.NewICmp(enum.IPredSGT, leftVal, rightVal)
-		case ">=":
-			val = lcg.currentBlock.NewICmp(enum.IPredSGE, leftVal, rightVal)
-		}
+		val = lcg.currentBlock.NewICmp(preds.signed, leftVal, rightVal)
 	}
 
 	lcg.values[n] = val
+}
+
+// unifyFloatOperands makes both operands the same float type so fcmp/fadd
+// and friends receive matching operand types: ints are converted to the
+// float side's type, and float32 is extended when paired with float64.
+func (lcg *LLVMCodeGen) unifyFloatOperands(left, right value.Value, leftNode, rightNode ast.Node) (value.Value, value.Value) {
+	lf := isFloatLLVMType(left.Type())
+	rf := isFloatLLVMType(right.Type())
+
+	switch {
+	case lf && !rf:
+		right = lcg.castValue(right, left.Type(), !isUnsignedType(lcg.semanticType(rightNode)), true)
+	case rf && !lf:
+		left = lcg.castValue(left, right.Type(), !isUnsignedType(lcg.semanticType(leftNode)), true)
+	case lf && rf && !left.Type().Equal(right.Type()):
+		if left.Type().Equal(types.Double) {
+			right = lcg.currentBlock.NewFPExt(right, types.Double)
+		} else {
+			left = lcg.currentBlock.NewFPExt(left, types.Double)
+		}
+	}
+	return left, right
 }
 
 // visitLogicalAnd implements short-circuit && evaluation

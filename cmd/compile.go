@@ -12,6 +12,7 @@ import (
 	"github.com/orktes/orlang/ast"
 	"github.com/orktes/orlang/codegen/llvm"
 	"github.com/orktes/orlang/parser"
+	"github.com/orktes/orlang/runtimelib"
 )
 
 // compileResult holds the output of a full compilation pipeline.
@@ -29,7 +30,8 @@ type linkDirective struct {
 }
 
 // compileLLVM takes .or source files, generates LLVM IR, compiles to object
-// files with clang, links with bdw-gc, and returns the path to the binary.
+// files with clang, links them with the embedded runtime (GC + built-in map),
+// and returns the path to the binary.
 // outputPath is the desired binary name (empty = derived from first source file).
 // Automatically discovers sibling .or files in the same directory.
 func compileLLVM(sourceFiles []string, outputPath string) (*compileResult, error) {
@@ -203,6 +205,13 @@ func compileOrToLL(srcFile string) (string, *ast.File, error) {
 	llvmcg.SetModuleName(moduleName)
 
 	code := llvmcg.Generate(fileNode)
+	if errs := llvmcg.Errors(); len(errs) > 0 {
+		msgs := make([]string, len(errs))
+		for i, e := range errs {
+			msgs[i] = fmt.Sprintf("%s: %s", srcFile, e)
+		}
+		return "", nil, fmt.Errorf("%s", strings.Join(msgs, "\n"))
+	}
 	llFile := strings.TrimSuffix(srcFile, ext) + ".ll"
 	if err := os.WriteFile(llFile, []byte(code), 0644); err != nil {
 		return "", nil, err
@@ -264,13 +273,68 @@ func collectPkgConfigCflags(directives []linkDirective) []string {
 	return flags
 }
 
-// linkObjects links object files into a binary, including bdw-gc and
-// any libraries specified by link directives.
-func linkObjects(objectFiles []string, outputPath string, clangTarget string, directives []linkDirective) error {
-	// Always link bdw-gc (GC is required by all orlang programs)
-	gcFlags, err := exec.Command("pkg-config", "--libs", "bdw-gc").Output()
+// runtimeObject returns the path to the compiled orlang runtime object
+// (GC + built-in map), compiling the embedded C source on first use. The
+// result is cached in the user cache directory keyed by source hash and
+// target, so repeated builds don't recompile it.
+func runtimeObject(clangTarget string) (string, error) {
+	targetKey := clangTarget
+	if targetKey == "" {
+		targetKey = "native"
+	}
+	targetKey = strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '-' || r == '_' {
+			return r
+		}
+		return '-'
+	}, targetKey)
+
+	cacheDir, err := os.UserCacheDir()
 	if err != nil {
-		return fmt.Errorf("pkg-config --libs bdw-gc: %w (is libgc/bdw-gc installed?)", err)
+		cacheDir = os.TempDir()
+	}
+	cacheDir = filepath.Join(cacheDir, "orlang")
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return "", fmt.Errorf("creating runtime cache dir: %w", err)
+	}
+
+	oFile := filepath.Join(cacheDir, fmt.Sprintf("runtime-%s-%s.o", runtimelib.Hash(), targetKey))
+	if _, err := os.Stat(oFile); err == nil {
+		return oFile, nil
+	}
+
+	cFile := filepath.Join(cacheDir, fmt.Sprintf("runtime-%s.c", runtimelib.Hash()))
+	if err := os.WriteFile(cFile, runtimelib.Source, 0644); err != nil {
+		return "", fmt.Errorf("writing runtime source: %w", err)
+	}
+	defer os.Remove(cFile)
+
+	// Compile to a temp name first so a concurrent build never sees a
+	// half-written object at the final path.
+	tmpO := oFile + ".tmp"
+	args := []string{"-O2", "-w", "-c", "-o", tmpO, cFile}
+	if clangTarget != "" {
+		args = append([]string{"-target", clangTarget}, args...)
+	}
+	cmd := exec.Command("clang", args...)
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		os.Remove(tmpO)
+		return "", fmt.Errorf("compiling orlang runtime: %w", err)
+	}
+	if err := os.Rename(tmpO, oFile); err != nil {
+		os.Remove(tmpO)
+		return "", fmt.Errorf("installing orlang runtime object: %w", err)
+	}
+	return oFile, nil
+}
+
+// linkObjects links object files into a binary together with the embedded
+// orlang runtime and any libraries specified by link directives.
+func linkObjects(objectFiles []string, outputPath string, clangTarget string, directives []linkDirective) error {
+	runtimeObj, err := runtimeObject(clangTarget)
+	if err != nil {
+		return err
 	}
 
 	args := []string{"-Wno-override-module", "-o", outputPath}
@@ -278,10 +342,10 @@ func linkObjects(objectFiles []string, outputPath string, clangTarget string, di
 		args = append([]string{"-target", clangTarget}, args...)
 	}
 	args = append(args, objectFiles...)
-	args = append(args, strings.Fields(strings.TrimSpace(string(gcFlags)))...)
+	args = append(args, runtimeObj)
 
 	// Process link directives for additional libraries
-	seenPkg := map[string]bool{"bdw-gc": true} // deduplicate, bdw-gc already added
+	seenPkg := map[string]bool{}
 	seenLib := map[string]bool{}
 
 	for _, dir := range directives {
@@ -303,6 +367,10 @@ func linkObjects(objectFiles []string, outputPath string, clangTarget string, di
 			seenLib[dir.Path] = true
 			args = append(args, "-l"+dir.Path)
 		}
+	}
+
+	if runtime.GOOS == "linux" {
+		args = append(args, "-lm")
 	}
 
 	cmd := exec.Command("clang", args...)
