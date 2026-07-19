@@ -21,13 +21,19 @@ type FileInfo struct {
 	NodeInfo map[ast.Node]*NodeInfo
 	Types    map[string]ast.Node
 	Closures []*Closure
+
+	// resolving tracks nodes whose types are currently being resolved so
+	// self-referential types (e.g. a struct method returning the struct)
+	// resolve lazily instead of recursing forever.
+	resolving map[ast.Node]bool
 }
 
 func NewFileInfo() *FileInfo {
 	return &FileInfo{
-		NodeInfo: map[ast.Node]*NodeInfo{},
-		Types:    map[string]ast.Node{},
-		Closures: []*Closure{},
+		NodeInfo:  map[ast.Node]*NodeInfo{},
+		Types:     map[string]ast.Node{},
+		Closures:  []*Closure{},
+		resolving: map[ast.Node]bool{},
 	}
 }
 

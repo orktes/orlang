@@ -43,6 +43,7 @@ type LLVMCodeGen struct {
 	anonFnCounter     int                             // Counter for unique anonymous function names
 	closureWrappers   map[string]*ir.Func             // function name -> closure wrapper (adds env param)
 	errors            []error                         // Codegen errors collected during Generate
+	materializing     map[string]bool                 // guards recursive on-demand struct materialization
 }
 
 func New(info *analyser.Info) *LLVMCodeGen {
@@ -299,6 +300,28 @@ func (lcg *LLVMCodeGen) getLLVMTypeFromSemantic(t ortypes.Type) types.Type {
 		if s, ok := lcg.structs[t.Name]; ok {
 			return types.NewPointer(s)
 		}
+		// Materialize the LLVM struct type on demand from the semantic
+		// type — needed for types reached through imported modules that
+		// were not explicitly imported (e.g. a function's return type).
+		if t.Name != "" && !lcg.materializing[t.Name] {
+			if lcg.materializing == nil {
+				lcg.materializing = map[string]bool{}
+			}
+			lcg.materializing[t.Name] = true
+			var fields []types.Type
+			fieldIndices := make(map[string]int)
+			for i, v := range t.Variables {
+				fields = append(fields, lcg.getLLVMTypeFromSemantic(v.Type))
+				fieldIndices[v.Name] = i
+			}
+			delete(lcg.materializing, t.Name)
+			llvmStructType := types.NewStruct(fields...)
+			typeDef := lcg.module.NewTypeDef(t.Name, llvmStructType)
+			lcg.structs[t.Name] = typeDef
+			lcg.structDefinitions[t.Name] = llvmStructType
+			lcg.structFields[t.Name] = fieldIndices
+			return types.NewPointer(typeDef)
+		}
 	case *ortypes.InterfaceType:
 		return lcg.getInterfaceType()
 	case *ortypes.TupleType:
@@ -534,7 +557,7 @@ func (lcg *LLVMCodeGen) visitIndexExpression(n *ast.IndexExpression) {
 	// Check if this is a map access by looking at semantic type info
 	nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n.Target]
 	if nodeInfo != nil {
-		if mapType, isMapType := nodeInfo.Type.(*ortypes.MapType); isMapType {
+		if mapType, isMapType := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.MapType); isMapType {
 			// Handle map get operation
 			ast.Walk(lcg, n.Target)
 			mapPtr := lcg.values[n.Target]
@@ -645,7 +668,7 @@ func (lcg *LLVMCodeGen) visitArrayExpression(n *ast.ArrayExpression) {
 		return
 	}
 
-	arrayType, ok := nodeInfo.Type.(*ortypes.ArrayType)
+	arrayType, ok := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.ArrayType)
 	if !ok {
 		return
 	}
@@ -832,6 +855,24 @@ func (lcg *LLVMCodeGen) convertMapValueFromI64(val value.Value, targetType types
 }
 
 func (lcg *LLVMCodeGen) getAddress(n ast.Node) value.Value {
+	// A call result has no storage; spill it to a stack slot so chained
+	// method calls like v.get("a").str() have an addressable receiver.
+	if call, ok := n.(*ast.FunctionCall); ok {
+		if _, evaluated := lcg.values[call]; !evaluated {
+			ast.Walk(lcg, call)
+		}
+		val := lcg.values[call]
+		if val == nil {
+			return nil
+		}
+		if _, isPtr := val.Type().(*types.PointerType); isPtr {
+			return val
+		}
+		slot := lcg.currentBlock.NewAlloca(val.Type())
+		lcg.currentBlock.NewStore(val, slot)
+		return slot
+	}
+
 	if ident, ok := n.(*ast.Identifier); ok {
 		nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[ident]
 		if nodeInfo != nil {
@@ -1248,7 +1289,7 @@ func (lcg *LLVMCodeGen) visitForRangeLoop(n *ast.ForRangeLoop) {
 		// Get length from semantic type info
 		nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n.Iterable]
 		if nodeInfo != nil {
-			if arrType, ok := nodeInfo.Type.(*ortypes.ArrayType); ok {
+			if arrType, ok := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.ArrayType); ok {
 				length = constant.NewInt(types.I32, arrType.Length)
 			}
 		}
@@ -1588,7 +1629,7 @@ func (lcg *LLVMCodeGen) visitAssigment(n *ast.Assigment) {
 	if indexExpr, ok := n.Left.(*ast.IndexExpression); ok {
 		nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[indexExpr.Target]
 		if nodeInfo != nil {
-			if _, isMapType := nodeInfo.Type.(*ortypes.MapType); isMapType {
+			if _, isMapType := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.MapType); isMapType {
 				// Handle map insert operation
 				ast.Walk(lcg, indexExpr.Target)
 				mapPtr := lcg.values[indexExpr.Target]
@@ -1876,7 +1917,7 @@ func (lcg *LLVMCodeGen) visitFunctionDeclaration(n *ast.FunctionDeclaration) {
 	}
 
 	if nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[lookupNode]; nodeInfo != nil {
-		if ft, ok := nodeInfo.Type.(*ortypes.SignatureType); ok {
+		if ft, ok := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.SignatureType); ok {
 			funcSemType = ft
 		}
 	}
@@ -1884,7 +1925,7 @@ func (lcg *LLVMCodeGen) visitFunctionDeclaration(n *ast.FunctionDeclaration) {
 	// If still not found, try the other one (if we tried identifier, try n; if we tried n, well n is all we have)
 	if funcSemType == nil && n.Signature.Identifier != nil {
 		if nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n]; nodeInfo != nil {
-			if ft, ok := nodeInfo.Type.(*ortypes.SignatureType); ok {
+			if ft, ok := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.SignatureType); ok {
 				funcSemType = ft
 			}
 		}
@@ -2165,7 +2206,7 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 			nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[sliceArg.Expression]
 			var isFixedArray bool
 			if nodeInfo != nil {
-				if arrayType, ok := nodeInfo.Type.(*ortypes.ArrayType); ok && arrayType.Length >= 0 {
+				if arrayType, ok := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.ArrayType); ok && arrayType.Length >= 0 {
 					isFixedArray = true
 					elemType = lcg.getLLVMTypeFromSemantic(arrayType.Type)
 					oldLen = constant.NewInt(types.I32, int64(arrayType.Length))
@@ -2340,7 +2381,7 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 			var targetTyp ortypes.Type
 			nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[member.Target]
 			if nodeInfo != nil {
-				targetTyp = nodeInfo.Type
+				targetTyp = ortypes.LazyResolve(nodeInfo.Type)
 			}
 
 			if ifaceTyp, ok := targetTyp.(*ortypes.InterfaceType); ok {
@@ -2468,7 +2509,7 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 						// Check if it is a valid method in the struct type
 						nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[member.Target]
 						if nodeInfo != nil {
-							if structTyp, ok := nodeInfo.Type.(*ortypes.StructType); ok {
+							if structTyp, ok := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.StructType); ok {
 								if has, methodTyp := structTyp.HasFunction(methodName); has {
 									if sig, ok := methodTyp.(*ortypes.SignatureType); ok {
 										// Declare it
@@ -2572,7 +2613,7 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 			if closureVal != nil {
 				nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[ident]
 				if nodeInfo != nil {
-					if sig, ok := nodeInfo.Type.(*ortypes.SignatureType); ok {
+					if sig, ok := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.SignatureType); ok {
 						// Extract fn_ptr and env_ptr from closure struct { i8*, i8* }
 						fnPtrRaw := lcg.currentBlock.NewExtractValue(closureVal, 0)
 						envPtr := lcg.currentBlock.NewExtractValue(closureVal, 1)
@@ -2628,13 +2669,13 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 	if ident, ok := n.Callee.(*ast.Identifier); ok {
 		nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[ident]
 		if nodeInfo != nil {
-			signature, _ = nodeInfo.Type.(*ortypes.SignatureType)
+			signature, _ = ortypes.LazyResolve(nodeInfo.Type).(*ortypes.SignatureType)
 		}
 	} else if member, ok := n.Callee.(*ast.MemberExpression); ok {
 		// Method call resolution
 		nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[member.Target]
 		if nodeInfo != nil && nodeInfo.Type != nil {
-			targetObjTyp := nodeInfo.Type
+			targetObjTyp := ortypes.LazyResolve(nodeInfo.Type)
 			if typeWithMethods, ok := targetObjTyp.(ortypes.TypeWithMethods); ok {
 				if has, typ := typeWithMethods.HasFunction(member.Property.Text); has {
 					signature, _ = typ.(*ortypes.SignatureType)

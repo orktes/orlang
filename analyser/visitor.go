@@ -399,7 +399,20 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 		return nodeInfo.Type
 	}
 
+	// Break self-referential resolution cycles (e.g. a struct whose method
+	// signatures mention the struct itself) with a lazy reference to the
+	// eventually-resolved type.
+	if v.info.resolving[node] {
+		return &types.LazyType{Resolver: func() types.Type {
+			if info := v.info.NodeInfo[node]; info != nil && info.Type != nil {
+				return info.Type
+			}
+			return types.UnknownType("recursive type")
+		}}
+	}
+	v.info.resolving[node] = true
 	typ := v.resolveTypeForNode(node)
+	delete(v.info.resolving, node)
 	nodeInfo.Type = typ
 
 	return typ
@@ -1250,10 +1263,22 @@ typeCheck:
 		}
 		importedAnalyser.FileLoader = v.fileLoader
 
-		_, err = importedAnalyser.Analyse()
+		importedInfo, err := importedAnalyser.Analyse()
 		if err != nil {
 			v.emitError(n, fmt.Sprintf("failed to analyse import: %s", err), true)
 			break
+		}
+
+		// Make the imported module's type declarations resolvable here even
+		// when not explicitly imported: an imported function may mention
+		// them in its signature (e.g. server() => Server). Locally declared
+		// names take precedence.
+		if importedFileInfo := importedInfo.FileInfo[importedFile]; importedFileInfo != nil {
+			for name, typNode := range importedFileInfo.Types {
+				if _, exists := v.info.Types[name]; !exists {
+					v.info.Types[name] = typNode
+				}
+			}
 		}
 
 		// Import symbols
