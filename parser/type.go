@@ -6,8 +6,13 @@ import (
 )
 
 func (p *Parser) parseType() (typ ast.Type, ok bool) {
-	// Try pointer type first
+	// Try pointer type first. map and chan must come before plain type
+	// references, which would otherwise consume their leading identifier.
 	if typ, ok = p.parsePointerType(); ok {
+		return
+	} else if typ, ok = p.parseMapType(); ok {
+		return
+	} else if typ, ok = p.parseChannelType(); ok {
 		return
 	} else if typ, ok = p.parseTypeReference(); ok {
 		return
@@ -21,10 +26,29 @@ func (p *Parser) parseType() (typ ast.Type, ok bool) {
 		return
 	} else if typ, ok = p.parseArrayType(); ok {
 		return
-	} else if typ, ok = p.parseMapType(); ok {
+	}
+
+	return
+}
+
+func (p *Parser) parseChannelType() (node ast.Type, ok bool) {
+	token := p.read()
+	if token.Type != scanner.TokenTypeIdent || token.Text != "chan" {
+		p.unread()
 		return
 	}
 
+	elemType, elemOk := p.parseType()
+	if !elemOk {
+		p.error(unexpected(p.read().StringValue(), "channel element type"))
+		return
+	}
+
+	node = &ast.ChannelType{
+		Start: ast.StartPositionFromToken(token),
+		Type:  elemType,
+	}
+	ok = true
 	return
 }
 

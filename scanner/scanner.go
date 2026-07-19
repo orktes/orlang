@@ -567,6 +567,8 @@ func (s *Scanner) scanIdent() (t TokenType, text string, val interface{}) {
 		t = TokenTypeDefault
 	case "defer":
 		t = TokenTypeDefer
+	case "go":
+		t = TokenTypeGo
 	}
 
 	return

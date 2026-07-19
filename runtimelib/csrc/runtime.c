@@ -65,6 +65,16 @@ extern char _end[] __attribute__((weak));
 
 extern char **environ;
 
+/* Green-thread hooks (defined in task.c; weak so this file also links
+ * standalone, e.g. in the GC unit tests). When a collection runs while a
+ * task is active, the stack scan must stop at the task stack's edge and
+ * main's dormant frames must be scanned separately. Sleeping task stacks
+ * need no special handling: they are GC allocations reachable from the
+ * scheduler's globals, so the ordinary object scan covers them. */
+extern uintptr_t orl_task_stack_bottom(void) __attribute__((weak));
+extern void orl_task_mark_main_stack(void (*)(const void *, const void *),
+                                     uintptr_t) __attribute__((weak));
+
 static void orl_fatal(const char *msg) {
   fprintf(stderr, "orlang runtime: %s\n", msg);
   abort();
@@ -159,6 +169,11 @@ static void orl_mark_range(const void *from, const void *to) {
   }
 }
 
+/* Non-static wrapper with the signature the task hook expects. */
+static void orl_mark_range_for_tasks(const void *from, const void *to) {
+  orl_mark_range(from, to);
+}
+
 static void orl_gc_collect(void) {
   if (orl_alloc_count == 0) {
     return;
@@ -175,8 +190,20 @@ static void orl_gc_collect(void) {
   orl_worklist_len = 0;
 
   /* Roots: machine stack (regs lives on it, so spilled registers are
-   * covered), plus the executable's data/bss segments (globals). */
-  orl_mark_range((void *)&regs, (void *)orl_stack_bottom);
+   * covered), plus the executable's data/bss segments (globals). When
+   * running on a green-thread stack, scan up to that stack's edge and
+   * cover main's dormant frames via the task hook. */
+  uintptr_t stack_bottom = orl_stack_bottom;
+  if (orl_task_stack_bottom != NULL) {
+    uintptr_t task_bottom = orl_task_stack_bottom();
+    if (task_bottom != 0) {
+      stack_bottom = task_bottom;
+      if (orl_task_mark_main_stack != NULL) {
+        orl_task_mark_main_stack(orl_mark_range_for_tasks, orl_stack_bottom);
+      }
+    }
+  }
+  orl_mark_range((void *)&regs, (void *)stack_bottom);
 #if defined(__ELF__)
   if (&__data_start[0] != NULL && &_end[0] != NULL && __data_start < _end) {
     orl_mark_range(__data_start, _end);

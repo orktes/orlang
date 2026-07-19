@@ -11,7 +11,8 @@
 //   }
 
 extern http_server_create(port: int32) => &int8
-extern http_server_accept(server: &int8) => &int8
+extern http_server_accept_conn(server: &int8) => int32
+extern http_read_request(conn: int32) => &int8
 extern http_request_method(req: &int8) => string
 extern http_request_path(req: &int8) => string
 extern http_request_query(req: &int8) => string
@@ -116,20 +117,33 @@ export struct Server {
         return false
     }
 
-    // listen serves requests forever on the given port.
+    // serve_conn reads and dispatches one request; runs on its own green
+    // thread so slow clients don't block the accept loop.
+    fn serve_conn(conn: int32) {
+        var handle = http_read_request(conn)
+        // read_request returns a null handle for dropped/malformed
+        // connections; the accessors are null-safe and return ""
+        if http_request_method(handle) != "" {
+            var req = Request{handle: handle}
+            var res = Response{handle: handle}
+            if !this.handle(req, res) {
+                res.status(404)
+                res.send("Not Found")
+            }
+        }
+    }
+
+    // listen serves requests forever on the given port, handling each
+    // connection on its own green thread.
     fn listen(port: int32) {
         var srv = http_server_create(port)
+        var self = this
         for {
-            var handle = http_server_accept(srv)
-            // accept returns a null handle for dropped/malformed
-            // connections; the accessors are null-safe and return ""
-            if http_request_method(handle) != "" {
-                var req = Request{handle: handle}
-                var res = Response{handle: handle}
-                if !this.handle(req, res) {
-                    res.status(404)
-                    res.send("Not Found")
-                }
+            var conn = http_server_accept_conn(srv)
+            if conn >= 0 {
+                go fn () => void {
+                    self.serve_conn(conn)
+                }()
             }
         }
     }

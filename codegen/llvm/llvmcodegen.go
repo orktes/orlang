@@ -3,6 +3,7 @@ package llvm
 import (
 	"fmt"
 	"math"
+	"os"
 	"runtime"
 	"strings"
 
@@ -44,6 +45,16 @@ type LLVMCodeGen struct {
 	closureWrappers   map[string]*ir.Func             // function name -> closure wrapper (adds env param)
 	errors            []error                         // Codegen errors collected during Generate
 	materializing     map[string]bool                 // guards recursive on-demand struct materialization
+	goThunkCounter    int                             // unique names for go-statement thunks
+	structASTs        map[string]*ast.Struct          // struct declarations (for field defaults)
+	globalInits       []pendingGlobalInit             // runtime-evaluated global initializers
+}
+
+// pendingGlobalInit is a global whose initializer is not a compile-time
+// constant; it is evaluated and stored at the top of main.
+type pendingGlobalInit struct {
+	global *ir.Global
+	decl   *ast.VariableDeclaration
 }
 
 func New(info *analyser.Info) *LLVMCodeGen {
@@ -60,6 +71,7 @@ func New(info *analyser.Info) *LLVMCodeGen {
 		allocaMetadata:    make(map[value.Value]*AllocaMetadata),
 		enumValues:        make(map[string]map[string]int32),
 		closureWrappers:   make(map[string]*ir.Func),
+		structASTs:        make(map[string]*ast.Struct),
 	}
 	lcg.initializeModule() // Call the new initialization function
 	// Initialize helpers that need reference to lcg
@@ -101,8 +113,12 @@ func (lcg *LLVMCodeGen) SetModuleName(name string) {
 func (lcg *LLVMCodeGen) Generate(file *ast.File) (code string) {
 	// Codegen bugs and unexpected inputs surface as panics deep in the
 	// visitor; report them as errors instead of crashing the compiler.
+	// (ORLANG_PANIC=1 re-panics for debugging.)
 	defer func() {
 		if r := recover(); r != nil {
+			if os.Getenv("ORLANG_PANIC") == "1" {
+				panic(r)
+			}
 			lcg.errors = append(lcg.errors, fmt.Errorf("internal codegen error: %v", r))
 		}
 	}()
@@ -348,6 +364,9 @@ func (lcg *LLVMCodeGen) getLLVMTypeFromSemantic(t ortypes.Type) types.Type {
 	case *ortypes.MapType:
 		// Maps are opaque pointers (i8*) to the C runtime Map struct
 		return types.NewPointer(types.I8)
+	case *ortypes.ChannelType:
+		// Channels are opaque pointers to the runtime channel struct
+		return types.NewPointer(types.I8)
 	}
 
 	return types.I32
@@ -418,6 +437,9 @@ func (lcg *LLVMCodeGen) getLLVMType(t ast.Type) types.Type {
 	case *ast.MapType:
 		// Maps are opaque pointers to the runtime Map
 		return types.NewPointer(types.I8)
+	case *ast.ChannelType:
+		// Channels are opaque pointers to the runtime channel
+		return types.NewPointer(types.I8)
 	}
 
 	return types.I32
@@ -462,6 +484,29 @@ func (lcg *LLVMCodeGen) visitStructExpression(n *ast.StructExpression) {
 
 	// Initialize fields
 	fieldIndices := lcg.structFields[name]
+
+	// Apply field default values first (memory is zeroed by GC_malloc, so
+	// fields without defaults become zero values); explicit arguments below
+	// overwrite them.
+	if structAST, ok := lcg.structASTs[name]; ok {
+		structDef := lcg.structDefinitions[name]
+		for i, field := range structAST.Variables {
+			if field.DefaultValue == nil {
+				continue
+			}
+			ast.Walk(lcg, field.DefaultValue)
+			val := lcg.values[field.DefaultValue]
+			if val == nil {
+				continue
+			}
+			if structDef != nil && i < len(structDef.Fields) && !val.Type().Equal(structDef.Fields[i]) {
+				val = lcg.numericConvert(val, structDef.Fields[i], field.DefaultValue)
+			}
+			gep := lcg.currentBlock.NewGetElementPtr(structType, alloca,
+				constant.NewInt(types.I32, 0), constant.NewInt(types.I32, int64(i)))
+			lcg.currentBlock.NewStore(val, gep)
+		}
+	}
 
 	// Handle positional arguments
 	// TODO: Handle named arguments properly. For now assuming positional or named matching
@@ -1098,6 +1143,9 @@ func (lcg *LLVMCodeGen) Visit(node ast.Node) ast.Visitor {
 	case *ast.DeferStatement:
 		lcg.visitDeferStatement(n)
 		return nil
+	case *ast.GoStatement:
+		lcg.visitGoStatement(n)
+		return nil
 	}
 	return lcg
 }
@@ -1557,9 +1605,14 @@ func (lcg *LLVMCodeGen) visitGlobalVariableDeclaration(n *ast.VariableDeclaratio
 
 	// Determine the constant initializer
 	var init constant.Constant
+	runtimeInit := false
 	if n.DefaultValue != nil {
 		if valExpr, ok := n.DefaultValue.(*ast.ValueExpression); ok {
 			init = lcg.getConstantFromValue(valExpr, typ)
+		} else {
+			// Non-literal initializer (call, expression): start zeroed and
+			// evaluate at the top of main.
+			runtimeInit = true
 		}
 	}
 	if init == nil {
@@ -1573,6 +1626,10 @@ func (lcg *LLVMCodeGen) visitGlobalVariableDeclaration(n *ast.VariableDeclaratio
 
 	g := lcg.module.NewGlobalDef(name, init)
 	lcg.values[n.Name] = g
+
+	if runtimeInit {
+		lcg.globalInits = append(lcg.globalInits, pendingGlobalInit{global: g, decl: n})
+	}
 
 	// Store metadata
 	var semType ortypes.Type
@@ -1980,10 +2037,25 @@ func (lcg *LLVMCodeGen) visitFunctionDeclaration(n *ast.FunctionDeclaration) {
 	lcg.currentFunc = fn
 	lcg.currentBlock = block
 
-	// Initialize GC at the start of main
+	// Initialize GC at the start of main, then evaluate runtime global
+	// initializers (globals whose values are calls/expressions).
 	if name == "main" {
 		gcInit := lcg.getOrDeclareGCInit()
 		block.NewCall(gcInit)
+
+		for _, pending := range lcg.globalInits {
+			ast.Walk(lcg, pending.decl.DefaultValue)
+			val := lcg.values[pending.decl.DefaultValue]
+			if val == nil {
+				lcg.errorf(pending.decl, "cannot evaluate global initializer")
+				continue
+			}
+			elemType := pending.global.Typ.ElemType
+			if !val.Type().Equal(elemType) {
+				val = lcg.numericConvert(val, elemType, pending.decl.DefaultValue)
+			}
+			lcg.currentBlock.NewStore(val, pending.global)
+		}
 	}
 
 	// Alloca parameters so they are mutable/addressable
@@ -2126,6 +2198,24 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 				return
 			case "contains":
 				lcg.visitMapContainsBuiltin(n)
+				return
+			case "channel":
+				lcg.visitChannelNewBuiltin(n)
+				return
+			case "send":
+				lcg.visitChannelSendBuiltin(n)
+				return
+			case "recv":
+				lcg.visitChannelRecvBuiltin(n)
+				return
+			case "close":
+				lcg.visitChannelCloseBuiltin(n)
+				return
+			case "closed":
+				lcg.visitChannelClosedBuiltin(n)
+				return
+			case "yield":
+				lcg.currentBlock.NewCall(lcg.getOrDeclareTaskRuntime("task_yield"))
 				return
 			}
 		}
@@ -2700,6 +2790,13 @@ func (lcg *LLVMCodeGen) visitIdentifier(n *ast.Identifier) {
 	if n == nil {
 		return
 	}
+	// `this` inside a method resolves to the receiver parameter (a struct
+	// pointer, reference semantics — no load needed).
+	if n.Text == "this" && lcg.currentFunc != nil && len(lcg.currentFunc.Params) > 0 &&
+		lcg.currentFunc.Params[0].LocalName == "this" {
+		lcg.values[n] = lcg.currentFunc.Params[0]
+		return
+	}
 	nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n]
 	if nodeInfo == nil {
 		return
@@ -2810,7 +2907,14 @@ func (lcg *LLVMCodeGen) visitReturnStatement(n *ast.ReturnStatement) {
 		lcg.currentBlock.NewRet(val)
 	} else {
 		lcg.emitDeferredCalls()
-		lcg.currentBlock.NewRet(nil)
+		// main is forced to return i32 for the C entry point; a bare
+		// return there means exit code 0.
+		if lcg.currentFunc != nil && lcg.currentFunc.Name() == "main" &&
+			lcg.currentFunc.Sig.RetType.Equal(types.I32) {
+			lcg.currentBlock.NewRet(constant.NewInt(types.I32, 0))
+		} else {
+			lcg.currentBlock.NewRet(nil)
+		}
 	}
 }
 
@@ -3040,6 +3144,7 @@ func (lcg *LLVMCodeGen) visitSwitchStatement(n *ast.SwitchStatement) {
 
 func (lcg *LLVMCodeGen) visitStruct(n *ast.Struct) {
 	name := n.Name.Text
+	lcg.structASTs[name] = n
 
 	// Create struct type
 	var fields []types.Type

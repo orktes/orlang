@@ -148,6 +148,8 @@ const (
 	TokenTypeDefault
 	// TokenTypeDefer defer
 	TokenTypeDefer
+	// TokenTypeGo go
+	TokenTypeGo
 	// TokenTypeLink link
 	TokenTypeLink
 )
@@ -232,6 +234,7 @@ var tokenNames = [...]string{
 	TokenTypeCase:     "CASE",
 	TokenTypeDefault:  "DEFAULT",
 	TokenTypeDefer:    "DEFER",
+	TokenTypeGo:       "GO",
 	TokenTypeLink:     "LINK",
 }
 

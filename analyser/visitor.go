@@ -97,6 +97,10 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			KeyType:   v.getTypeForNode(n.KeyType),
 			ValueType: v.getTypeForNode(n.ValueType),
 		}
+	case *ast.ChannelType:
+		return &types.ChannelType{
+			Elem: v.getTypeForNode(n.Type),
+		}
 	case *ast.ArrayExpression:
 		length := int64(len(n.Expressions))
 		if n.Type.Length != nil {
@@ -162,6 +166,23 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 				return types.BoolType
 			}
 			if ident.Text == "print" || ident.Text == "println" || ident.Text == "delete" {
+				return types.VoidType
+			}
+			if ident.Text == "channel" {
+				return &types.ChannelType{}
+			}
+			if ident.Text == "recv" {
+				if len(n.Arguments) == 1 {
+					if ch, ok := types.LazyResolve(v.getTypeForNode(n.Arguments[0].Expression)).(*types.ChannelType); ok && ch.Elem != nil {
+						return ch.Elem
+					}
+				}
+				return types.UnknownType("recv")
+			}
+			if ident.Text == "closed" {
+				return types.BoolType
+			}
+			if ident.Text == "send" || ident.Text == "close" || ident.Text == "yield" {
 				return types.VoidType
 			}
 			if ident.Text == "append" {
@@ -688,7 +709,8 @@ typeCheck:
 		if scopeItem == nil {
 			// Skip error for builtin functions
 			switch n.Text {
-			case "len", "append", "str", "print", "println", "delete", "contains":
+			case "len", "append", "str", "print", "println", "delete", "contains",
+				"channel", "send", "recv", "close", "closed", "yield":
 				break
 			default:
 				v.emitError(n, fmt.Sprintf("undefined: %s", n), true)
@@ -781,6 +803,86 @@ typeCheck:
 			} else {
 				nodeInfo.Type = types.VoidType
 			}
+			break
+		}
+
+		if ident, ok := n.Callee.(*ast.Identifier); ok && ident.Text == "channel" &&
+			v.scope.Get(ident.Text, true) == nil {
+			if len(n.Arguments) != 1 {
+				v.emitError(n, "channel() takes exactly one argument (capacity)", true)
+				break
+			}
+			v.Visit(n.Arguments[0].Expression)
+			capType := types.LazyResolve(v.getTypeForNode(n.Arguments[0].Expression))
+			if capType != nil && !strings.HasPrefix(capType.GetName(), "int") && !strings.HasPrefix(capType.GetName(), "uint") {
+				v.emitError(n.Arguments[0].Expression, "channel() capacity must be an integer", true)
+			}
+			nodeInfo.Type = &types.ChannelType{}
+			break
+		}
+
+		if ident, ok := n.Callee.(*ast.Identifier); ok && ident.Text == "send" &&
+			v.scope.Get(ident.Text, true) == nil {
+			if len(n.Arguments) != 2 {
+				v.emitError(n, "send() takes exactly two arguments (channel, value)", true)
+				break
+			}
+			v.Visit(n.Arguments[0].Expression)
+			v.Visit(n.Arguments[1].Expression)
+			ch, isChan := types.LazyResolve(v.getTypeForNode(n.Arguments[0].Expression)).(*types.ChannelType)
+			if !isChan {
+				v.emitError(n.Arguments[0].Expression, "send() first argument must be a channel", true)
+				break
+			}
+			valType := types.LazyResolve(v.getTypeForNode(n.Arguments[1].Expression))
+			if ch.Elem != nil && valType != nil && !valType.IsEqual(ch.Elem) &&
+				!isAssignable(n.Arguments[1].Expression, valType, ch.Elem) {
+				v.emitError(n.Arguments[1].Expression, fmt.Sprintf(
+					"cannot send %s (type %s) on channel of %s",
+					n.Arguments[1].Expression,
+					valType.GetName(),
+					ch.Elem.GetName(),
+				), true)
+			}
+			nodeInfo.Type = types.VoidType
+			break
+		}
+
+		if ident, ok := n.Callee.(*ast.Identifier); ok &&
+			(ident.Text == "recv" || ident.Text == "close" || ident.Text == "closed") &&
+			v.scope.Get(ident.Text, true) == nil {
+			if len(n.Arguments) != 1 {
+				v.emitError(n, fmt.Sprintf("%s() takes exactly one argument (channel)", ident.Text), true)
+				break
+			}
+			v.Visit(n.Arguments[0].Expression)
+			ch, isChan := types.LazyResolve(v.getTypeForNode(n.Arguments[0].Expression)).(*types.ChannelType)
+			if !isChan {
+				v.emitError(n.Arguments[0].Expression, fmt.Sprintf("%s() argument must be a channel", ident.Text), true)
+				break
+			}
+			switch ident.Text {
+			case "recv":
+				if ch.Elem == nil {
+					v.emitError(n.Arguments[0].Expression, "cannot receive from an untyped channel; annotate the channel declaration", true)
+					break
+				}
+				nodeInfo.Type = ch.Elem
+			case "closed":
+				nodeInfo.Type = types.BoolType
+			default:
+				nodeInfo.Type = types.VoidType
+			}
+			break
+		}
+
+		if ident, ok := n.Callee.(*ast.Identifier); ok && ident.Text == "yield" &&
+			v.scope.Get(ident.Text, true) == nil {
+			if len(n.Arguments) != 0 {
+				v.emitError(n, "yield() takes no arguments", true)
+				break
+			}
+			nodeInfo.Type = types.VoidType
 			break
 		}
 

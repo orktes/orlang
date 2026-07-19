@@ -22,6 +22,7 @@ func (p *Parser) parseStatement(block bool) (node ast.Statement, ok bool) {
 	case block && check(p.parseIfStatement()):
 	case block && check(p.parseSwitchStatement()):
 	case block && check(p.parseDeferStatement()):
+	case block && check(p.parseGoStatement()):
 	case check(p.parseMacroSubstitutionStatement()):
 	case check(p.parseVarDecl()):
 	default:
@@ -483,6 +484,35 @@ func (p *Parser) parseDeferStatement() (stmt *ast.DeferStatement, ok bool) {
 		Start:    ast.StartPositionFromToken(token),
 		DeferEnd: ast.EndPositionFromToken(token),
 		Call:     call,
+	}
+
+	ok = true
+	return
+}
+
+func (p *Parser) parseGoStatement() (stmt *ast.GoStatement, ok bool) {
+	token := p.read()
+
+	if token.Type != scanner.TokenTypeGo {
+		p.unread()
+		return
+	}
+
+	expr, exprOk := p.parseExpression()
+	if !exprOk {
+		p.error(unexpected(p.read().StringValue(), "function call"))
+		return
+	}
+
+	call, isCall := expr.(*ast.FunctionCall)
+	if !isCall {
+		p.error(unexpected("expression", "function call after go"))
+		return
+	}
+
+	stmt = &ast.GoStatement{
+		Start: ast.StartPositionFromToken(token),
+		Call:  call,
 	}
 
 	ok = true

@@ -33,6 +33,12 @@
 
 void *GC_malloc(size_t size);
 
+/* Yielding IO wrappers from the green-thread runtime (task.c): when a
+ * call would block, the current task parks and others run. */
+extern int orl_io_accept(int fd);
+extern ssize_t orl_io_read(int fd, void *buf, size_t n);
+extern ssize_t orl_io_write(int fd, const void *buf, size_t n);
+
 #define ORL_HTTP_MAX_HEADER_BYTES (64 * 1024)
 #define ORL_HTTP_MAX_BODY_BYTES (8 * 1024 * 1024)
 #define ORL_HTTP_MAX_HEADERS 64
@@ -123,7 +129,7 @@ static char *orl_http_read_head(int fd, size_t *out_len, size_t *out_header_end)
       cap = ncap;
     }
 
-    ssize_t n = read(fd, buf + len, cap - len);
+    ssize_t n = orl_io_read(fd, buf + len, cap - len);
     if (n <= 0) {
       return NULL;
     }
@@ -199,13 +205,19 @@ static int orl_http_parse_head(orl_http_request_t *req, char *head, size_t heade
   return 1;
 }
 
-ORLANG_WEAK void *http_server_accept(void *server) {
+/* Accepts a raw connection without reading from it, so the request can
+ * be read (and blocked on) inside a per-connection green thread. */
+ORLANG_WEAK int32_t http_server_accept_conn(void *server) {
   orl_http_server_t *srv = (orl_http_server_t *)server;
   if (srv == NULL) {
-    return NULL;
+    return -1;
   }
+  return orl_io_accept(srv->fd);
+}
 
-  int fd = accept(srv->fd, NULL, NULL);
+/* Reads and parses one HTTP request from a connection. Returns NULL on
+ * malformed input (the fd is closed). */
+ORLANG_WEAK void *http_read_request(int32_t fd) {
   if (fd < 0) {
     return NULL;
   }
@@ -249,7 +261,7 @@ ORLANG_WEAK void *http_server_accept(void *server) {
   }
   memcpy(body, head + header_end, have);
   while (have < (size_t)content_length) {
-    ssize_t n = read(fd, body + have, (size_t)content_length - have);
+    ssize_t n = orl_io_read(fd, body + have, (size_t)content_length - have);
     if (n <= 0) {
       break;
     }
@@ -259,6 +271,15 @@ ORLANG_WEAK void *http_server_accept(void *server) {
   req->body = body;
 
   return req;
+}
+
+/* Compatibility wrapper: accept + read in one blocking step. */
+ORLANG_WEAK void *http_server_accept(void *server) {
+  int32_t fd = http_server_accept_conn(server);
+  if (fd < 0) {
+    return NULL;
+  }
+  return http_read_request(fd);
 }
 
 /* All request accessors are null-safe: accept returns NULL for dropped
@@ -341,7 +362,7 @@ static const char *orl_http_status_text(int32_t code) {
 static void orl_http_write_all(int fd, const char *data, size_t len) {
   size_t off = 0;
   while (off < len) {
-    ssize_t n = write(fd, data + off, len - off);
+    ssize_t n = orl_io_write(fd, data + off, len - off);
     if (n <= 0) {
       return;
     }
