@@ -164,6 +164,15 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			if ident.Text == "print" || ident.Text == "println" || ident.Text == "delete" {
 				return types.VoidType
 			}
+			if ident.Text == "append" {
+				// append returns a dynamic slice of the input's element type
+				if len(n.Arguments) > 0 {
+					if arrType, ok := types.LazyResolve(v.getTypeForNode(n.Arguments[0].Expression)).(*types.ArrayType); ok {
+						return &types.ArrayType{Type: arrType.Type, Length: -1}
+					}
+				}
+				return types.UnknownType("append")
+			}
 		}
 
 		typ := v.getTypeForNode(n.Callee)
@@ -1367,11 +1376,12 @@ typeCheck:
 				break
 			}
 
-			if structParentOk {
-				break
+			// Struct member functions are not added to the scope, but they
+			// still need their own subscope below so parameters of sibling
+			// methods don't collide.
+			if !structParentOk {
+				v.scope.Set(n.Signature.Identifier, n)
 			}
-
-			v.scope.Set(n.Signature.Identifier, n)
 
 		} else if n.Signature.Operator != nil {
 			argCount := len(n.Signature.Arguments)
@@ -1617,6 +1627,11 @@ func (v *visitor) Leave(node ast.Node) {
 				for scopeItem, refs := range v.scope.GetReferencedItems() {
 					ref := refs[0]
 					definingScope := v.scope.GetDefiningScope(ref.Text)
+					if definingScope == nil {
+						// Defined in a subscope of this function (e.g. a
+						// for-loop variable): local, not a captured reference.
+						continue
+					}
 					if _, ok := definingScope.node.(*ast.File); !ok {
 						// Not defined in root scope so reference needed
 						closure.Env = append(closure.Env, scopeItem)

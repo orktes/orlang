@@ -389,6 +389,12 @@ func (lcg *LLVMCodeGen) getLLVMType(t ast.Type) types.Type {
 			fields = append(fields, lcg.getLLVMType(elemType))
 		}
 		return types.NewStruct(fields...)
+	case *ast.FunctionSignature:
+		// Function-typed values are closure structs { fnptr, env }
+		return lcg.getClosureType()
+	case *ast.MapType:
+		// Maps are opaque pointers to the runtime Map
+		return types.NewPointer(types.I8)
 	}
 
 	return types.I32
@@ -1435,6 +1441,12 @@ func (lcg *LLVMCodeGen) visitVariableDeclaration(n *ast.VariableDeclaration) {
 	lcg.allocaMetadata[alloca] = &AllocaMetadata{
 		SemanticType: semType,
 		Category:     category,
+	}
+
+	// Zero-initialize declarations without a default value so reads (and
+	// e.g. append on an empty slice) see zero values, not stack garbage.
+	if val == nil {
+		lcg.currentBlock.NewStore(lcg.getZeroValue(typ), alloca)
 	}
 
 	// Store default value
@@ -2572,12 +2584,27 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 						// Build args: env first, then user args
 						var callArgs []value.Value
 						callArgs = append(callArgs, envPtr)
-						for _, arg := range n.Arguments {
+						for i, arg := range n.Arguments {
 							ast.Walk(lcg, arg)
 							argVal := lcg.values[arg.Expression]
-							if argVal != nil {
-								callArgs = append(callArgs, argVal)
+							if argVal == nil {
+								continue
 							}
+							// Match the closure's parameter type: struct
+							// arguments coming from parameters arrive as
+							// pointer-to-pointer and need a load, and
+							// numeric arguments may need promotion.
+							if i+1 < len(closureFuncType.Params) {
+								expected := closureFuncType.Params[i+1]
+								if !argVal.Type().Equal(expected) {
+									if ptr, ok := argVal.Type().(*types.PointerType); ok && ptr.ElemType.Equal(expected) {
+										argVal = lcg.currentBlock.NewLoad(expected, argVal)
+									} else if i < len(sig.ArgumentTypes) {
+										argVal = lcg.castIfNeeded(argVal, lcg.semanticType(arg.Expression), sig.ArgumentTypes[i])
+									}
+								}
+							}
+							callArgs = append(callArgs, argVal)
 						}
 
 						result := lcg.currentBlock.NewCall(fnPtr, callArgs...)
