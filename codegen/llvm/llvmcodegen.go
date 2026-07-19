@@ -1711,9 +1711,7 @@ func (lcg *LLVMCodeGen) visitBinaryExpression(n *ast.BinaryExpression) {
 	}
 
 	isFloat := isFloatLLVMType(leftVal.Type()) || isFloatLLVMType(rightVal.Type())
-	if isFloat {
-		leftVal, rightVal = lcg.unifyFloatOperands(leftVal, rightVal, n.Left, n.Right)
-	}
+	leftVal, rightVal = lcg.unifyNumericOperands(leftVal, rightVal, n.Left, n.Right)
 	isUnsigned := lcg.operandsUnsigned(n.Left, n.Right)
 
 	switch n.Operator.Text {
@@ -2900,10 +2898,11 @@ func (lcg *LLVMCodeGen) visitSwitchStatement(n *ast.SwitchStatement) {
 			cmpResult := lcg.currentBlock.NewCall(strcmpFn, switchVal, caseVal)
 			cond = lcg.currentBlock.NewICmp(enum.IPredEQ, cmpResult, constant.NewInt(types.I32, 0))
 		} else if isFloatLLVMType(switchVal.Type()) || isFloatLLVMType(caseVal.Type()) {
-			l, r := lcg.unifyFloatOperands(switchVal, caseVal, n.Expression, c.Value)
+			l, r := lcg.unifyNumericOperands(switchVal, caseVal, n.Expression, c.Value)
 			cond = lcg.currentBlock.NewFCmp(enum.FPredOEQ, l, r)
 		} else {
-			cond = lcg.currentBlock.NewICmp(enum.IPredEQ, switchVal, caseVal)
+			l, r := lcg.unifyNumericOperands(switchVal, caseVal, n.Expression, c.Value)
+			cond = lcg.currentBlock.NewICmp(enum.IPredEQ, l, r)
 		}
 
 		caseBlock := lcg.currentFunc.NewBlock("")

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/orktes/orlang/ast"
+	"github.com/orktes/orlang/cheader"
 	"github.com/orktes/orlang/scanner"
 	"github.com/orktes/orlang/types"
 )
@@ -197,6 +198,11 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			}
 		}
 
+		// Mixed numeric operands take the unified (wider / non-literal) type.
+		if ok, unified := numericOperandsCompatible(n.Left, n.Right, leftType, rightType); ok {
+			return unified
+		}
+
 		return leftType
 	case *ast.FunctionSignature:
 		returnType := types.VoidType
@@ -321,7 +327,7 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			n.Property.Text,
 		), true)
 	case *ast.IndexExpression:
-		// Get the type of the target (should be an array or map)
+		// Get the type of the target (should be an array, map, or string)
 		targetType := v.getTypeForNode(n.Target)
 		if arrayType, ok := targetType.(*types.ArrayType); ok {
 			// Return the element type
@@ -329,6 +335,10 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 		}
 		if mapType, ok := targetType.(*types.MapType); ok {
 			return mapType.ValueType
+		}
+		if targetType != nil && targetType.GetName() == "string" {
+			// Indexing a string yields the byte at that position
+			return types.UInt8Type
 		}
 
 		v.emitError(n, fmt.Sprintf(
@@ -720,7 +730,8 @@ typeCheck:
 			for i := 1; i < len(n.Arguments); i++ {
 				v.Visit(n.Arguments[i].Expression)
 				argType := v.getTypeForNode(n.Arguments[i].Expression)
-				if !argType.IsEqual(arrayType.Type) {
+				if !argType.IsEqual(arrayType.Type) &&
+					!isAssignable(n.Arguments[i].Expression, argType, arrayType.Type) {
 					v.emitError(n.Arguments[i].Expression, fmt.Sprintf("append() argument type mismatch: expected %s, got %s", arrayType.Type.GetName(), argType.GetName()), true)
 				}
 			}
@@ -818,12 +829,9 @@ typeCheck:
 						}
 					}
 
-					// Allow int literal to be promoted to int64
-					if !equal && exprType.GetName() == "int32" && fnArgType.GetName() == "int64" {
-						if _, ok := callArg.Expression.(*ast.ValueExpression); ok {
-							// It's a literal (simplification, ideally check value range)
-							equal = true
-						}
+					// Allow safe numeric widening and in-range literals
+					if !equal && isAssignable(callArg.Expression, exprType, fnArgType) {
+						equal = true
 					}
 
 					if !equal {
@@ -920,7 +928,8 @@ typeCheck:
 
 					structArgType := structType.Variables[i].Type
 					exprType := v.getTypeForNode(callArg.Expression)
-					equal := structArgType.IsEqual(exprType)
+					equal := structArgType.IsEqual(exprType) ||
+						isAssignable(callArg.Expression, exprType, structArgType)
 
 					if !equal {
 						v.emitError(callArg.Expression, fmt.Sprintf(
@@ -965,7 +974,8 @@ typeCheck:
 		}
 
 		returnType := v.getTypeForNode(n.Expression)
-		equal := funcDeclType.ReturnType.IsEqual(returnType)
+		equal := funcDeclType.ReturnType.IsEqual(returnType) ||
+			isAssignable(n.Expression, returnType, funcDeclType.ReturnType)
 
 		if !equal {
 			v.emitError(n.Expression, fmt.Sprintf(
@@ -1060,6 +1070,9 @@ typeCheck:
 					break
 				}
 			}
+			if ok, _ := numericOperandsCompatible(n.Left, n.Right, aType, bType); ok {
+				break
+			}
 			v.emitError(n, fmt.Sprintf(
 				"invalid operation: %s (mismatched types %s and %s)",
 				n,
@@ -1072,6 +1085,11 @@ typeCheck:
 		equal, aType, bType := v.isEqualType(n.Left, n.Right)
 
 		if !equal {
+			if n.Operator.Text != "&&" && n.Operator.Text != "||" {
+				if ok, _ := numericOperandsCompatible(n.Left, n.Right, aType, bType); ok {
+					break
+				}
+			}
 			v.emitError(n, fmt.Sprintf(
 				"invalid operation: %s (mismatched types %s and %s)",
 				n,
@@ -1087,7 +1105,7 @@ typeCheck:
 			if n.Type != nil {
 				equal, aType, bType := v.isEqualType(n, n.DefaultValue)
 
-				if !equal {
+				if !equal && !isAssignable(n.DefaultValue, bType, aType) {
 					v.emitError(n.DefaultValue, fmt.Sprintf(
 						"cannot use %s (type %s) as type %s in assigment",
 						n.DefaultValue,
@@ -1178,6 +1196,11 @@ typeCheck:
 			v.info.NodeInfo[localIdent] = &NodeInfo{Type: typ}
 		}
 
+		// Don't descend into the import items: the original symbol names
+		// are not identifiers in this file's scope (only aliases are), so
+		// walking them would produce bogus "undefined" errors.
+		return nil
+
 	case *ast.ExportStatement:
 		ast.Walk(v, n.Declaration)
 
@@ -1204,9 +1227,31 @@ typeCheck:
 		return nil
 
 	case *ast.IncludeStatement:
-		// For now, we don't validate include statements
-		// The functions will be declared as extern by codegen
-		break
+		// Harvest function declarations from the C header so included
+		// functions resolve during analysis (codegen declares the same set).
+		headerPath := n.Path.Token.Value.(string)
+		funcs, err := cheader.ParseFile(headerPath)
+		if err != nil {
+			v.emitError(n, fmt.Sprintf("cannot read included header %s: %s", headerPath, err), true)
+			break
+		}
+		for _, cfn := range funcs {
+			ident := &ast.Identifier{Token: scanner.Token{Text: cfn.Name}}
+			sig := &types.SignatureType{
+				ReturnType: cTypeToOrlangType(cfn.ReturnType),
+			}
+			for _, p := range cfn.Params {
+				sig.ArgumentNames = append(sig.ArgumentNames, "")
+				sig.ArgumentTypes = append(sig.ArgumentTypes, cTypeToOrlangType(p))
+			}
+			item := &CustomTypeResolvingScopeItem{ResolvedType: sig}
+			v.scope.Set(ident, item)
+			v.scope.MarkUsage(item, ident)
+			if details := v.scope.GetDetails(cfn.Name, false); details != nil {
+				details.Initialized = true
+			}
+		}
+		return nil
 
 	case *ast.LinkStatement:
 		// Link directives are handled by the compile pipeline
@@ -1308,7 +1353,7 @@ typeCheck:
 			if n.Type != nil {
 				equal, aType, bType := v.isEqualType(n, n.DefaultValue)
 
-				if !equal {
+				if !equal && !isAssignable(n.DefaultValue, bType, aType) {
 					v.emitError(n.DefaultValue, fmt.Sprintf(
 						"cannot use %s (type %s) as type %s in assigment",
 						n.DefaultValue,
@@ -1337,7 +1382,7 @@ typeCheck:
 		}
 	case *ast.Assigment:
 		equal, leftType, rightType := v.isEqualType(n.Left, n.Right)
-		if !equal {
+		if !equal && !isAssignable(n.Right, rightType, leftType) {
 			v.emitError(n.Right, fmt.Sprintf(
 				"cannot use %s (type %s) as type %s in assigment expression",
 				n.Right,
@@ -1388,11 +1433,12 @@ typeCheck:
 		), true)
 	case *ast.IndexExpression:
 		nodeInfo.Type = v.getTypeForNode(node)
-		// Verify target is indexable (array or map type)
+		// Verify target is indexable (array, map, or string)
 		targetType := v.getTypeForNode(n.Target)
 		_, isArray := targetType.(*types.ArrayType)
 		_, isMap := targetType.(*types.MapType)
-		if !isArray && !isMap {
+		isString := targetType != nil && targetType.GetName() == "string"
+		if !isArray && !isMap && !isString {
 			v.emitError(n, fmt.Sprintf(
 				"invalid operation: %s (type %s does not support indexing)",
 				n,

@@ -163,23 +163,34 @@ func extractLinkDirectives(fileNode *ast.File, sourceDir string) []linkDirective
 	return directives
 }
 
-// compileOrToLL parses, analyses, and generates LLVM IR for a single .or file.
-// Returns the .ll file path and the parsed AST (for extracting link directives).
-func compileOrToLL(srcFile string) (string, *ast.File, error) {
+// analyseSourceFile parses and analyses a single .or file, returning the
+// AST and analyser info. Fatal analyser diagnostics fail the compilation —
+// previously `orlang build` silently ignored type errors and generated
+// broken code from the partial analysis.
+func analyseSourceFile(srcFile string) (*ast.File, *analyser.Info, error) {
 	file, err := os.Open(srcFile)
 	if err != nil {
-		return "", nil, err
+		return nil, nil, err
 	}
 	defer file.Close()
 
 	fileNode, err := parser.Parse(file)
 	if err != nil {
-		return "", nil, err
+		return nil, nil, err
 	}
 
 	an, err := analyser.New(fileNode)
 	if err != nil {
-		return "", nil, err
+		return nil, nil, err
+	}
+
+	var diagnostics []string
+	an.Error = func(node ast.Node, msg string, fatal bool) {
+		if !fatal {
+			return
+		}
+		pos := node.StartPos()
+		diagnostics = append(diagnostics, fmt.Sprintf("%s:%d:%d: %s", srcFile, pos.Line+1, pos.Column+1, msg))
 	}
 
 	basePath := filepath.Dir(srcFile)
@@ -194,6 +205,19 @@ func compileOrToLL(srcFile string) (string, *ast.File, error) {
 	}
 
 	fileInfo, err := an.Analyse()
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(diagnostics) > 0 {
+		return nil, nil, fmt.Errorf("%s", strings.Join(diagnostics, "\n"))
+	}
+	return fileNode, fileInfo, nil
+}
+
+// compileOrToLL parses, analyses, and generates LLVM IR for a single .or file.
+// Returns the .ll file path and the parsed AST (for extracting link directives).
+func compileOrToLL(srcFile string) (string, *ast.File, error) {
+	fileNode, fileInfo, err := analyseSourceFile(srcFile)
 	if err != nil {
 		return "", nil, err
 	}

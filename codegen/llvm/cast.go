@@ -1,7 +1,10 @@
 package llvm
 
 import (
-	"github.com/llir/llvm/ir/types" // Added import for types
+	"math/big"
+
+	"github.com/llir/llvm/ir/constant"
+	"github.com/llir/llvm/ir/types"
 	"github.com/llir/llvm/ir/value"
 	ortypes "github.com/orktes/orlang/types"
 )
@@ -73,15 +76,18 @@ var numericTypeInfo = map[string]struct {
 	"float64": {64, false, true},
 }
 
-// promoteNumeric performs implicit widening conversions between numeric
-// types: smaller ints widen to larger ints (zero- or sign-extended based
-// on the source's signedness), float32 widens to float64, and ints convert
-// to floats. Narrowing is never implicit — that requires an explicit cast.
+// promoteNumeric performs the implicit numeric conversions the analyser
+// permits: widening between ints, float32 to float64, int to float, and
+// retyping in-range literals (which the analyser has already range-checked)
+// to smaller or differently-signed targets.
 func (lcg *LLVMCodeGen) promoteNumeric(val value.Value, sourceTyp, targetTyp ortypes.Type) (value.Value, bool) {
 	src, srcOk := numericTypeInfo[sourceTyp.GetName()]
 	dst, dstOk := numericTypeInfo[targetTyp.GetName()]
-	if !srcOk || !dstOk || sourceTyp.GetName() == targetTyp.GetName() {
+	if !srcOk || !dstOk {
 		return nil, false
+	}
+	if sourceTyp.GetName() == targetTyp.GetName() {
+		return val, true
 	}
 
 	dstLLVM := lcg.getLLVMTypeFromSemantic(targetTyp)
@@ -89,16 +95,31 @@ func (lcg *LLVMCodeGen) promoteNumeric(val value.Value, sourceTyp, targetTyp ort
 		return val, true
 	}
 
-	// int -> float
-	if !src.float && dst.float {
+	// Constants (literals) are simply re-emitted at the target type; the
+	// analyser has verified the value is in range.
+	if c, ok := val.(*constant.Int); ok {
+		if intType, ok := dstLLVM.(*types.IntType); ok {
+			return constant.NewInt(intType, c.X.Int64()), true
+		}
+		if floatType, ok := dstLLVM.(*types.FloatType); ok {
+			f, _ := new(big.Float).SetInt(c.X).Float64()
+			return constant.NewFloat(floatType, f), true
+		}
+	}
+	if c, ok := val.(*constant.Float); ok {
+		if floatType, ok := dstLLVM.(*types.FloatType); ok {
+			f, _ := c.X.Float64()
+			return constant.NewFloat(floatType, f), true
+		}
+	}
+
+	// Non-constant safe widening conversions.
+	switch {
+	case !src.float && dst.float:
 		return lcg.castValue(val, dstLLVM, !src.unsigned, true), true
-	}
-	// float32 -> float64
-	if src.float && dst.float && src.bits < dst.bits {
+	case src.float && dst.float && src.bits < dst.bits:
 		return lcg.currentBlock.NewFPExt(val, dstLLVM), true
-	}
-	// small int -> larger int
-	if !src.float && !dst.float && src.bits < dst.bits {
+	case !src.float && !dst.float && src.bits < dst.bits:
 		if src.unsigned {
 			return lcg.currentBlock.NewZExt(val, dstLLVM), true
 		}
