@@ -1,0 +1,7 @@
+hello from goroutine
+buffered: 1 2 3
+result: 17
+result: 27
+total: 600
+acks: 3 count: 3
+done

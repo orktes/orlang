@@ -90,6 +90,51 @@ fn main() {
 
 See `examples/http_server` for a complete JSON todo API.
 
+### Concurrency: green threads and channels
+
+Orlang has Go-style concurrency built in — cooperative green threads with
+CSP channels, scheduled entirely inside the embedded runtime:
+
+```orlang
+fn worker(id: int32, jobs: chan int32, results: chan int32) {
+    for {
+        var job = recv(jobs)
+        if closed(jobs) && job == 0 {
+            return
+        }
+        send(results, job * 10 + id)
+    }
+}
+
+fn main() {
+    var jobs: chan int32 = channel(0)     // capacity 0 = rendezvous
+    var results: chan int32 = channel(8)  // buffered
+    go worker(1, jobs, results)           // spawn a green thread
+    send(jobs, 5)
+    println(recv(results))                // 51
+    close(jobs)
+}
+```
+
+- `go f(args...)` spawns a green thread; arguments are evaluated at spawn
+  time. Works with named functions, function-typed variables, and
+  immediately-invoked lambdas (`go fn () => void { ... }()`).
+- `channel(cap)` creates a `chan T`; `send`/`recv` park the calling
+  thread instead of blocking the process, `close`/`closed` give Go-like
+  termination semantics, `yield()` cedes the processor explicitly.
+- All standard library IO cooperates: a blocked read, write, or accept
+  parks its thread and the scheduler polls, so `std/http` serves each
+  connection on its own green thread and `std/net` servers and clients
+  can interleave in a single process.
+- Task stacks are GC-allocated and traced through the scheduler, so the
+  collector sees objects referenced only from sleeping threads.
+- `std/net.or` — TCP: `listen(port)`, `dial(host, port)`, and `Conn`
+  read/write/close.
+
+Scheduling is cooperative and single-threaded: switches happen at
+channel operations, IO, and `yield()` — there is no preemption and no
+parallelism (yet).
+
 ### Testing
 
 ```sh

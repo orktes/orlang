@@ -1,0 +1,76 @@
+fn worker(id: int32, jobs: chan int32, results: chan int32) {
+    for {
+        var job = recv(jobs)
+        if closed(jobs) && job == 0 {
+            return
+        }
+        send(results, job * 10 + id)
+    }
+}
+
+// struct receiver captured into goroutines
+struct Counter {
+    var count: int32 = 0
+
+    fn bump() {
+        this.count = this.count + 1
+    }
+
+    fn spawn_bumps() {
+        var self = this
+        var done: chan int32 = channel(0)
+        for var i = 0; i < 3; i++ {
+            go fn () => void {
+                self.bump()
+                send(done, 1)
+            }()
+        }
+        var acks = recv(done) + recv(done) + recv(done)
+        println("acks:", acks, "count:", self.count)
+    }
+}
+
+fn main() {
+    // rendezvous ping-pong
+    var ping: chan string = channel(0)
+    go fn () => void {
+        send(ping, "hello from goroutine")
+    }()
+    println(recv(ping))
+
+    // buffered channel
+    var buf: chan int32 = channel(3)
+    send(buf, 1)
+    send(buf, 2)
+    send(buf, 3)
+    println("buffered:", recv(buf), recv(buf), recv(buf))
+
+    // worker with args through go
+    var jobs: chan int32 = channel(0)
+    var results: chan int32 = channel(0)
+    go worker(7, jobs, results)
+    send(jobs, 1)
+    println("result:", recv(results))
+    send(jobs, 2)
+    println("result:", recv(results))
+    close(jobs)
+
+    // fan of goroutines incrementing through a channel
+    var out: chan int32 = channel(0)
+    for var i = 1; i <= 3; i++ {
+        go fn () => void {
+            send(out, i * 100)
+        }()
+    }
+    var total: int32 = 0
+    total = total + recv(out) + recv(out) + recv(out)
+    println("total:", total)
+
+    yield()
+
+    var c = Counter{}
+    c.spawn_bumps()
+
+    println("done")
+}
+

@@ -8,7 +8,11 @@
 - [x] bool-typed conditions for if/for
 - [x] print/println/str builtins
 - [x] float exponent / binary / octal / digit-separator literals
-- [x] standard library: std/http (Express-style server), std/json
+- [x] standard library: std/http (Express-style server), std/json, std/net (TCP)
+- [x] green threads (cooperative scheduler, GC-integrated stacks)
+- [x] CSP: go statement, chan T, channel/send/recv/close/closed/yield
+- [x] struct literal field defaults
+- [x] runtime-initialized globals
 - [x] variable zero values
 - tuple member access expressions
 - tuple extract in assignments
@@ -28,6 +32,9 @@
 - missing-return-on-all-paths control flow analysis
 - JSCodegen numbertypes?
 - VM?
-- stdlib: TCP/UDP sockets, file IO, time, env/args
-- HTTP: concurrent connections (threads or event loop), TLS, streaming bodies
+- stdlib: UDP sockets, file IO, time, env/args
+- preemption / multicore parallelism for green threads
+- select over multiple channels
+- go statement on method calls (workaround: wrap in a lambda)
+- HTTP: TLS, streaming bodies, keep-alive connections
 - route path parameters (/todos/:id)
