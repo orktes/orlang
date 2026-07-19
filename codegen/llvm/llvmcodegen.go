@@ -543,20 +543,8 @@ func (lcg *LLVMCodeGen) visitIndexExpression(n *ast.IndexExpression) {
 				return
 			}
 
-			// Declare map_get function (returns i64 for generic value storage)
-			var mapGetFn *ir.Func
-			if fn, ok := lcg.functions["map_get"]; ok {
-				mapGetFn = fn
-			} else {
-				mapStructPtr := types.NewPointer(types.I8)
-				mapGetFn = lcg.module.NewFunc("map_get", types.I64,
-					ir.NewParam("map", mapStructPtr),
-					ir.NewParam("key", types.I8Ptr))
-				lcg.functions["map_get"] = mapGetFn
-			}
-
-			// Call map_get (returns i64)
-			rawResult := lcg.currentBlock.NewCall(mapGetFn, mapPtr, keyVal)
+			// Call map_get (returns i64 for generic value storage)
+			rawResult := lcg.currentBlock.NewCall(lcg.getMapGetFn(), mapPtr, keyVal)
 
 			// Convert i64 result to the actual value type
 			valType := lcg.getLLVMTypeFromSemantic(mapType.ValueType)
@@ -1223,6 +1211,12 @@ func (lcg *LLVMCodeGen) visitForRangeLoop(n *ast.ForRangeLoop) {
 	ast.Walk(lcg, n.Iterable)
 	iterVal := lcg.values[n.Iterable]
 	if iterVal == nil {
+		return
+	}
+
+	// Map iteration uses the runtime's key enumeration
+	if mapType, ok := lcg.semanticType(n.Iterable).(*ortypes.MapType); ok {
+		lcg.visitMapRangeLoop(n, iterVal, mapType)
 		return
 	}
 
@@ -2055,6 +2049,24 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 
 	// Check if this is a builtin function call
 	if ident, ok := n.Callee.(*ast.Identifier); ok {
+		if _, defined := lcg.functions[ident.Text]; !defined {
+			// Builtins can be shadowed by user-defined functions
+			switch ident.Text {
+			case "print":
+				lcg.visitPrintBuiltin(n, false)
+				return
+			case "println":
+				lcg.visitPrintBuiltin(n, true)
+				return
+			case "delete":
+				lcg.visitMapDeleteBuiltin(n)
+				return
+			case "contains":
+				lcg.visitMapContainsBuiltin(n)
+				return
+			}
+		}
+
 		if ident.Text == "len" {
 			// Handle len()
 			if len(n.Arguments) != 1 {
@@ -2064,6 +2076,14 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 			ast.Walk(lcg, arg.Expression)
 			val := lcg.values[arg.Expression]
 			if val == nil {
+				return
+			}
+
+			// Maps and strings are both i8* at the LLVM level, so maps must
+			// be recognised from the semantic type before the type switch.
+			if lcg.isMapNode(arg.Expression) {
+				count := lcg.currentBlock.NewCall(lcg.getOrDeclareMapRuntime("map_len"), val)
+				lcg.values[n] = lcg.currentBlock.NewTrunc(count, types.I32)
 				return
 			}
 

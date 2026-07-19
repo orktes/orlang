@@ -391,6 +391,22 @@ ORLANG_WEAK int64_t map_len(void *map) {
   return ((orl_map_t *)map)->size;
 }
 
+/* Returns a GC-allocated array of the map's keys (in bucket order), used
+ * by `for key, value in map` iteration. The array and the keys it points
+ * to are GC-managed, so the caller never frees them. */
+ORLANG_WEAK void **map_keys(void *map) {
+  orl_map_t *m = (orl_map_t *)map;
+  size_t count = m->size > 0 ? (size_t)m->size : 1;
+  void **keys = (void **)GC_malloc(count * sizeof(void *));
+  size_t idx = 0;
+  for (int64_t i = 0; i < m->capacity; i++) {
+    for (orl_map_entry_t *e = m->buckets[i]; e != NULL; e = e->next) {
+      keys[idx++] = e->key;
+    }
+  }
+  return keys;
+}
+
 /* map_free is a no-op under GC; kept for source compatibility with the
  * old hand-written map runtimes. */
 ORLANG_WEAK void map_free(void *map) {

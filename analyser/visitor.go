@@ -158,6 +158,12 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			if ident.Text == "len" {
 				return types.Int32Type
 			}
+			if ident.Text == "contains" {
+				return types.BoolType
+			}
+			if ident.Text == "print" || ident.Text == "println" || ident.Text == "delete" {
+				return types.VoidType
+			}
 		}
 
 		typ := v.getTypeForNode(n.Callee)
@@ -659,10 +665,12 @@ typeCheck:
 		scopeItem := v.scope.Get(n.Text, true)
 		if scopeItem == nil {
 			// Skip error for builtin functions
-			if n.Text == "len" || n.Text == "append" || n.Text == "str" {
+			switch n.Text {
+			case "len", "append", "str", "print", "println", "delete", "contains":
 				break
+			default:
+				v.emitError(n, fmt.Sprintf("undefined: %s", n), true)
 			}
-			v.emitError(n, fmt.Sprintf("undefined: %s", n), true)
 			break
 		}
 
@@ -686,15 +694,71 @@ typeCheck:
 			v.Visit(arg.Expression)
 
 			// Check argument type
-			argType := v.getTypeForNode(arg.Expression)
-			if _, isArray := argType.(*types.ArrayType); !isArray {
-				if argType.GetName() != "string" {
-					v.emitError(arg.Expression, "len() argument must be array or string", true)
-				}
+			argType := types.LazyResolve(v.getTypeForNode(arg.Expression))
+			_, isArray := argType.(*types.ArrayType)
+			_, isMap := argType.(*types.MapType)
+			if !isArray && !isMap && argType.GetName() != "string" {
+				v.emitError(arg.Expression, "len() argument must be array, map, or string", true)
 			}
 
 			// Set return type to int32
 			nodeInfo.Type = types.Int32Type
+			break
+		}
+
+		if ident, ok := n.Callee.(*ast.Identifier); ok && (ident.Text == "print" || ident.Text == "println") &&
+			v.scope.Get(ident.Text, true) == nil {
+			for _, arg := range n.Arguments {
+				v.Visit(arg.Expression)
+				argType := types.LazyResolve(v.getTypeForNode(arg.Expression))
+				switch {
+				case argType == nil:
+				case argType.GetName() == "string" || argType.GetName() == "bool":
+				default:
+					if _, numeric := numericKinds[argType.GetName()]; !numeric {
+						v.emitError(arg.Expression, fmt.Sprintf(
+							"%s() cannot print value of type %s",
+							ident.Text,
+							argType.GetName(),
+						), true)
+					}
+				}
+			}
+			nodeInfo.Type = types.VoidType
+			break
+		}
+
+		if ident, ok := n.Callee.(*ast.Identifier); ok && (ident.Text == "delete" || ident.Text == "contains") &&
+			v.scope.Get(ident.Text, true) == nil {
+			if len(n.Arguments) != 2 {
+				v.emitError(n, fmt.Sprintf("%s() takes exactly two arguments (map, key)", ident.Text), true)
+				break
+			}
+			mapArg := n.Arguments[0]
+			keyArg := n.Arguments[1]
+			v.Visit(mapArg.Expression)
+			v.Visit(keyArg.Expression)
+
+			mapType, isMap := types.LazyResolve(v.getTypeForNode(mapArg.Expression)).(*types.MapType)
+			if !isMap {
+				v.emitError(mapArg.Expression, fmt.Sprintf("%s() first argument must be a map", ident.Text), true)
+				break
+			}
+			keyType := types.LazyResolve(v.getTypeForNode(keyArg.Expression))
+			if keyType != nil && !keyType.IsEqual(mapType.KeyType) {
+				v.emitError(keyArg.Expression, fmt.Sprintf(
+					"cannot use %s (type %s) as type %s map key",
+					keyArg.Expression,
+					keyType.GetName(),
+					mapType.KeyType.GetName(),
+				), true)
+			}
+
+			if ident.Text == "contains" {
+				nodeInfo.Type = types.BoolType
+			} else {
+				nodeInfo.Type = types.VoidType
+			}
 			break
 		}
 
@@ -1022,7 +1086,7 @@ typeCheck:
 		// Create a subscope for iteration variables
 		loopScope := v.scope.SubScope(node)
 		// Register iteration variables in the new scope
-		iterableType := v.getTypeForNode(n.Iterable)
+		iterableType := types.LazyResolve(v.getTypeForNode(n.Iterable))
 		if arrType, ok := iterableType.(*types.ArrayType); ok {
 			// Register value variable: scope item is ForRangeLoop, type is element type
 			loopScope.Set(n.ValueName, n)
@@ -1033,6 +1097,28 @@ typeCheck:
 			if n.IndexName != nil {
 				loopScope.Set(n.IndexName, n.IndexName)
 				v.info.NodeInfo[n.IndexName] = &NodeInfo{Type: types.Int32Type}
+			}
+		} else if mapType, ok := iterableType.(*types.MapType); ok {
+			if n.IndexName != nil {
+				// for var k, v in m — first variable is the key, second the value
+				loopScope.Set(n.IndexName, n.IndexName)
+				v.info.NodeInfo[n.IndexName] = &NodeInfo{Type: mapType.KeyType}
+				loopScope.Set(n.ValueName, n)
+				v.info.NodeInfo[n.ValueName] = &NodeInfo{Type: mapType.ValueType}
+				v.getNodeInfo(n).Type = mapType.ValueType
+			} else {
+				// for var k in m — iterates over the keys
+				loopScope.Set(n.ValueName, n)
+				v.info.NodeInfo[n.ValueName] = &NodeInfo{Type: mapType.KeyType}
+				v.getNodeInfo(n).Type = mapType.KeyType
+			}
+		} else if iterableType != nil {
+			if _, unknown := iterableType.(types.UnknownType); !unknown {
+				v.emitError(n.Iterable, fmt.Sprintf(
+					"cannot range over %s (type %s)",
+					n.Iterable,
+					iterableType.GetName(),
+				), true)
 			}
 		}
 		return v.subVisitor(node, loopScope)
