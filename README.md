@@ -53,6 +53,43 @@ fn main() {
 - Conservative mark-and-sweep garbage collection (set `ORLANG_GC_STRESS=1`
   to collect before every allocation when hunting GC bugs)
 
+### Standard library
+
+Programs import standard library modules straight from the compiler
+binary — no files to install, and executables stay fully self-contained:
+
+```orlang
+import { server, Request, Response } from "std/http.or"
+import { parse, object, text, number, Json } from "std/json.or"
+
+fn main() {
+    var app = server()
+
+    app.get("/", fn (req: Request, res: Response) => void {
+        res.send("Hello, world!")
+    })
+
+    app.post("/echo", fn (req: Request, res: Response) => void {
+        var body = parse(req.body())
+        var out = object()
+        out.set("you_sent", body.get("message"))
+        res.json(out.stringify())
+    })
+
+    app.listen(8080)
+}
+```
+
+- `std/http.or` — Express-style HTTP server: `get`/`post`/`put`/`delete`/`all`
+  routing, request method/path/query/headers/body, response
+  status/headers/`send`/`json`. Implemented on POSIX sockets in the
+  embedded runtime; no external libraries.
+- `std/json.or` — JSON parsing and building: `parse(s).get("key").at(0).str()`
+  with safe chaining on missing values, `object()`/`array()`/`text()`/
+  `number()`/`boolean()` builders, and `stringify()`.
+
+See `examples/http_server` for a complete JSON todo API.
+
 ### Testing
 
 ```sh

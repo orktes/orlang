@@ -1,0 +1,16 @@
+valid: true
+name: orlang
+version: 2.5
+ok: true
+tags: 2 fast small
+deep: 42
+missing: false 
+bad: false
+escaped: tab	here A
+built: {"ok":true,"count":3,"name":"built","nothing":null,"items":[1,"two"]}
+round: 3 two
+key: name
+key: version
+key: ok
+key: tags
+key: nested

@@ -8,13 +8,14 @@
 - [x] bool-typed conditions for if/for
 - [x] print/println/str builtins
 - [x] float exponent / binary / octal / digit-separator literals
+- [x] standard library: std/http (Express-style server), std/json
+- [x] variable zero values
 - tuple member access expressions
 - tuple extract in assignments
 - pass by value (pointers?)?
 - code formatting utility
 - IR?
 - JSCodegen map support
-- variable zero values
 - interfaces containing other interfaces
 - templated string literals
 - type assertion for arbitrary expressions
@@ -27,3 +28,6 @@
 - missing-return-on-all-paths control flow analysis
 - JSCodegen numbertypes?
 - VM?
+- stdlib: TCP/UDP sockets, file IO, time, env/args
+- HTTP: concurrent connections (threads or event loop), TLS, streaming bodies
+- route path parameters (/todos/:id)
