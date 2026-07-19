@@ -217,7 +217,7 @@ rightLoop:
 		case check(p.parseStructExpression(expression)):
 		case check(p.parseMemberExpression(expression)):
 		case check(p.parseIndexExpression(expression)):
-		case check(p.parseComparisonExpression(expression)):
+		case check(p.parseTypeOperatorExpression(expression)):
 		default:
 			break rightLoop
 		}
@@ -240,179 +240,111 @@ rightLoop:
 	return
 }
 
-func isHighPrecedence(t scanner.TokenType) bool {
-	return t == scanner.TokenTypeASTERISK || t == scanner.TokenTypeSLASH || t == scanner.TokenTypePERCENT
-}
+// binaryPrecedence assigns each binary operator a precedence level,
+// following Go's conventions: multiplicative/shift/bitwise-and bind
+// tightest, then additive/bitwise-or/xor, then comparisons, then &&, then
+// ||. Comparison-level operators produce ComparisonExpression nodes, the
+// rest BinaryExpression nodes.
+var binaryPrecedence = map[scanner.TokenType]struct {
+	level      int
+	comparison bool
+}{
+	scanner.TokenTypeOr:  {1, true},
+	scanner.TokenTypeAnd: {2, true},
 
-var binaryOperators = []scanner.TokenType{
-	scanner.TokenTypeADD,
-	scanner.TokenTypeSUB,
-	scanner.TokenTypeASTERISK,
-	scanner.TokenTypeSLASH,
-	scanner.TokenTypePERCENT,
-	scanner.TokenTypeAMPERSAND,
-	scanner.TokenTypePIPE,
-	scanner.TokenTypeCARET,
-	scanner.TokenTypeLSHIFT,
-	scanner.TokenTypeRSHIFT,
-}
+	scanner.TokenTypeEqual:          {3, true},
+	scanner.TokenTypeNotEqual:       {3, true},
+	scanner.TokenTypeLess:           {3, true},
+	scanner.TokenTypeGreater:        {3, true},
+	scanner.TokenTypeLessOrEqual:    {3, true},
+	scanner.TokenTypeGreaterOrEqual: {3, true},
 
-func (p *Parser) parseBinaryExpression(left ast.Expression) (node *ast.BinaryExpression, ok bool) {
-	token, ok := p.expectToken(binaryOperators...)
+	scanner.TokenTypeADD:   {4, false},
+	scanner.TokenTypeSUB:   {4, false},
+	scanner.TokenTypePIPE:  {4, false},
+	scanner.TokenTypeCARET: {4, false},
 
-	if !ok {
-		p.unread()
-		return
-	}
-
-	var right ast.Expression
-	var exprOk bool
-	right, exprOk = p.parseUnaryExpression()
-	if !exprOk {
-		p.error(unexpected(p.read().StringValue(), "expression"))
-		return
-	}
-
-	if nextToken, nextTokenOk := p.expectToken(binaryOperators...); nextTokenOk {
-		p.unread()
-		if !isHighPrecedence(token.Type) && isHighPrecedence(nextToken.Type) {
-			right, exprOk = p.parseBinaryExpression(right)
-			if !exprOk {
-				p.error(unexpected(p.read().StringValue(), "expression"))
-				return
-			}
-		} else {
-			return p.parseBinaryExpression(&ast.BinaryExpression{
-				Operator: token,
-				Left:     left,
-				Right:    right,
-			})
-		}
-	} else {
-		p.unread()
-	}
-
-	node = &ast.BinaryExpression{
-		Operator: token,
-		Left:     left,
-		Right:    right,
-	}
-
-	return
+	scanner.TokenTypeASTERISK:  {5, false},
+	scanner.TokenTypeSLASH:     {5, false},
+	scanner.TokenTypePERCENT:   {5, false},
+	scanner.TokenTypeLSHIFT:    {5, false},
+	scanner.TokenTypeRSHIFT:    {5, false},
+	scanner.TokenTypeAMPERSAND: {5, false},
 }
 
 func (p *Parser) parseExpression() (expression ast.Expression, ok bool) {
-	if expression, ok = p.parseUnaryExpression(); ok {
-		if binaryExpression, binaryOk := p.parseBinaryExpression(expression); binaryOk {
-			expression = binaryExpression
-		}
-	}
+	return p.parseBinaryExpression(1)
+}
 
+// parseBinaryExpression parses a left-associative chain of binary and
+// comparison operators with precedence climbing: operators below minLevel
+// are left for an outer call to consume.
+func (p *Parser) parseBinaryExpression(minLevel int) (expression ast.Expression, ok bool) {
+	expression, ok = p.parseUnaryExpression()
 	if !ok {
 		return
 	}
 
-	// Handle logical operators (&&, ||) at the lowest precedence level
 	for {
-		token, logOk := p.expectToken(scanner.TokenTypeAnd, scanner.TokenTypeOr)
-		if !logOk {
+		token := p.read()
+		info, isOp := binaryPrecedence[token.Type]
+		if !isOp || info.level < minLevel {
 			p.unread()
-			break
+			return
 		}
 
-		// Parse right side as everything up to (but not including) another && or ||
-		var right ast.Expression
-		var rightOk bool
-		if right, rightOk = p.parseUnaryExpression(); rightOk {
-			if binaryExpr, binaryOk := p.parseBinaryExpression(right); binaryOk {
-				right = binaryExpr
-			}
-		}
+		right, rightOk := p.parseBinaryExpression(info.level + 1)
 		if !rightOk {
 			p.error(unexpected(p.read().StringValue(), "expression"))
 			return
 		}
 
-		expression = &ast.ComparisonExpression{
-			Left:     expression,
-			Right:    right,
-			Operator: token,
+		if info.comparison {
+			expression = &ast.ComparisonExpression{
+				Left:     expression,
+				Right:    right,
+				Operator: token,
+			}
+		} else {
+			expression = &ast.BinaryExpression{
+				Left:     expression,
+				Right:    right,
+				Operator: token,
+			}
 		}
 	}
-
-	return
 }
 
-func (p *Parser) parseComparisonExpression(left ast.Expression) (node ast.Expression, ok bool) {
-	token, ok := p.expectToken(
-		scanner.TokenTypeEqual,
-		scanner.TokenTypeNotEqual,
-		scanner.TokenTypeLess,
-		scanner.TokenTypeGreater,
-		scanner.TokenTypeLessOrEqual,
-		scanner.TokenTypeGreaterOrEqual,
-		scanner.TokenTypeIs,
-		scanner.TokenTypeAs,
-	)
-
+// parseTypeOperatorExpression parses the postfix `is Type` (type assertion)
+// and `as Type` (cast) operators, which bind tighter than any binary
+// operator.
+func (p *Parser) parseTypeOperatorExpression(left ast.Expression) (node ast.Expression, ok bool) {
+	token, ok := p.expectToken(scanner.TokenTypeIs, scanner.TokenTypeAs)
 	if !ok {
 		p.unread()
 		return
 	}
 
-	// Handle type assertion (is operator)
-	if token.Type == scanner.TokenTypeIs {
-		typ, typeOk := p.parseType()
-		if !typeOk {
-			p.error(unexpected(p.read().StringValue(), "type"))
-			return
-		}
+	typ, typeOk := p.parseType()
+	if !typeOk {
+		p.error(unexpected(p.read().StringValue(), "type"))
+		return
+	}
 
+	if token.Type == scanner.TokenTypeIs {
 		node = &ast.TypeAssertionExpression{
 			Expression: left,
 			IsToken:    token,
 			Type:       typ,
 		}
-		ok = true
-		return
-	}
-
-	// Handle type cast (as operator)
-	if token.Type == scanner.TokenTypeAs {
-		typ, typeOk := p.parseType()
-		if !typeOk {
-			p.error(unexpected(p.read().StringValue(), "type"))
-			return
-		}
-
+	} else {
 		node = &ast.CastExpression{
 			Left:  left,
 			Token: token,
 			Type:  typ,
 		}
-		ok = true
-		return
 	}
-
-	// Handle regular comparison — right side is unary+binary only (not logical &&/||)
-	var right ast.Expression
-	var rightOk bool
-	if right, rightOk = p.parseUnaryExpression(); rightOk {
-		if binaryExpr, binaryOk := p.parseBinaryExpression(right); binaryOk {
-			right = binaryExpr
-		}
-	}
-	if !rightOk {
-		p.error(unexpected(p.read().StringValue(), "expression"))
-		return
-	}
-
-	node = &ast.ComparisonExpression{
-		Left:     left,
-		Right:    right,
-		Operator: token,
-	}
-
+	ok = true
 	return
 }
 

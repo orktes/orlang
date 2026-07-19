@@ -15,7 +15,7 @@ var tests = []struct {
 	{
 		src: "export fn\nfn1",
 		results: []Token{
-			Token{Type: TokenTypeIdent, Text: "export"},
+			Token{Type: TokenTypeExport, Text: "export"},
 			Token{Type: TokenTypeWhitespace, StartColumn: 6, Text: " "},
 			Token{Type: TokenTypeIdent, StartColumn: 7, Text: "fn"},
 			Token{Type: TokenTypeWhitespace, StartColumn: 9, Text: "\n"},
@@ -50,7 +50,7 @@ var tests = []struct {
 	{
 		src: `"foo\nbar"`,
 		results: []Token{
-			Token{Type: TokenTypeString, Text: `"foo\nbar"`, Value: "foo\\nbar"},
+			Token{Type: TokenTypeString, Text: `"foo\nbar"`, Value: "foo\nbar"},
 			Token{Type: TokenTypeEOF, StartLine: 0, StartColumn: 10, Text: ``},
 		},
 	},
@@ -105,8 +105,7 @@ var tests = []struct {
 			Token{Type: TokenTypeCOLON, StartColumn: 6, Text: `:`},
 			Token{Type: TokenTypeSEMICOLON, StartColumn: 7, Text: `;`},
 			Token{Type: TokenTypeADD, StartColumn: 8, Text: `+`},
-			Token{Type: TokenTypeSUB, StartColumn: 9, Text: `-`},
-			Token{Type: TokenTypeASSIGN, StartColumn: 10, Text: `=`},
+			Token{Type: TokenTypeSubAssign, StartColumn: 9, Text: `-=`},
 			Token{Type: TokenTypeASTERISK, StartColumn: 11, Text: `*`},
 			Token{Type: TokenTypeAMPERSAND, StartColumn: 12, Text: `&`},
 			Token{Type: TokenTypeLPAREN, StartColumn: 13, Text: `(`},
@@ -135,6 +134,37 @@ var tests = []struct {
 			Token{Type: TokenTypeWhitespace, StartColumn: 5, Text: ` `},
 			Token{Type: TokenTypeBoolean, StartColumn: 6, Text: `true`, Value: true},
 			Token{Type: TokenTypeEOF, StartColumn: 10, Text: ``},
+		},
+	},
+	{
+		src: "0b1010 0o17 0xFF 1_000_000",
+		results: []Token{
+			Token{Type: TokenTypeNumber, StartColumn: 0, Text: `0b1010`, Value: int64(10)},
+			Token{Type: TokenTypeWhitespace, StartColumn: 6, Text: ` `},
+			Token{Type: TokenTypeNumber, StartColumn: 7, Text: `0o17`, Value: int64(15)},
+			Token{Type: TokenTypeWhitespace, StartColumn: 11, Text: ` `},
+			Token{Type: TokenTypeNumber, StartColumn: 12, Text: `0xFF`, Value: int64(255)},
+			Token{Type: TokenTypeWhitespace, StartColumn: 16, Text: ` `},
+			Token{Type: TokenTypeNumber, StartColumn: 17, Text: `1_000_000`, Value: int64(1000000)},
+			Token{Type: TokenTypeEOF, StartColumn: 26, Text: ``},
+		},
+	},
+	{
+		src: "1e10 2.5e-3 1E+5",
+		results: []Token{
+			Token{Type: TokenTypeFloat, StartColumn: 0, Text: `1e10`, Value: float64(1e10)},
+			Token{Type: TokenTypeWhitespace, StartColumn: 4, Text: ` `},
+			Token{Type: TokenTypeFloat, StartColumn: 5, Text: `2.5e-3`, Value: float64(2.5e-3)},
+			Token{Type: TokenTypeWhitespace, StartColumn: 11, Text: ` `},
+			Token{Type: TokenTypeFloat, StartColumn: 12, Text: `1E+5`, Value: float64(1e5)},
+			Token{Type: TokenTypeEOF, StartColumn: 16, Text: ``},
+		},
+	},
+	{
+		src: `"a\ab\bf\fv\v"`,
+		results: []Token{
+			Token{Type: TokenTypeString, StartColumn: 0, Text: `"a\ab\bf\fv\v"`, Value: "a\ab\bf\fv\v"},
+			Token{Type: TokenTypeEOF, StartColumn: 14, Text: ``},
 		},
 	},
 	{

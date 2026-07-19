@@ -1486,6 +1486,13 @@ func (v *visitor) processUnusedVariables() {
 			break
 		}
 
+		// Type declarations are not "unused variables" — they are part of
+		// the file's public shape even when nothing references them yet.
+		switch scopeItemInfo.ScopeItem.(type) {
+		case *ast.Struct, *ast.Interface, *ast.Enum:
+			continue
+		}
+
 		v.emitError(scopeItemInfo.DefineIdentifier,
 			fmt.Sprintf("%s declared but not used", scopeItemInfo.DefineIdentifier.Text),
 			false)

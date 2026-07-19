@@ -98,7 +98,7 @@ func TestVisitorErrors(t *testing.T) {
 		err string
 	}{
 		{"var foo : unknown = 1", "1:21 cannot use 1 (type int32) as type unknown (unknown) in assigment"},
-		{"fn foo() { var foo : float32 = 1 }", "1:32 cannot use 1 (type int32) as type float32 in assigment"},
+		{"fn foo() { var foo : int8 = 300 }", "1:29 cannot use 300 (type int32) as type int8 in assigment"},
 		{`
 			fn foo() {
 				var foo : int32 = -1
@@ -124,9 +124,9 @@ func TestVisitorErrors(t *testing.T) {
 		`, "3:12 cannot use 1 (type int32) as type void in return statement"},
 		{`
 			fn foo() {
-				1 + 0.5
+				1 + "bar"
 			}
-		`, "3:5 invalid operation: 1 + 0.5 (mismatched types int32 and float32)"},
+		`, "3:5 invalid operation: 1 + \"bar\" (mismatched types int32 and string)"},
 		{`
 			fn foo(x : int32 = 0.5) {
 			}
@@ -227,19 +227,19 @@ func TestVisitorErrors(t *testing.T) {
 		`, "2:7 foo declared but not used"},
 		{`
 			fn foo() => bool {
-				return 1 > 0.5
+				return 1 > "a"
 			}
-		`, "3:12 invalid operation: 1 > 0.5 (mismatched types int32 and float32)"},
+		`, "3:12 invalid operation: 1 > \"a\" (mismatched types int32 and string)"},
 		{`
 			fn foo() => bool {
-				return 1 == 0.5
+				return 1 == "b"
 			}
-		`, "3:12 invalid operation: 1 == 0.5 (mismatched types int32 and float32)"},
+		`, "3:12 invalid operation: 1 == \"b\" (mismatched types int32 and string)"},
 		{`
 			fn foo() => float32 {
-				return int32(0.4)
+				return str(4)
 			}
-		`, "3:12 cannot use int32(0.4) (type int32) as type float32 in return statement"},
+		`, "3:12 cannot use str(4) (type string) as type float32 in return statement"},
 		{`
 			fn foo() {
 				var bar = int32("foo")

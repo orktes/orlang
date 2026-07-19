@@ -387,11 +387,17 @@ func (p *Parser) commit() {
 }
 
 func (p *Parser) error(err string) {
+	p.errorAtToken(p.lastToken(), err)
+}
+
+// errorAtToken reports an error positioned at a specific token instead of
+// whatever token happens to have been consumed last.
+func (p *Parser) errorAtToken(token scanner.Token, err string) {
 	if p.parserError == "" {
 		p.parserError = err
-		p.errorToken = p.lastToken()
+		p.errorToken = token
 	}
 	if p.Error != nil {
-		p.Error(p.readTokens-len(p.tokenBuffer), ast.StartPositionFromToken(p.lastToken()), ast.EndPositionFromToken(p.lastToken()), err)
+		p.Error(p.readTokens-len(p.tokenBuffer), ast.StartPositionFromToken(token), ast.EndPositionFromToken(token), err)
 	}
 }

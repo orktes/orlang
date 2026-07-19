@@ -117,12 +117,9 @@ func (p *Parser) parseTupleOrSignatureType() (node ast.Type, ok bool) {
 			return
 		}
 		p.unread()
-		// Empty tuple — not valid, fall through
-		ok = true
-		node = &ast.TupleType{
-			LeftParen:  leftToken,
-			RightParen: rightToken,
-		}
+		// Empty parens without an arrow are not a valid type: a tuple type
+		// needs at least one element and a function type needs `=> Ret`.
+		p.errorAtToken(rightToken, unexpected(rightToken.StringValue(), "type"))
 		return
 	}
 	// Non-empty parens: put back the token we consumed
