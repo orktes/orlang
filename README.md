@@ -135,6 +135,38 @@ Scheduling is cooperative and single-threaded: switches happen at
 channel operations, IO, and `yield()` — there is no preemption and no
 parallelism (yet).
 
+`select` waits on several channels at once, with optional `default`:
+
+```orlang
+select {
+    case var job = recv(jobs) {
+        println("job:", job)
+    }
+    case send(results, 42) {
+        println("delivered")
+    }
+    default {
+        println("nothing ready")
+    }
+}
+```
+
+Exactly one ready case runs (in-order preference when several are ready);
+with no `default`, the thread parks until a case can fire. Closed channels
+count as ready and receive zero values, and `case recv(ch)` without a
+binding discards the received value.
+
+### Reflection
+
+- `typeof(expr)` — the static type of an expression as a string
+  (`int32`, `map[string]int32`, `chan int32`, `Point`). The argument is
+  not evaluated.
+- `typename(v)` — the dynamic type name of an interface value, looked up
+  through its itable at runtime; on non-interface values it equals
+  `typeof`.
+- `v is Type` / `v as Type` — runtime type test and cast for interface
+  values, including user-defined struct types.
+
 ### Testing
 
 ```sh

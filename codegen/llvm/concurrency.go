@@ -38,6 +38,13 @@ func (lcg *LLVMCodeGen) getOrDeclareTaskRuntime(name string) *ir.Func {
 		fn = lcg.module.NewFunc(name, types.Void, ir.NewParam("ch", types.I8Ptr))
 	case "chan_closed":
 		fn = lcg.module.NewFunc(name, types.I32, ir.NewParam("ch", types.I8Ptr))
+	case "chan_select":
+		fn = lcg.module.NewFunc(name, types.I32,
+			ir.NewParam("n", types.I64),
+			ir.NewParam("chans", types.NewPointer(types.I8Ptr)),
+			ir.NewParam("dirs", types.NewPointer(types.I32)),
+			ir.NewParam("vals", types.NewPointer(types.I64)),
+			ir.NewParam("has_default", types.I32))
 	default:
 		return nil
 	}
@@ -230,4 +237,119 @@ func (lcg *LLVMCodeGen) visitGoStatement(n *ast.GoStatement) {
 	spawn := lcg.getOrDeclareTaskRuntime("task_spawn")
 	thunkPtr := lcg.currentBlock.NewBitCast(thunk, types.I8Ptr)
 	lcg.currentBlock.NewCall(spawn, thunkPtr, envRaw)
+}
+
+// visitSelectStatement lowers a select statement: channel operands and
+// send values are evaluated up front into stack arrays, chan_select picks
+// (or waits for) a runnable case, and the fired index dispatches to the
+// case blocks. Receive bindings convert the i64 slot back to the element
+// type.
+func (lcg *LLVMCodeGen) visitSelectStatement(n *ast.SelectStatement) {
+	// Split cases into operations (indexed) and an optional default.
+	var ops []*ast.SelectCase
+	var defaultCase *ast.SelectCase
+	for _, c := range n.Cases {
+		if c.IsDefault {
+			defaultCase = c
+		} else {
+			ops = append(ops, c)
+		}
+	}
+	if len(ops) == 0 {
+		if defaultCase != nil {
+			ast.Walk(lcg, defaultCase.Block)
+		}
+		return
+	}
+
+	count := int64(len(ops))
+	chansType := types.NewArray(uint64(count), types.I8Ptr)
+	dirsType := types.NewArray(uint64(count), types.I32)
+	valsType := types.NewArray(uint64(count), types.I64)
+	chansAlloca := lcg.currentBlock.NewAlloca(chansType)
+	dirsAlloca := lcg.currentBlock.NewAlloca(dirsType)
+	valsAlloca := lcg.currentBlock.NewAlloca(valsType)
+
+	zero := constant.NewInt(types.I32, 0)
+	slot := func(arr value.Value, arrType types.Type, i int64) value.Value {
+		return lcg.currentBlock.NewGetElementPtr(arrType, arr, zero, constant.NewInt(types.I32, i))
+	}
+
+	for i, c := range ops {
+		ast.Walk(lcg, c.Channel)
+		chVal := lcg.values[c.Channel]
+		if chVal == nil {
+			lcg.errorf(c.Channel, "cannot evaluate select channel")
+			return
+		}
+		lcg.currentBlock.NewStore(chVal, slot(chansAlloca, chansType, int64(i)))
+
+		dir := int64(0)
+		var initVal value.Value = constant.NewInt(types.I64, 0)
+		if c.IsSend {
+			dir = 1
+			ast.Walk(lcg, c.Value)
+			val := lcg.values[c.Value]
+			if val == nil {
+				lcg.errorf(c.Value, "cannot evaluate select send value")
+				return
+			}
+			if elem := lcg.channelElemLLVMType(c.Channel); elem != nil && !val.Type().Equal(elem) {
+				val = lcg.numericConvert(val, elem, c.Value)
+			}
+			initVal = lcg.convertMapValueToI64(val)
+		}
+		lcg.currentBlock.NewStore(constant.NewInt(types.I32, dir), slot(dirsAlloca, dirsType, int64(i)))
+		lcg.currentBlock.NewStore(initVal, slot(valsAlloca, valsType, int64(i)))
+	}
+
+	hasDefault := int64(0)
+	if defaultCase != nil {
+		hasDefault = 1
+	}
+	fired := lcg.currentBlock.NewCall(lcg.getOrDeclareTaskRuntime("chan_select"),
+		constant.NewInt(types.I64, count),
+		slot(chansAlloca, chansType, 0),
+		slot(dirsAlloca, dirsType, 0),
+		slot(valsAlloca, valsType, 0),
+		constant.NewInt(types.I32, hasDefault))
+
+	mergeBlock := lcg.currentFunc.NewBlock("")
+
+	// Dispatch chain over the fired index
+	for i, c := range ops {
+		caseBlock := lcg.currentFunc.NewBlock("")
+		nextBlock := lcg.currentFunc.NewBlock("")
+		cond := lcg.currentBlock.NewICmp(enum.IPredEQ, fired, constant.NewInt(types.I32, int64(i)))
+		lcg.currentBlock.NewCondBr(cond, caseBlock, nextBlock)
+
+		lcg.currentBlock = caseBlock
+		if !c.IsSend && c.VarName != nil {
+			raw := lcg.currentBlock.NewLoad(types.I64, slot(valsAlloca, valsType, int64(i)))
+			elem := lcg.channelElemLLVMType(c.Channel)
+			if elem == nil {
+				elem = types.I64
+			}
+			converted := lcg.convertMapValueFromI64(raw, elem)
+			binding := lcg.currentBlock.NewAlloca(elem)
+			lcg.currentBlock.NewStore(converted, binding)
+			lcg.values[c.VarName] = binding
+		}
+		ast.Walk(lcg, c.Block)
+		if !lcg.isTerminator(lcg.currentBlock.Term) {
+			lcg.currentBlock.NewBr(mergeBlock)
+		}
+
+		lcg.currentBlock = nextBlock
+	}
+
+	// Remaining index (-1) is the default case, or fall through to merge.
+	if defaultCase != nil {
+		ast.Walk(lcg, defaultCase.Block)
+	}
+	if !lcg.isTerminator(lcg.currentBlock.Term) {
+		lcg.currentBlock.NewBr(mergeBlock)
+	}
+
+	lcg.currentBlock = mergeBlock
 }

@@ -14,6 +14,9 @@
 - [x] struct literal field defaults
 - [x] runtime-initialized globals
 - [x] variable zero values
+- [x] select over multiple channels (with default, send/recv cases)
+- [x] reflection: typeof (static) and typename (dynamic via itable)
+- [x] is/as type assertions on user-defined struct types
 - tuple member access expressions
 - tuple extract in assignments
 - pass by value (pointers?)?
@@ -34,7 +37,6 @@
 - VM?
 - stdlib: UDP sockets, file IO, time, env/args
 - preemption / multicore parallelism for green threads
-- select over multiple channels
 - go statement on method calls (workaround: wrap in a lambda)
 - HTTP: TLS, streaming bodies, keep-alive connections
 - route path parameters (/todos/:id)

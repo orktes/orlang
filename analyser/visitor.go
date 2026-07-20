@@ -185,6 +185,9 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			if ident.Text == "send" || ident.Text == "close" || ident.Text == "yield" {
 				return types.VoidType
 			}
+			if ident.Text == "typeof" || ident.Text == "typename" {
+				return types.StringType
+			}
 			if ident.Text == "append" {
 				// append returns a dynamic slice of the input's element type
 				if len(n.Arguments) > 0 {
@@ -710,7 +713,8 @@ typeCheck:
 			// Skip error for builtin functions
 			switch n.Text {
 			case "len", "append", "str", "print", "println", "delete", "contains",
-				"channel", "send", "recv", "close", "closed", "yield":
+				"channel", "send", "recv", "close", "closed", "yield",
+				"typeof", "typename":
 				break
 			default:
 				v.emitError(n, fmt.Sprintf("undefined: %s", n), true)
@@ -873,6 +877,21 @@ typeCheck:
 			default:
 				nodeInfo.Type = types.VoidType
 			}
+			break
+		}
+
+		if ident, ok := n.Callee.(*ast.Identifier); ok &&
+			(ident.Text == "typeof" || ident.Text == "typename") &&
+			v.scope.Get(ident.Text, true) == nil {
+			if len(n.Arguments) != 1 {
+				v.emitError(n, fmt.Sprintf("%s() takes exactly one argument", ident.Text), true)
+				break
+			}
+			v.Visit(n.Arguments[0].Expression)
+			// Resolve (and cache) the argument type so codegen can read the
+			// static type off the expression node.
+			v.getTypeForNode(n.Arguments[0].Expression)
+			nodeInfo.Type = types.StringType
 			break
 		}
 
@@ -1205,6 +1224,44 @@ typeCheck:
 		// into the parent scope. This prevents the bug where reusing the same
 		// variable name across multiple for-loops references the wrong alloca.
 		return v.subVisitor(node, v.scope.SubScope(node))
+
+	case *ast.SelectStatement:
+		for _, c := range n.Cases {
+			caseScope := v.scope.SubScope(c)
+			sub := v.subVisitor(c, caseScope)
+
+			if !c.IsDefault {
+				ast.Walk(sub, c.Channel)
+				ch, isChan := types.LazyResolve(sub.getTypeForNode(c.Channel)).(*types.ChannelType)
+				if !isChan {
+					v.emitError(c.Channel, "select case operand must be a channel", true)
+					ast.Walk(sub, c.Block)
+					continue
+				}
+				if c.IsSend {
+					ast.Walk(sub, c.Value)
+					valType := types.LazyResolve(sub.getTypeForNode(c.Value))
+					if ch.Elem != nil && valType != nil && !valType.IsEqual(ch.Elem) &&
+						!isAssignable(c.Value, valType, ch.Elem) {
+						v.emitError(c.Value, fmt.Sprintf(
+							"cannot send %s (type %s) on channel of %s",
+							c.Value,
+							valType.GetName(),
+							ch.Elem.GetName(),
+						), true)
+					}
+				} else if c.VarName != nil {
+					if ch.Elem == nil {
+						v.emitError(c.Channel, "cannot receive from an untyped channel; annotate the channel declaration", true)
+					} else {
+						caseScope.Set(c.VarName, c.VarName)
+						v.info.NodeInfo[c.VarName] = &NodeInfo{Type: ch.Elem}
+					}
+				}
+			}
+			ast.Walk(sub, c.Block)
+		}
+		return nil
 
 	case *ast.ForRangeLoop:
 		// Create a subscope for iteration variables

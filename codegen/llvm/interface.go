@@ -67,9 +67,10 @@ func (lcg *LLVMCodeGen) getOrCreateItable(sourceTyp ortypes.Type, targetTyp *ort
 		sourceTyp = ortypes.LazyResolve(ptr.Type)
 	}
 
-	// Name for the itable global
-	sourceName := sourceTyp.GetName()
-	targetName := targetTyp.GetName()
+	// Name for the itable global. Short names keep the type-ID key
+	// consistent with `is` assertions (typeRef.Name.Text) and typename.
+	sourceName := shortTypeName(sourceTyp)
+	targetName := shortTypeName(targetTyp)
 
 	itableName := fmt.Sprintf("__itable_%s_to_%s", sourceName, targetName)
 

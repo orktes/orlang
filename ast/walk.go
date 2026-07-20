@@ -119,6 +119,14 @@ func Walk(v Visitor, node Node) {
 		Walk(v, n.Call)
 	case *GoStatement:
 		Walk(v, n.Call)
+	case *SelectStatement:
+		for _, c := range n.Cases {
+			Walk(v, c)
+		}
+	case *SelectCase:
+		Walk(v, n.Channel)
+		Walk(v, n.Value)
+		Walk(v, n.Block)
 	case *Enum:
 		Walk(v, n.Name)
 	case *SwitchStatement:

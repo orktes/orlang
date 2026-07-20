@@ -1,0 +1,7 @@
+nothing ready
+got a: 5
+got b: from goroutine
+sent 41
+ack: 42
+closed a gives: 0
+discarded

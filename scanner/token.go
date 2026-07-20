@@ -150,6 +150,8 @@ const (
 	TokenTypeDefer
 	// TokenTypeGo go
 	TokenTypeGo
+	// TokenTypeSelect select
+	TokenTypeSelect
 	// TokenTypeLink link
 	TokenTypeLink
 )
@@ -235,6 +237,7 @@ var tokenNames = [...]string{
 	TokenTypeDefault:  "DEFAULT",
 	TokenTypeDefer:    "DEFER",
 	TokenTypeGo:       "GO",
+	TokenTypeSelect:   "SELECT",
 	TokenTypeLink:     "LINK",
 }
 

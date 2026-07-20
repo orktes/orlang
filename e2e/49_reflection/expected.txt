@@ -1,0 +1,16 @@
+int32 / float64 / string
+map[string]int32
+chan int32
+[2]int32
+2
+Point
+int32
+Point
+Circle
+int32
+Point = point
+Circle = circle
+int32
+a point
+a circle
+an int32

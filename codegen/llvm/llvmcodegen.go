@@ -47,6 +47,7 @@ type LLVMCodeGen struct {
 	materializing     map[string]bool                 // guards recursive on-demand struct materialization
 	goThunkCounter    int                             // unique names for go-statement thunks
 	structASTs        map[string]*ast.Struct          // struct declarations (for field defaults)
+	typenameFn        *ir.Func                        // __orlang_typename (reflection), body emitted at finalize
 	globalInits       []pendingGlobalInit             // runtime-evaluated global initializers
 }
 
@@ -124,6 +125,7 @@ func (lcg *LLVMCodeGen) Generate(file *ast.File) (code string) {
 	}()
 	lcg.currentFile = file
 	ast.Walk(lcg, file)
+	lcg.finalizeTypenameFn()
 	return lcg.module.String()
 }
 
@@ -1146,6 +1148,9 @@ func (lcg *LLVMCodeGen) Visit(node ast.Node) ast.Visitor {
 	case *ast.GoStatement:
 		lcg.visitGoStatement(n)
 		return nil
+	case *ast.SelectStatement:
+		lcg.visitSelectStatement(n)
+		return nil
 	}
 	return lcg
 }
@@ -1440,12 +1445,35 @@ func (lcg *LLVMCodeGen) visitVariableDeclaration(n *ast.VariableDeclaration) {
 	if n.DefaultValue != nil {
 		ast.Walk(lcg, n.DefaultValue)
 		val = lcg.values[n.DefaultValue]
+		if val == nil {
+			lcg.errorf(n.DefaultValue, "cannot generate code for initializer of %s", n.Name.Text)
+			return
+		}
+
+		// A declaration with an interface type needs interface-struct storage
+		// (built below via castIfNeeded), so a raw struct pointer initializer
+		// cannot be adopted as the variable's storage directly. The analyser
+		// caches the declared type on the annotation or declaration node.
+		declaredIface := false
+		for _, node := range []ast.Node{n.Type, ast.Node(n), n.Name} {
+			if node == nil {
+				continue
+			}
+			if typ := lcg.semanticType(node); typ != nil {
+				if _, ok := typ.(*ortypes.InterfaceType); ok {
+					declaredIface = true
+				}
+				break
+			}
+		}
 
 		// If the value is already a struct/array pointer (from alloca or GC_malloc+bitcast),
 		// just use it directly instead of creating a new alloca
 		var directPtr bool
 		var elemType types.Type
-		if allocaInst, isAlloca := val.(*ir.InstAlloca); isAlloca {
+		if declaredIface {
+			// fall through to the alloca + cast path below
+		} else if allocaInst, isAlloca := val.(*ir.InstAlloca); isAlloca {
 			directPtr = true
 			elemType = allocaInst.ElemType
 		} else if ptrType, isPtr := val.Type().(*types.PointerType); isPtr {
@@ -2217,6 +2245,12 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 			case "yield":
 				lcg.currentBlock.NewCall(lcg.getOrDeclareTaskRuntime("task_yield"))
 				return
+			case "typeof":
+				lcg.visitTypeofBuiltin(n)
+				return
+			case "typename":
+				lcg.visitTypenameBuiltin(n)
+				return
 			}
 		}
 
@@ -2238,6 +2272,15 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 				count := lcg.currentBlock.NewCall(lcg.getOrDeclareMapRuntime("map_len"), val)
 				lcg.values[n] = lcg.currentBlock.NewTrunc(count, types.I32)
 				return
+			}
+
+			// Fixed arrays decay to a plain element pointer, so their length
+			// is only recoverable from the semantic type.
+			if nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[arg.Expression]; nodeInfo != nil {
+				if arrayType, ok := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.ArrayType); ok && arrayType.Length >= 0 {
+					lcg.values[n] = constant.NewInt(types.I32, arrayType.Length)
+					return
+				}
 			}
 
 			// Get argument type

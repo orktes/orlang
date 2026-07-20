@@ -65,6 +65,11 @@ typedef struct orl_task {
   int64_t chan_value;
   int chan_delivered;
 
+  /* select participation: set while parked in chan_select */
+  int in_select;
+  int select_committed;
+  int32_t select_fired; /* case index committed by a counterpart */
+
   struct orl_task *all_next;   /* all-tasks list (GC root chain) */
   struct orl_task *queue_next; /* ready/wait queue link */
 } orl_task_t;
@@ -333,6 +338,8 @@ void orl_task_mark_main_stack(void (*mark_range)(const void *, const void *),
 
 typedef struct orl_chan_waiter {
   orl_task_t *task;
+  int32_t select_case; /* -1 for plain send/recv waiters */
+  int64_t send_value;  /* value carried by a parked select send case */
   struct orl_chan_waiter *next;
 } orl_chan_waiter_t;
 
@@ -346,9 +353,12 @@ typedef struct {
   orl_chan_waiter_t *recv_waiters;
 } orl_chan_t;
 
-static void orl_chan_wait_push(orl_chan_waiter_t **list, orl_task_t *t) {
+static void orl_chan_wait_push_case(orl_chan_waiter_t **list, orl_task_t *t,
+                                    int32_t select_case, int64_t send_value) {
   orl_chan_waiter_t *w = (orl_chan_waiter_t *)GC_malloc(sizeof(orl_chan_waiter_t));
   w->task = t;
+  w->select_case = select_case;
+  w->send_value = send_value;
   w->next = NULL;
   while (*list != NULL) {
     list = &(*list)->next;
@@ -356,13 +366,60 @@ static void orl_chan_wait_push(orl_chan_waiter_t **list, orl_task_t *t) {
   *list = w;
 }
 
-static orl_task_t *orl_chan_wait_pop(orl_chan_waiter_t **list) {
-  orl_chan_waiter_t *w = *list;
-  if (w == NULL) {
-    return NULL;
+static void orl_chan_wait_push(orl_chan_waiter_t **list, orl_task_t *t) {
+  orl_chan_wait_push_case(list, t, -1, 0);
+}
+
+/* Removes every waiter entry belonging to task t from a list (used when a
+ * select wakes up and withdraws its remaining registrations). */
+static void orl_chan_wait_remove_task(orl_chan_waiter_t **list, orl_task_t *t) {
+  while (*list != NULL) {
+    if ((*list)->task == t) {
+      *list = (*list)->next;
+    } else {
+      list = &(*list)->next;
+    }
   }
-  *list = w->next;
-  return w->task;
+}
+
+/* Pops the first waiter still able to complete an operation: plain
+ * waiters always can; select waiters only when their select has not
+ * already fired through another channel (stale entries are discarded —
+ * the owning task also withdraws them when it wakes). */
+static orl_chan_waiter_t *orl_chan_pop_eligible(orl_chan_waiter_t **list) {
+  for (;;) {
+    orl_chan_waiter_t *w = *list;
+    if (w == NULL) {
+      return NULL;
+    }
+    *list = w->next;
+    w->next = NULL;
+    if (w->select_case >= 0 && w->task->select_committed) {
+      continue;
+    }
+    return w;
+  }
+}
+
+/* Commits a handoff to a waiter: marks select participation and wakes the
+ * task. For recv-side waiters the delivered value is in task->chan_value. */
+static void orl_chan_commit_waiter(orl_chan_waiter_t *w) {
+  w->task->chan_delivered = 1;
+  if (w->select_case >= 0) {
+    w->task->select_committed = 1;
+    w->task->select_fired = w->select_case;
+  }
+  if (w->task->state == ORL_TASK_CHAN_BLOCKED) {
+    orl_ready_push(w->task);
+  }
+}
+
+/* Wakes one waiter to re-check a buffered channel (no value handoff). */
+static void orl_chan_wake_one(orl_chan_waiter_t **list) {
+  orl_chan_waiter_t *w = orl_chan_pop_eligible(list);
+  if (w != NULL && w->task->state == ORL_TASK_CHAN_BLOCKED) {
+    orl_ready_push(w->task);
+  }
 }
 
 ORLANG_WEAK void *chan_new(int64_t capacity) {
@@ -391,12 +448,10 @@ ORLANG_WEAK void chan_send(void *chp, int64_t value) {
     /* Unbuffered: hand the value directly to a waiting receiver, or
      * park until one arrives. */
     if (ch->cap == 0) {
-      orl_task_t *receiver = orl_chan_wait_pop(&ch->recv_waiters);
-      if (receiver != NULL) {
-        receiver->chan_value = value;
-        receiver->chan_delivered = 1;
-        orl_ready_push(receiver);
-        /* Rendezvous complete; sender continues. */
+      orl_chan_waiter_t *w = orl_chan_pop_eligible(&ch->recv_waiters);
+      if (w != NULL) {
+        w->task->chan_value = value;
+        orl_chan_commit_waiter(w);
         return;
       }
       /* Park as a sender holding the value. */
@@ -415,14 +470,12 @@ ORLANG_WEAK void chan_send(void *chp, int64_t value) {
     if (ch->len < ch->cap) {
       ch->buf[(ch->head + ch->len) % ch->cap] = value;
       ch->len++;
-      orl_task_t *receiver = orl_chan_wait_pop(&ch->recv_waiters);
-      if (receiver != NULL) {
-        orl_ready_push(receiver);
-      }
+      orl_chan_wake_one(&ch->recv_waiters);
       return;
     }
 
     /* Full: park until a receiver frees a slot. */
+    orl_current->chan_delivered = 0;
     orl_current->state = ORL_TASK_CHAN_BLOCKED;
     orl_chan_wait_push(&ch->send_waiters, orl_current);
     orl_schedule();
@@ -437,11 +490,10 @@ ORLANG_WEAK int64_t chan_recv(void *chp) {
   for (;;) {
     if (ch->cap == 0) {
       /* Unbuffered: take from a parked sender if one is waiting. */
-      orl_task_t *sender = orl_chan_wait_pop(&ch->send_waiters);
-      if (sender != NULL) {
-        int64_t value = sender->chan_value;
-        sender->chan_delivered = 1;
-        orl_ready_push(sender);
+      orl_chan_waiter_t *w = orl_chan_pop_eligible(&ch->send_waiters);
+      if (w != NULL) {
+        int64_t value = w->select_case >= 0 ? w->send_value : w->task->chan_value;
+        orl_chan_commit_waiter(w);
         return value;
       }
       if (ch->closed) {
@@ -462,16 +514,14 @@ ORLANG_WEAK int64_t chan_recv(void *chp) {
       int64_t value = ch->buf[ch->head];
       ch->head = (ch->head + 1) % ch->cap;
       ch->len--;
-      orl_task_t *sender = orl_chan_wait_pop(&ch->send_waiters);
-      if (sender != NULL) {
-        orl_ready_push(sender);
-      }
+      orl_chan_wake_one(&ch->send_waiters);
       return value;
     }
     if (ch->closed) {
       return 0;
     }
 
+    orl_current->chan_delivered = 0;
     orl_current->state = ORL_TASK_CHAN_BLOCKED;
     orl_chan_wait_push(&ch->recv_waiters, orl_current);
     orl_schedule();
@@ -485,12 +535,16 @@ ORLANG_WEAK void chan_close(void *chp) {
   }
   ch->closed = 1;
   /* Wake everyone; they re-check state and observe the close. */
-  orl_task_t *t;
-  while ((t = orl_chan_wait_pop(&ch->recv_waiters)) != NULL) {
-    orl_ready_push(t);
+  orl_chan_waiter_t *w;
+  while ((w = orl_chan_pop_eligible(&ch->recv_waiters)) != NULL) {
+    if (w->task->state == ORL_TASK_CHAN_BLOCKED) {
+      orl_ready_push(w->task);
+    }
   }
-  while ((t = orl_chan_wait_pop(&ch->send_waiters)) != NULL) {
-    orl_ready_push(t);
+  while ((w = orl_chan_pop_eligible(&ch->send_waiters)) != NULL) {
+    if (w->task->state == ORL_TASK_CHAN_BLOCKED) {
+      orl_ready_push(w->task);
+    }
   }
 }
 
@@ -501,4 +555,115 @@ ORLANG_WEAK int32_t chan_closed(void *chp) {
   }
   /* A channel still holding buffered values is not "drained". */
   return ch->closed && ch->len == 0 && ch->send_waiters == NULL;
+}
+
+/* ------------------------------------------------------------------ */
+/* Select                                                             */
+/* ------------------------------------------------------------------ */
+
+/* Tries every case once, in order (deterministic under the cooperative
+ * scheduler, unlike Go's randomized choice). dirs[i]: 0 = recv, 1 = send.
+ * vals[i] carries send values in and receive results out.
+ * Returns the fired case index or -2 when nothing is ready. */
+static int32_t orl_select_try(int64_t n, void **chans, int32_t *dirs, int64_t *vals) {
+  for (int64_t i = 0; i < n; i++) {
+    orl_chan_t *ch = (orl_chan_t *)chans[i];
+    if (ch == NULL) {
+      continue;
+    }
+    if (dirs[i] == 0) { /* recv */
+      if (ch->cap == 0) {
+        orl_chan_waiter_t *w = orl_chan_pop_eligible(&ch->send_waiters);
+        if (w != NULL) {
+          vals[i] = w->select_case >= 0 ? w->send_value : w->task->chan_value;
+          orl_chan_commit_waiter(w);
+          return (int32_t)i;
+        }
+      } else if (ch->len > 0) {
+        vals[i] = ch->buf[ch->head];
+        ch->head = (ch->head + 1) % ch->cap;
+        ch->len--;
+        orl_chan_wake_one(&ch->send_waiters);
+        return (int32_t)i;
+      }
+      if (ch->closed) {
+        vals[i] = 0; /* closed channels are always ready with zero */
+        return (int32_t)i;
+      }
+    } else { /* send */
+      if (ch->closed) {
+        orl_task_fatal("send on closed channel");
+      }
+      if (ch->cap == 0) {
+        orl_chan_waiter_t *w = orl_chan_pop_eligible(&ch->recv_waiters);
+        if (w != NULL) {
+          w->task->chan_value = vals[i];
+          orl_chan_commit_waiter(w);
+          return (int32_t)i;
+        }
+      } else if (ch->len < ch->cap) {
+        ch->buf[(ch->head + ch->len) % ch->cap] = vals[i];
+        ch->len++;
+        orl_chan_wake_one(&ch->recv_waiters);
+        return (int32_t)i;
+      }
+    }
+  }
+  return -2;
+}
+
+/* chan_select blocks until one case can proceed and returns its index
+ * (receive results are written to vals). With has_default it returns -1
+ * immediately when no case is ready. */
+ORLANG_WEAK int32_t chan_select(int64_t n, void **chans, int32_t *dirs,
+                                int64_t *vals, int32_t has_default) {
+  orl_task_init_main();
+  for (;;) {
+    int32_t idx = orl_select_try(n, chans, dirs, vals);
+    if (idx >= 0) {
+      return idx;
+    }
+    if (has_default) {
+      return -1;
+    }
+
+    /* Park registered on every channel; whichever counterpart completes
+     * first commits exactly one case (select_committed gate). */
+    orl_current->select_committed = 0;
+    orl_current->select_fired = -1;
+    orl_current->chan_delivered = 0;
+    for (int64_t i = 0; i < n; i++) {
+      orl_chan_t *ch = (orl_chan_t *)chans[i];
+      if (ch == NULL) {
+        continue;
+      }
+      if (dirs[i] == 0) {
+        orl_chan_wait_push_case(&ch->recv_waiters, orl_current, (int32_t)i, 0);
+      } else {
+        orl_chan_wait_push_case(&ch->send_waiters, orl_current, (int32_t)i, vals[i]);
+      }
+    }
+    orl_current->state = ORL_TASK_CHAN_BLOCKED;
+    orl_schedule();
+
+    /* Withdraw the registrations that did not fire. */
+    for (int64_t i = 0; i < n; i++) {
+      orl_chan_t *ch = (orl_chan_t *)chans[i];
+      if (ch == NULL) {
+        continue;
+      }
+      orl_chan_wait_remove_task(&ch->recv_waiters, orl_current);
+      orl_chan_wait_remove_task(&ch->send_waiters, orl_current);
+    }
+
+    if (orl_current->select_committed) {
+      int32_t fired = orl_current->select_fired;
+      orl_current->select_committed = 0;
+      if (dirs[fired] == 0) {
+        vals[fired] = orl_current->chan_value;
+      }
+      return fired;
+    }
+    /* Woken by a close or a buffered-state change: retry. */
+  }
 }
