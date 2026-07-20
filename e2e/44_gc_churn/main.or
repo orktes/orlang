@@ -1,0 +1,17 @@
+fn main() {
+    // Allocate ~4MB of short-lived strings so the collector runs several
+    // times with the default 1MB threshold. Correct output proves live
+    // data survives collections.
+    var kept: string = ""
+    for var i = 0; i < 40; i++ {
+        var s: string = ""
+        for var j = 0; j < 100; j++ {
+            s = s + "0123456789"
+        }
+        if i == 20 {
+            kept = s
+        }
+    }
+    println("kept len:", len(kept))
+    println("done")
+}

@@ -3,6 +3,7 @@ package llvm
 import (
 	"fmt"
 	"math"
+	"os"
 	"runtime"
 	"strings"
 
@@ -42,6 +43,19 @@ type LLVMCodeGen struct {
 	enumValues        map[string]map[string]int32     // Enum name -> value name -> int32 constant
 	anonFnCounter     int                             // Counter for unique anonymous function names
 	closureWrappers   map[string]*ir.Func             // function name -> closure wrapper (adds env param)
+	errors            []error                         // Codegen errors collected during Generate
+	materializing     map[string]bool                 // guards recursive on-demand struct materialization
+	goThunkCounter    int                             // unique names for go-statement thunks
+	structASTs        map[string]*ast.Struct          // struct declarations (for field defaults)
+	typenameFn        *ir.Func                        // __orlang_typename (reflection), body emitted at finalize
+	globalInits       []pendingGlobalInit             // runtime-evaluated global initializers
+}
+
+// pendingGlobalInit is a global whose initializer is not a compile-time
+// constant; it is evaluated and stored at the top of main.
+type pendingGlobalInit struct {
+	global *ir.Global
+	decl   *ast.VariableDeclaration
 }
 
 func New(info *analyser.Info) *LLVMCodeGen {
@@ -58,6 +72,7 @@ func New(info *analyser.Info) *LLVMCodeGen {
 		allocaMetadata:    make(map[value.Value]*AllocaMetadata),
 		enumValues:        make(map[string]map[string]int32),
 		closureWrappers:   make(map[string]*ir.Func),
+		structASTs:        make(map[string]*ast.Struct),
 	}
 	lcg.initializeModule() // Call the new initialization function
 	// Initialize helpers that need reference to lcg
@@ -96,9 +111,21 @@ func (lcg *LLVMCodeGen) SetModuleName(name string) {
 	lcg.moduleName = name
 }
 
-func (lcg *LLVMCodeGen) Generate(file *ast.File) string {
+func (lcg *LLVMCodeGen) Generate(file *ast.File) (code string) {
+	// Codegen bugs and unexpected inputs surface as panics deep in the
+	// visitor; report them as errors instead of crashing the compiler.
+	// (ORLANG_PANIC=1 re-panics for debugging.)
+	defer func() {
+		if r := recover(); r != nil {
+			if os.Getenv("ORLANG_PANIC") == "1" {
+				panic(r)
+			}
+			lcg.errors = append(lcg.errors, fmt.Errorf("internal codegen error: %v", r))
+		}
+	}()
 	lcg.currentFile = file
 	ast.Walk(lcg, file)
+	lcg.finalizeTypenameFn()
 	return lcg.module.String()
 }
 
@@ -110,32 +137,51 @@ func getKeys(m map[string]*ir.Func) []string {
 	return keys
 }
 
-// getSizeOf returns the size in bytes of an LLVM type
+// getSizeOf returns the size in bytes of an LLVM type, including struct
+// field alignment padding (matching the platform C ABI layout clang uses).
 func (lcg *LLVMCodeGen) getSizeOf(t types.Type) int64 {
+	size, _ := lcg.sizeAndAlignOf(t)
+	return size
+}
+
+// sizeAndAlignOf computes the size and alignment of an LLVM type following
+// standard C struct layout rules: each field is aligned to its natural
+// alignment, and the struct is padded to a multiple of its widest field.
+func (lcg *LLVMCodeGen) sizeAndAlignOf(t types.Type) (size int64, align int64) {
+	roundUp := func(v, a int64) int64 {
+		return (v + a - 1) / a * a
+	}
+
 	switch typ := t.(type) {
 	case *types.IntType:
-		return int64(typ.BitSize / 8)
+		s := int64(typ.BitSize+7) / 8
+		if s == 0 {
+			s = 1
+		}
+		return s, s
 	case *types.FloatType:
-		switch typ.Kind {
-		case types.FloatKindFloat:
-			return 4
-		case types.FloatKindDouble:
-			return 8
-		default:
-			return 4
+		if typ.Kind == types.FloatKindDouble {
+			return 8, 8
 		}
+		return 4, 4
 	case *types.PointerType:
-		return 8 // Assuming 64-bit pointers
+		return 8, 8 // Assuming 64-bit pointers
 	case *types.StructType:
-		size := int64(0)
+		offset := int64(0)
+		maxAlign := int64(1)
 		for _, field := range typ.Fields {
-			size += lcg.getSizeOf(field)
+			fsize, falign := lcg.sizeAndAlignOf(field)
+			offset = roundUp(offset, falign) + fsize
+			if falign > maxAlign {
+				maxAlign = falign
+			}
 		}
-		return size
+		return roundUp(offset, maxAlign), maxAlign
 	case *types.ArrayType:
-		return int64(typ.Len) * lcg.getSizeOf(typ.ElemType)
+		esize, ealign := lcg.sizeAndAlignOf(typ.ElemType)
+		return int64(typ.Len) * roundUp(esize, ealign), ealign
 	default:
-		return 8 // Default to pointer size
+		return 8, 8 // Default to pointer size
 	}
 }
 
@@ -272,6 +318,28 @@ func (lcg *LLVMCodeGen) getLLVMTypeFromSemantic(t ortypes.Type) types.Type {
 		if s, ok := lcg.structs[t.Name]; ok {
 			return types.NewPointer(s)
 		}
+		// Materialize the LLVM struct type on demand from the semantic
+		// type — needed for types reached through imported modules that
+		// were not explicitly imported (e.g. a function's return type).
+		if t.Name != "" && !lcg.materializing[t.Name] {
+			if lcg.materializing == nil {
+				lcg.materializing = map[string]bool{}
+			}
+			lcg.materializing[t.Name] = true
+			var fields []types.Type
+			fieldIndices := make(map[string]int)
+			for i, v := range t.Variables {
+				fields = append(fields, lcg.getLLVMTypeFromSemantic(v.Type))
+				fieldIndices[v.Name] = i
+			}
+			delete(lcg.materializing, t.Name)
+			llvmStructType := types.NewStruct(fields...)
+			typeDef := lcg.module.NewTypeDef(t.Name, llvmStructType)
+			lcg.structs[t.Name] = typeDef
+			lcg.structDefinitions[t.Name] = llvmStructType
+			lcg.structFields[t.Name] = fieldIndices
+			return types.NewPointer(typeDef)
+		}
 	case *ortypes.InterfaceType:
 		return lcg.getInterfaceType()
 	case *ortypes.TupleType:
@@ -297,6 +365,9 @@ func (lcg *LLVMCodeGen) getLLVMTypeFromSemantic(t ortypes.Type) types.Type {
 		return lcg.getClosureType()
 	case *ortypes.MapType:
 		// Maps are opaque pointers (i8*) to the C runtime Map struct
+		return types.NewPointer(types.I8)
+	case *ortypes.ChannelType:
+		// Channels are opaque pointers to the runtime channel struct
 		return types.NewPointer(types.I8)
 	}
 
@@ -362,6 +433,15 @@ func (lcg *LLVMCodeGen) getLLVMType(t ast.Type) types.Type {
 			fields = append(fields, lcg.getLLVMType(elemType))
 		}
 		return types.NewStruct(fields...)
+	case *ast.FunctionSignature:
+		// Function-typed values are closure structs { fnptr, env }
+		return lcg.getClosureType()
+	case *ast.MapType:
+		// Maps are opaque pointers to the runtime Map
+		return types.NewPointer(types.I8)
+	case *ast.ChannelType:
+		// Channels are opaque pointers to the runtime channel
+		return types.NewPointer(types.I8)
 	}
 
 	return types.I32
@@ -406,6 +486,29 @@ func (lcg *LLVMCodeGen) visitStructExpression(n *ast.StructExpression) {
 
 	// Initialize fields
 	fieldIndices := lcg.structFields[name]
+
+	// Apply field default values first (memory is zeroed by GC_malloc, so
+	// fields without defaults become zero values); explicit arguments below
+	// overwrite them.
+	if structAST, ok := lcg.structASTs[name]; ok {
+		structDef := lcg.structDefinitions[name]
+		for i, field := range structAST.Variables {
+			if field.DefaultValue == nil {
+				continue
+			}
+			ast.Walk(lcg, field.DefaultValue)
+			val := lcg.values[field.DefaultValue]
+			if val == nil {
+				continue
+			}
+			if structDef != nil && i < len(structDef.Fields) && !val.Type().Equal(structDef.Fields[i]) {
+				val = lcg.numericConvert(val, structDef.Fields[i], field.DefaultValue)
+			}
+			gep := lcg.currentBlock.NewGetElementPtr(structType, alloca,
+				constant.NewInt(types.I32, 0), constant.NewInt(types.I32, int64(i)))
+			lcg.currentBlock.NewStore(val, gep)
+		}
+	}
 
 	// Handle positional arguments
 	// TODO: Handle named arguments properly. For now assuming positional or named matching
@@ -501,7 +604,7 @@ func (lcg *LLVMCodeGen) visitIndexExpression(n *ast.IndexExpression) {
 	// Check if this is a map access by looking at semantic type info
 	nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n.Target]
 	if nodeInfo != nil {
-		if mapType, isMapType := nodeInfo.Type.(*ortypes.MapType); isMapType {
+		if mapType, isMapType := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.MapType); isMapType {
 			// Handle map get operation
 			ast.Walk(lcg, n.Target)
 			mapPtr := lcg.values[n.Target]
@@ -516,20 +619,8 @@ func (lcg *LLVMCodeGen) visitIndexExpression(n *ast.IndexExpression) {
 				return
 			}
 
-			// Declare map_get function (returns i64 for generic value storage)
-			var mapGetFn *ir.Func
-			if fn, ok := lcg.functions["map_get"]; ok {
-				mapGetFn = fn
-			} else {
-				mapStructPtr := types.NewPointer(types.I8)
-				mapGetFn = lcg.module.NewFunc("map_get", types.I64,
-					ir.NewParam("map", mapStructPtr),
-					ir.NewParam("key", types.I8Ptr))
-				lcg.functions["map_get"] = mapGetFn
-			}
-
-			// Call map_get (returns i64)
-			rawResult := lcg.currentBlock.NewCall(mapGetFn, mapPtr, keyVal)
+			// Call map_get (returns i64 for generic value storage)
+			rawResult := lcg.currentBlock.NewCall(lcg.getMapGetFn(), mapPtr, keyVal)
 
 			// Convert i64 result to the actual value type
 			valType := lcg.getLLVMTypeFromSemantic(mapType.ValueType)
@@ -624,7 +715,7 @@ func (lcg *LLVMCodeGen) visitArrayExpression(n *ast.ArrayExpression) {
 		return
 	}
 
-	arrayType, ok := nodeInfo.Type.(*ortypes.ArrayType)
+	arrayType, ok := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.ArrayType)
 	if !ok {
 		return
 	}
@@ -811,6 +902,24 @@ func (lcg *LLVMCodeGen) convertMapValueFromI64(val value.Value, targetType types
 }
 
 func (lcg *LLVMCodeGen) getAddress(n ast.Node) value.Value {
+	// A call result has no storage; spill it to a stack slot so chained
+	// method calls like v.get("a").str() have an addressable receiver.
+	if call, ok := n.(*ast.FunctionCall); ok {
+		if _, evaluated := lcg.values[call]; !evaluated {
+			ast.Walk(lcg, call)
+		}
+		val := lcg.values[call]
+		if val == nil {
+			return nil
+		}
+		if _, isPtr := val.Type().(*types.PointerType); isPtr {
+			return val
+		}
+		slot := lcg.currentBlock.NewAlloca(val.Type())
+		lcg.currentBlock.NewStore(val, slot)
+		return slot
+	}
+
 	if ident, ok := n.(*ast.Identifier); ok {
 		nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[ident]
 		if nodeInfo != nil {
@@ -1036,6 +1145,12 @@ func (lcg *LLVMCodeGen) Visit(node ast.Node) ast.Visitor {
 	case *ast.DeferStatement:
 		lcg.visitDeferStatement(n)
 		return nil
+	case *ast.GoStatement:
+		lcg.visitGoStatement(n)
+		return nil
+	case *ast.SelectStatement:
+		lcg.visitSelectStatement(n)
+		return nil
 	}
 	return lcg
 }
@@ -1089,8 +1204,10 @@ func (lcg *LLVMCodeGen) visitUnaryExpression(n *ast.UnaryExpression) {
 		// Unary minus: -expr
 		if intType, ok := operand.Type().(*types.IntType); ok {
 			lcg.values[n] = lcg.currentBlock.NewSub(constant.NewInt(intType, 0), operand)
-		} else if operand.Type().Equal(types.Double) {
-			lcg.values[n] = lcg.currentBlock.NewFSub(constant.NewFloat(types.Double, 0), operand)
+		} else if floatType, ok := operand.Type().(*types.FloatType); ok {
+			lcg.values[n] = lcg.currentBlock.NewFSub(constant.NewFloat(floatType, 0), operand)
+		} else {
+			lcg.errorf(n, "unary minus is not defined for this operand type")
 		}
 	case scanner.TokenTypeIncrement:
 		// Prefix ++
@@ -1197,6 +1314,12 @@ func (lcg *LLVMCodeGen) visitForRangeLoop(n *ast.ForRangeLoop) {
 		return
 	}
 
+	// Map iteration uses the runtime's key enumeration
+	if mapType, ok := lcg.semanticType(n.Iterable).(*ortypes.MapType); ok {
+		lcg.visitMapRangeLoop(n, iterVal, mapType)
+		return
+	}
+
 	// 2. Determine element type, length, and data pointer from the iterable value
 	var elemType types.Type
 	var length value.Value
@@ -1219,7 +1342,7 @@ func (lcg *LLVMCodeGen) visitForRangeLoop(n *ast.ForRangeLoop) {
 		// Get length from semantic type info
 		nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n.Iterable]
 		if nodeInfo != nil {
-			if arrType, ok := nodeInfo.Type.(*ortypes.ArrayType); ok {
+			if arrType, ok := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.ArrayType); ok {
 				length = constant.NewInt(types.I32, arrType.Length)
 			}
 		}
@@ -1322,12 +1445,35 @@ func (lcg *LLVMCodeGen) visitVariableDeclaration(n *ast.VariableDeclaration) {
 	if n.DefaultValue != nil {
 		ast.Walk(lcg, n.DefaultValue)
 		val = lcg.values[n.DefaultValue]
+		if val == nil {
+			lcg.errorf(n.DefaultValue, "cannot generate code for initializer of %s", n.Name.Text)
+			return
+		}
+
+		// A declaration with an interface type needs interface-struct storage
+		// (built below via castIfNeeded), so a raw struct pointer initializer
+		// cannot be adopted as the variable's storage directly. The analyser
+		// caches the declared type on the annotation or declaration node.
+		declaredIface := false
+		for _, node := range []ast.Node{n.Type, ast.Node(n), n.Name} {
+			if node == nil {
+				continue
+			}
+			if typ := lcg.semanticType(node); typ != nil {
+				if _, ok := typ.(*ortypes.InterfaceType); ok {
+					declaredIface = true
+				}
+				break
+			}
+		}
 
 		// If the value is already a struct/array pointer (from alloca or GC_malloc+bitcast),
 		// just use it directly instead of creating a new alloca
 		var directPtr bool
 		var elemType types.Type
-		if allocaInst, isAlloca := val.(*ir.InstAlloca); isAlloca {
+		if declaredIface {
+			// fall through to the alloca + cast path below
+		} else if allocaInst, isAlloca := val.(*ir.InstAlloca); isAlloca {
 			directPtr = true
 			elemType = allocaInst.ElemType
 		} else if ptrType, isPtr := val.Type().(*types.PointerType); isPtr {
@@ -1368,11 +1514,21 @@ func (lcg *LLVMCodeGen) visitVariableDeclaration(n *ast.VariableDeclaration) {
 		}
 
 		if typ == nil || typ == types.I32 { // I32 is fallback in getLLVMTypeFromSemantic
-			// Use value type
-			// But we need to be careful. val.Type() returns LLVM type.
-			// If val is a pointer to struct, we want that.
+			// Use the value's type, but only when it isn't a plain numeric:
+			// a declared int32/uint32 must keep its width even when the
+			// initializer expression was analysed at a wider type (the
+			// store below converts the value). The fallback exists for
+			// structs/arrays/closures whose semantic mapping degraded to
+			// the I32 default.
 			if val != nil {
-				typ = val.Type()
+				switch val.Type().(type) {
+				case *types.IntType, *types.FloatType:
+					if typ == nil {
+						typ = val.Type()
+					}
+				default:
+					typ = val.Type()
+				}
 			}
 		}
 	}
@@ -1402,6 +1558,12 @@ func (lcg *LLVMCodeGen) visitVariableDeclaration(n *ast.VariableDeclaration) {
 	lcg.allocaMetadata[alloca] = &AllocaMetadata{
 		SemanticType: semType,
 		Category:     category,
+	}
+
+	// Zero-initialize declarations without a default value so reads (and
+	// e.g. append on an empty slice) see zero values, not stack garbage.
+	if val == nil {
+		lcg.currentBlock.NewStore(lcg.getZeroValue(typ), alloca)
 	}
 
 	// Store default value
@@ -1471,9 +1633,14 @@ func (lcg *LLVMCodeGen) visitGlobalVariableDeclaration(n *ast.VariableDeclaratio
 
 	// Determine the constant initializer
 	var init constant.Constant
+	runtimeInit := false
 	if n.DefaultValue != nil {
 		if valExpr, ok := n.DefaultValue.(*ast.ValueExpression); ok {
 			init = lcg.getConstantFromValue(valExpr, typ)
+		} else {
+			// Non-literal initializer (call, expression): start zeroed and
+			// evaluate at the top of main.
+			runtimeInit = true
 		}
 	}
 	if init == nil {
@@ -1487,6 +1654,10 @@ func (lcg *LLVMCodeGen) visitGlobalVariableDeclaration(n *ast.VariableDeclaratio
 
 	g := lcg.module.NewGlobalDef(name, init)
 	lcg.values[n.Name] = g
+
+	if runtimeInit {
+		lcg.globalInits = append(lcg.globalInits, pendingGlobalInit{global: g, decl: n})
+	}
 
 	// Store metadata
 	var semType ortypes.Type
@@ -1543,7 +1714,7 @@ func (lcg *LLVMCodeGen) visitAssigment(n *ast.Assigment) {
 	if indexExpr, ok := n.Left.(*ast.IndexExpression); ok {
 		nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[indexExpr.Target]
 		if nodeInfo != nil {
-			if _, isMapType := nodeInfo.Type.(*ortypes.MapType); isMapType {
+			if _, isMapType := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.MapType); isMapType {
 				// Handle map insert operation
 				ast.Walk(lcg, indexExpr.Target)
 				mapPtr := lcg.values[indexExpr.Target]
@@ -1599,11 +1770,11 @@ func (lcg *LLVMCodeGen) visitAssigment(n *ast.Assigment) {
 	val = lcg.castIfNeeded(val, sourceTyp, targetTyp)
 
 	if val == nil {
-		fmt.Printf("ERROR: Assignment value is nil for left=%T, right=%T\n", n.Left, n.Right)
+		lcg.errorf(n, "cannot generate code for assignment value")
 		return
 	}
 	if addr == nil {
-		fmt.Printf("ERROR: Assignment addr is nil for left=%T\n", n.Left)
+		lcg.errorf(n, "cannot assign: left-hand side is not addressable")
 		return
 	}
 
@@ -1681,10 +1852,9 @@ func (lcg *LLVMCodeGen) visitBinaryExpression(n *ast.BinaryExpression) {
 		}
 	}
 
-	isFloat := false
-	if leftVal.Type().Equal(types.Float) || leftVal.Type().Equal(types.Double) {
-		isFloat = true
-	}
+	isFloat := isFloatLLVMType(leftVal.Type()) || isFloatLLVMType(rightVal.Type())
+	leftVal, rightVal = lcg.unifyNumericOperands(leftVal, rightVal, n.Left, n.Right)
+	isUnsigned := lcg.operandsUnsigned(n.Left, n.Right)
 
 	switch n.Operator.Text {
 	case "+":
@@ -1708,12 +1878,16 @@ func (lcg *LLVMCodeGen) visitBinaryExpression(n *ast.BinaryExpression) {
 	case "/":
 		if isFloat {
 			val = lcg.currentBlock.NewFDiv(leftVal, rightVal)
+		} else if isUnsigned {
+			val = lcg.currentBlock.NewUDiv(leftVal, rightVal)
 		} else {
 			val = lcg.currentBlock.NewSDiv(leftVal, rightVal)
 		}
 	case "%":
 		if isFloat {
 			val = lcg.currentBlock.NewFRem(leftVal, rightVal)
+		} else if isUnsigned {
+			val = lcg.currentBlock.NewURem(leftVal, rightVal)
 		} else {
 			val = lcg.currentBlock.NewSRem(leftVal, rightVal)
 		}
@@ -1726,11 +1900,17 @@ func (lcg *LLVMCodeGen) visitBinaryExpression(n *ast.BinaryExpression) {
 	case "<<":
 		val = lcg.currentBlock.NewShl(leftVal, rightVal)
 	case ">>":
-		val = lcg.currentBlock.NewAShr(leftVal, rightVal)
+		// Logical shift for unsigned operands, arithmetic for signed.
+		if isUnsigned {
+			val = lcg.currentBlock.NewLShr(leftVal, rightVal)
+		} else {
+			val = lcg.currentBlock.NewAShr(leftVal, rightVal)
+		}
 	}
 
 	if val == nil {
-	} else {
+		lcg.errorf(n, "unsupported binary operator %q", n.Operator.Text)
+		return
 	}
 
 	lcg.values[n] = val
@@ -1822,7 +2002,7 @@ func (lcg *LLVMCodeGen) visitFunctionDeclaration(n *ast.FunctionDeclaration) {
 	}
 
 	if nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[lookupNode]; nodeInfo != nil {
-		if ft, ok := nodeInfo.Type.(*ortypes.SignatureType); ok {
+		if ft, ok := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.SignatureType); ok {
 			funcSemType = ft
 		}
 	}
@@ -1830,7 +2010,7 @@ func (lcg *LLVMCodeGen) visitFunctionDeclaration(n *ast.FunctionDeclaration) {
 	// If still not found, try the other one (if we tried identifier, try n; if we tried n, well n is all we have)
 	if funcSemType == nil && n.Signature.Identifier != nil {
 		if nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n]; nodeInfo != nil {
-			if ft, ok := nodeInfo.Type.(*ortypes.SignatureType); ok {
+			if ft, ok := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.SignatureType); ok {
 				funcSemType = ft
 			}
 		}
@@ -1885,10 +2065,25 @@ func (lcg *LLVMCodeGen) visitFunctionDeclaration(n *ast.FunctionDeclaration) {
 	lcg.currentFunc = fn
 	lcg.currentBlock = block
 
-	// Initialize GC at the start of main
+	// Initialize GC at the start of main, then evaluate runtime global
+	// initializers (globals whose values are calls/expressions).
 	if name == "main" {
 		gcInit := lcg.getOrDeclareGCInit()
 		block.NewCall(gcInit)
+
+		for _, pending := range lcg.globalInits {
+			ast.Walk(lcg, pending.decl.DefaultValue)
+			val := lcg.values[pending.decl.DefaultValue]
+			if val == nil {
+				lcg.errorf(pending.decl, "cannot evaluate global initializer")
+				continue
+			}
+			elemType := pending.global.Typ.ElemType
+			if !val.Type().Equal(elemType) {
+				val = lcg.numericConvert(val, elemType, pending.decl.DefaultValue)
+			}
+			lcg.currentBlock.NewStore(val, pending.global)
+		}
 	}
 
 	// Alloca parameters so they are mutable/addressable
@@ -1957,6 +2152,12 @@ func (lcg *LLVMCodeGen) visitFunctionDeclaration(n *ast.FunctionDeclaration) {
 		if fn.Sig.RetType.Equal(types.Void) {
 			lcg.emitDeferredCalls()
 			lcg.currentBlock.NewRet(nil)
+		} else {
+			// A value-returning function whose final block has no terminator.
+			// This is either an unreachable merge block (all paths returned)
+			// or a genuine missing return; terminate with unreachable so the
+			// IR stays valid either way.
+			lcg.currentBlock.NewUnreachable()
 		}
 	}
 
@@ -2011,6 +2212,48 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 
 	// Check if this is a builtin function call
 	if ident, ok := n.Callee.(*ast.Identifier); ok {
+		if _, defined := lcg.functions[ident.Text]; !defined {
+			// Builtins can be shadowed by user-defined functions
+			switch ident.Text {
+			case "print":
+				lcg.visitPrintBuiltin(n, false)
+				return
+			case "println":
+				lcg.visitPrintBuiltin(n, true)
+				return
+			case "delete":
+				lcg.visitMapDeleteBuiltin(n)
+				return
+			case "contains":
+				lcg.visitMapContainsBuiltin(n)
+				return
+			case "channel":
+				lcg.visitChannelNewBuiltin(n)
+				return
+			case "send":
+				lcg.visitChannelSendBuiltin(n)
+				return
+			case "recv":
+				lcg.visitChannelRecvBuiltin(n)
+				return
+			case "close":
+				lcg.visitChannelCloseBuiltin(n)
+				return
+			case "closed":
+				lcg.visitChannelClosedBuiltin(n)
+				return
+			case "yield":
+				lcg.currentBlock.NewCall(lcg.getOrDeclareTaskRuntime("task_yield"))
+				return
+			case "typeof":
+				lcg.visitTypeofBuiltin(n)
+				return
+			case "typename":
+				lcg.visitTypenameBuiltin(n)
+				return
+			}
+		}
+
 		if ident.Text == "len" {
 			// Handle len()
 			if len(n.Arguments) != 1 {
@@ -2021,6 +2264,23 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 			val := lcg.values[arg.Expression]
 			if val == nil {
 				return
+			}
+
+			// Maps and strings are both i8* at the LLVM level, so maps must
+			// be recognised from the semantic type before the type switch.
+			if lcg.isMapNode(arg.Expression) {
+				count := lcg.currentBlock.NewCall(lcg.getOrDeclareMapRuntime("map_len"), val)
+				lcg.values[n] = lcg.currentBlock.NewTrunc(count, types.I32)
+				return
+			}
+
+			// Fixed arrays decay to a plain element pointer, so their length
+			// is only recoverable from the semantic type.
+			if nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[arg.Expression]; nodeInfo != nil {
+				if arrayType, ok := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.ArrayType); ok && arrayType.Length >= 0 {
+					lcg.values[n] = constant.NewInt(types.I32, arrayType.Length)
+					return
+				}
 			}
 
 			// Get argument type
@@ -2042,19 +2302,10 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 					lcg.values[n] = constant.NewInt(types.I32, length)
 					return
 				} else if ptrType.ElemType.Equal(types.I8) {
-					// String (i8*)
-					// Call strlen
-					// We need to declare strlen if not exists
-					strlenName := "strlen"
-					var strlen *ir.Func
-					if fn, ok := lcg.functions[strlenName]; ok {
-						strlen = fn
-					} else {
-						strlen = lcg.module.NewFunc(strlenName, types.I32, ir.NewParam("str", types.I8Ptr))
-						lcg.functions[strlenName] = strlen
-					}
-					call := lcg.currentBlock.NewCall(strlen, val)
-					lcg.values[n] = call
+					// String (i8*): call strlen (returns size_t/i64) and
+					// truncate to orlang's int32 len type.
+					call := lcg.currentBlock.NewCall(lcg.getOrDeclareStrlen(), val)
+					lcg.values[n] = lcg.currentBlock.NewTrunc(call, types.I32)
 					return
 				}
 			}
@@ -2088,7 +2339,7 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 			nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[sliceArg.Expression]
 			var isFixedArray bool
 			if nodeInfo != nil {
-				if arrayType, ok := nodeInfo.Type.(*ortypes.ArrayType); ok && arrayType.Length >= 0 {
+				if arrayType, ok := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.ArrayType); ok && arrayType.Length >= 0 {
 					isFixedArray = true
 					elemType = lcg.getLLVMTypeFromSemantic(arrayType.Type)
 					oldLen = constant.NewInt(types.I32, int64(arrayType.Length))
@@ -2139,17 +2390,7 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 			oldLenI64 := lcg.currentBlock.NewSExt(oldLen, types.I64)
 			oldSize := lcg.currentBlock.NewMul(oldLenI64, constant.NewInt(types.I64, elemSize))
 
-			// Declare memcpy if not exists
-			var memcpyFn *ir.Func
-			if fn, ok := lcg.functions["memcpy"]; ok {
-				memcpyFn = fn
-			} else {
-				memcpyFn = lcg.module.NewFunc("memcpy", types.I8Ptr,
-					ir.NewParam("dest", types.I8Ptr),
-					ir.NewParam("src", types.I8Ptr),
-					ir.NewParam("n", types.I64))
-				lcg.functions["memcpy"] = memcpyFn
-			}
+			memcpyFn := lcg.getOrDeclareMemcpy()
 
 			oldDataI8 := lcg.currentBlock.NewBitCast(oldDataPtr, types.I8Ptr)
 			lcg.currentBlock.NewCall(memcpyFn, newDataI8, oldDataI8, oldSize)
@@ -2187,7 +2428,7 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 		}
 
 		if ident.Text == "str" {
-			// Handle str(int) -> string conversion
+			// Handle str(number) -> string conversion
 			if len(n.Arguments) != 1 {
 				return
 			}
@@ -2198,9 +2439,38 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 				return
 			}
 
-			// Allocate buffer (20 bytes is enough for any 64-bit int)
+			// Pick a printf format matching the value's actual type; C
+			// varargs promote float to double, so extend floats manually.
+			format := "%d"
+			argSem := lcg.semanticType(arg.Expression)
+			unsigned := isUnsignedType(argSem)
+			switch t := val.Type().(type) {
+			case *types.FloatType:
+				format = "%g"
+				if t.Kind == types.FloatKindFloat {
+					val = lcg.currentBlock.NewFPExt(val, types.Double)
+				}
+			case *types.IntType:
+				switch {
+				case t.BitSize == 64 && unsigned:
+					format = "%llu"
+				case t.BitSize == 64:
+					format = "%lld"
+				case unsigned:
+					if t.BitSize < 32 {
+						val = lcg.currentBlock.NewZExt(val, types.I32)
+					}
+					format = "%u"
+				case t.BitSize == 1:
+					val = lcg.currentBlock.NewZExt(val, types.I32)
+				case t.BitSize < 32:
+					val = lcg.currentBlock.NewSExt(val, types.I32)
+				}
+			}
+
+			// 32 bytes covers any 64-bit integer and %g float rendering.
 			mallocFn := lcg.getOrDeclareGCMalloc()
-			bufSize := constant.NewInt(types.I64, 20)
+			bufSize := constant.NewInt(types.I64, 32)
 			buf := lcg.currentBlock.NewCall(mallocFn, bufSize)
 
 			// Declare snprintf if not exists
@@ -2216,10 +2486,7 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 				lcg.functions["snprintf"] = snprintfFn
 			}
 
-			// Create format string "%d"
-			fmtStr := lcg.addStringConstant("%d")
-
-			// Call snprintf(buf, 20, "%d", val)
+			fmtStr := lcg.addStringConstant(format)
 			lcg.currentBlock.NewCall(snprintfFn, buf, bufSize, fmtStr, val)
 
 			lcg.values[n] = buf
@@ -2247,7 +2514,7 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 			var targetTyp ortypes.Type
 			nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[member.Target]
 			if nodeInfo != nil {
-				targetTyp = nodeInfo.Type
+				targetTyp = ortypes.LazyResolve(nodeInfo.Type)
 			}
 
 			if ifaceTyp, ok := targetTyp.(*ortypes.InterfaceType); ok {
@@ -2375,7 +2642,7 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 						// Check if it is a valid method in the struct type
 						nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[member.Target]
 						if nodeInfo != nil {
-							if structTyp, ok := nodeInfo.Type.(*ortypes.StructType); ok {
+							if structTyp, ok := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.StructType); ok {
 								if has, methodTyp := structTyp.HasFunction(methodName); has {
 									if sig, ok := methodTyp.(*ortypes.SignatureType); ok {
 										// Declare it
@@ -2423,7 +2690,8 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 		if isCast {
 			// It's a cast
 			if len(n.Arguments) != 1 {
-				panic("Type cast must have exactly one argument")
+				lcg.errorf(n, "type cast %s() must have exactly one argument", ident.Text)
+				return
 			}
 			arg := n.Arguments[0]
 			ast.Walk(lcg, arg)
@@ -2478,7 +2746,7 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 			if closureVal != nil {
 				nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[ident]
 				if nodeInfo != nil {
-					if sig, ok := nodeInfo.Type.(*ortypes.SignatureType); ok {
+					if sig, ok := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.SignatureType); ok {
 						// Extract fn_ptr and env_ptr from closure struct { i8*, i8* }
 						fnPtrRaw := lcg.currentBlock.NewExtractValue(closureVal, 0)
 						envPtr := lcg.currentBlock.NewExtractValue(closureVal, 1)
@@ -2490,12 +2758,27 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 						// Build args: env first, then user args
 						var callArgs []value.Value
 						callArgs = append(callArgs, envPtr)
-						for _, arg := range n.Arguments {
+						for i, arg := range n.Arguments {
 							ast.Walk(lcg, arg)
 							argVal := lcg.values[arg.Expression]
-							if argVal != nil {
-								callArgs = append(callArgs, argVal)
+							if argVal == nil {
+								continue
 							}
+							// Match the closure's parameter type: struct
+							// arguments coming from parameters arrive as
+							// pointer-to-pointer and need a load, and
+							// numeric arguments may need promotion.
+							if i+1 < len(closureFuncType.Params) {
+								expected := closureFuncType.Params[i+1]
+								if !argVal.Type().Equal(expected) {
+									if ptr, ok := argVal.Type().(*types.PointerType); ok && ptr.ElemType.Equal(expected) {
+										argVal = lcg.currentBlock.NewLoad(expected, argVal)
+									} else if i < len(sig.ArgumentTypes) {
+										argVal = lcg.castIfNeeded(argVal, lcg.semanticType(arg.Expression), sig.ArgumentTypes[i])
+									}
+								}
+							}
+							callArgs = append(callArgs, argVal)
 						}
 
 						result := lcg.currentBlock.NewCall(fnPtr, callArgs...)
@@ -2505,11 +2788,13 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 				}
 			}
 		}
-		panic(fmt.Sprintf("undefined function: %s (available: %v)", name, getKeys(lcg.functions)))
+		lcg.errorf(n, "undefined function: %s", name)
+		return
 	}
 
 	if fn == nil {
-		panic(fmt.Sprintf("function %s is nil in lcg.functions", name))
+		lcg.errorf(n, "internal error: function %s resolved to nil", name)
+		return
 	}
 
 	// Resolve function signature to handle named arguments and type casting
@@ -2517,13 +2802,13 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 	if ident, ok := n.Callee.(*ast.Identifier); ok {
 		nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[ident]
 		if nodeInfo != nil {
-			signature, _ = nodeInfo.Type.(*ortypes.SignatureType)
+			signature, _ = ortypes.LazyResolve(nodeInfo.Type).(*ortypes.SignatureType)
 		}
 	} else if member, ok := n.Callee.(*ast.MemberExpression); ok {
 		// Method call resolution
 		nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[member.Target]
 		if nodeInfo != nil && nodeInfo.Type != nil {
-			targetObjTyp := nodeInfo.Type
+			targetObjTyp := ortypes.LazyResolve(nodeInfo.Type)
 			if typeWithMethods, ok := targetObjTyp.(ortypes.TypeWithMethods); ok {
 				if has, typ := typeWithMethods.HasFunction(member.Property.Text); has {
 					signature, _ = typ.(*ortypes.SignatureType)
@@ -2536,7 +2821,8 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 	matcher := NewArgumentMatcher(lcg, signature, fn, args)
 	finalArgs, err := matcher.Match(n.Arguments)
 	if err != nil {
-		panic(err)
+		lcg.errorf(n, "call to %s: %s", name, err)
+		return
 	}
 
 	val := lcg.currentBlock.NewCall(fn, finalArgs...)
@@ -2545,6 +2831,13 @@ func (lcg *LLVMCodeGen) visitFunctionCall(n *ast.FunctionCall) {
 
 func (lcg *LLVMCodeGen) visitIdentifier(n *ast.Identifier) {
 	if n == nil {
+		return
+	}
+	// `this` inside a method resolves to the receiver parameter (a struct
+	// pointer, reference semantics — no load needed).
+	if n.Text == "this" && lcg.currentFunc != nil && len(lcg.currentFunc.Params) > 0 &&
+		lcg.currentFunc.Params[0].LocalName == "this" {
+		lcg.values[n] = lcg.currentFunc.Params[0]
 		return
 	}
 	nodeInfo := lcg.analyserInfo.FileInfo[lcg.currentFile].NodeInfo[n]
@@ -2657,7 +2950,14 @@ func (lcg *LLVMCodeGen) visitReturnStatement(n *ast.ReturnStatement) {
 		lcg.currentBlock.NewRet(val)
 	} else {
 		lcg.emitDeferredCalls()
-		lcg.currentBlock.NewRet(nil)
+		// main is forced to return i32 for the C entry point; a bare
+		// return there means exit code 0.
+		if lcg.currentFunc != nil && lcg.currentFunc.Name() == "main" &&
+			lcg.currentFunc.Sig.RetType.Equal(types.I32) {
+			lcg.currentBlock.NewRet(constant.NewInt(types.I32, 0))
+		} else {
+			lcg.currentBlock.NewRet(nil)
+		}
 	}
 }
 
@@ -2687,20 +2987,16 @@ func (lcg *LLVMCodeGen) visitValueExpression(n *ast.ValueExpression) {
 			}
 			val = constant.NewInt(types.I1, intVal)
 		} else if f, ok := n.Token.Value.(float64); ok {
-			// Default to float32 unless it's too big?
-			// Analyzer logic:
-			// if n.Token.Value.(float64) > math.MaxFloat32 { return types.Float64Type }
-			// return types.Float32Type
-
-			// For now, let's default to Float (float32) to match analyzer default
-			// If it's larger than MaxFloat32, we should use Double.
-			// But constant.NewFloat takes float64.
-
-			// We can check semantic info if available?
-			// But visitValueExpression doesn't look up semantic info usually.
-
-			// Let's use Float (32-bit) as default.
-			val = constant.NewFloat(types.Float, f)
+			// Emit the constant at the width the analyser resolved for this
+			// literal (float32 by default, float64 when required).
+			floatType := types.Float
+			if f > math.MaxFloat32 || f < -math.MaxFloat32 {
+				floatType = types.Double
+			}
+			if resolved, ok := lcg.getLLVMTypeFromSemantic(lcg.semanticType(n)).(*types.FloatType); ok {
+				floatType = resolved
+			}
+			val = constant.NewFloat(floatType, f)
 		}
 	}
 
@@ -2731,48 +3027,28 @@ func (lcg *LLVMCodeGen) addStringConstant(str string) value.Value {
 }
 
 func (lcg *LLVMCodeGen) visitStringConcat(n ast.Node, left, right value.Value) {
-	// Declare strlen
-	var strlenFn *ir.Func
-	if fn, ok := lcg.functions["strlen"]; ok {
-		strlenFn = fn
-	} else {
-		strlenFn = lcg.module.NewFunc("strlen", types.I32, ir.NewParam("str", types.I8Ptr))
-		lcg.functions["strlen"] = strlenFn
-	}
-	// Declare memcpy
-	var memcpyFn *ir.Func
-	if fn, ok := lcg.functions["memcpy"]; ok {
-		memcpyFn = fn
-	} else {
-		memcpyFn = lcg.module.NewFunc("memcpy", types.I8Ptr,
-			ir.NewParam("dest", types.I8Ptr),
-			ir.NewParam("src", types.I8Ptr),
-			ir.NewParam("n", types.I64))
-		lcg.functions["memcpy"] = memcpyFn
-	}
+	strlenFn := lcg.getOrDeclareStrlen()
+	memcpyFn := lcg.getOrDeclareMemcpy()
 
-	// 1. Get lengths
+	// 1. Get lengths (size_t / i64)
 	len1 := lcg.currentBlock.NewCall(strlenFn, left)
 	len2 := lcg.currentBlock.NewCall(strlenFn, right)
 
 	// 2. Calculate total length + 1 for null terminator
 	totalLen := lcg.currentBlock.NewAdd(len1, len2)
-	totalLenPlus1 := lcg.currentBlock.NewAdd(totalLen, constant.NewInt(types.I32, 1))
-	totalLenI64 := lcg.currentBlock.NewSExt(totalLenPlus1, types.I64)
+	totalLenPlus1 := lcg.currentBlock.NewAdd(totalLen, constant.NewInt(types.I64, 1))
 
 	// 3. Allocate new buffer via GC
 	mallocFn := lcg.getOrDeclareGCMalloc()
-	newBuf := lcg.currentBlock.NewCall(mallocFn, totalLenI64)
+	newBuf := lcg.currentBlock.NewCall(mallocFn, totalLenPlus1)
 
 	// 4. Copy first string
-	len1I64 := lcg.currentBlock.NewSExt(len1, types.I64)
-	lcg.currentBlock.NewCall(memcpyFn, newBuf, left, len1I64)
+	lcg.currentBlock.NewCall(memcpyFn, newBuf, left, len1)
 
 	// 5. Copy second string (including null terminator)
 	offset := lcg.currentBlock.NewGetElementPtr(types.I8, newBuf, len1)
-	len2Plus1 := lcg.currentBlock.NewAdd(len2, constant.NewInt(types.I32, 1))
-	len2Plus1I64 := lcg.currentBlock.NewSExt(len2Plus1, types.I64)
-	lcg.currentBlock.NewCall(memcpyFn, offset, right, len2Plus1I64)
+	len2Plus1 := lcg.currentBlock.NewAdd(len2, constant.NewInt(types.I64, 1))
+	lcg.currentBlock.NewCall(memcpyFn, offset, right, len2Plus1)
 
 	lcg.values[n] = newBuf
 }
@@ -2866,8 +3142,12 @@ func (lcg *LLVMCodeGen) visitSwitchStatement(n *ast.SwitchStatement) {
 			}
 			cmpResult := lcg.currentBlock.NewCall(strcmpFn, switchVal, caseVal)
 			cond = lcg.currentBlock.NewICmp(enum.IPredEQ, cmpResult, constant.NewInt(types.I32, 0))
+		} else if isFloatLLVMType(switchVal.Type()) || isFloatLLVMType(caseVal.Type()) {
+			l, r := lcg.unifyNumericOperands(switchVal, caseVal, n.Expression, c.Value)
+			cond = lcg.currentBlock.NewFCmp(enum.FPredOEQ, l, r)
 		} else {
-			cond = lcg.currentBlock.NewICmp(enum.IPredEQ, switchVal, caseVal)
+			l, r := lcg.unifyNumericOperands(switchVal, caseVal, n.Expression, c.Value)
+			cond = lcg.currentBlock.NewICmp(enum.IPredEQ, l, r)
 		}
 
 		caseBlock := lcg.currentFunc.NewBlock("")
@@ -2907,6 +3187,7 @@ func (lcg *LLVMCodeGen) visitSwitchStatement(n *ast.SwitchStatement) {
 
 func (lcg *LLVMCodeGen) visitStruct(n *ast.Struct) {
 	name := n.Name.Text
+	lcg.structASTs[name] = n
 
 	// Create struct type
 	var fields []types.Type

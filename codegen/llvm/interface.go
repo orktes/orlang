@@ -67,9 +67,10 @@ func (lcg *LLVMCodeGen) getOrCreateItable(sourceTyp ortypes.Type, targetTyp *ort
 		sourceTyp = ortypes.LazyResolve(ptr.Type)
 	}
 
-	// Name for the itable global
-	sourceName := sourceTyp.GetName()
-	targetName := targetTyp.GetName()
+	// Name for the itable global. Short names keep the type-ID key
+	// consistent with `is` assertions (typeRef.Name.Text) and typename.
+	sourceName := shortTypeName(sourceTyp)
+	targetName := shortTypeName(targetTyp)
 
 	itableName := fmt.Sprintf("__itable_%s_to_%s", sourceName, targetName)
 
@@ -107,9 +108,8 @@ func (lcg *LLVMCodeGen) getOrCreateItable(sourceTyp ortypes.Type, targetTyp *ort
 			fn, ok := lcg.functions[structMethodName]
 			if !ok {
 				// Should not happen if type checking passed
-				// But maybe it's defined in another file?
-				// For now assume it exists or panic/error
-				panic(fmt.Sprintf("Method %s not found for struct %s", structMethodName, structTyp.Name))
+				lcg.errorf(nil, "method %s not found for struct %s", methodName, structTyp.Name)
+				return constant.NewNull(types.I8Ptr)
 			}
 
 			// Create thunk

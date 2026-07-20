@@ -92,25 +92,22 @@ func TestParseBinaryExpressionWithMultiplication(t *testing.T) {
 		t.Error("Wrong type")
 	}
 
-	if binaryExpr.Left.(*ast.ValueExpression).Value != int64(1) {
+	// Left-associative with precedence: (1 + (2 * 3)) + 4
+	if binaryExpr.Right.(*ast.ValueExpression).Value != int64(4) {
+		t.Error("Wrong value on the right most side")
+	}
+
+	binaryExprLeft := binaryExpr.Left.(*ast.BinaryExpression)
+	if binaryExprLeft.Left.(*ast.ValueExpression).Value != int64(1) {
 		t.Error("Wrong value on the left most side")
 	}
 
-	binaryExprRight := binaryExpr.Right.(*ast.BinaryExpression)
-	if binaryExprRight.Right.(*ast.ValueExpression).Value != int64(4) {
-		t.Error("Wrong value on the right most side")
-	}
-
-	if binaryExprRight.Left.(*ast.BinaryExpression).Left.(*ast.ValueExpression).Value != int64(2) {
+	if binaryExprLeft.Right.(*ast.BinaryExpression).Left.(*ast.ValueExpression).Value != int64(2) {
 		t.Error("Wrong value on the inner left")
 	}
 
-	if binaryExprRight.Left.(*ast.BinaryExpression).Right.(*ast.ValueExpression).Value != int64(3) {
+	if binaryExprLeft.Right.(*ast.BinaryExpression).Right.(*ast.ValueExpression).Value != int64(3) {
 		t.Error("Wrong value on the inner right")
-	}
-
-	if binaryExprRight.Right.(*ast.ValueExpression).Value != int64(4) {
-		t.Error("Wrong value on the right most side")
 	}
 }
 

@@ -1,0 +1,32 @@
+import { listen, dial, Listener, Conn } from "std/net.or"
+
+fn main() {
+    var l = listen(8196)
+    if !l.ok() {
+        println("listen failed")
+        return
+    }
+
+    // echo server on a green thread
+    go fn () => void {
+        for {
+            var conn = l.accept()
+            go fn () => void {
+                var data = conn.read(1024)
+                conn.write("echo:" + data)
+                conn.close()
+            }()
+        }
+    }()
+
+    // client side, twice to prove the accept loop keeps going
+    var c1 = dial("127.0.0.1", 8196)
+    c1.write("hello")
+    println(c1.read(1024))
+    c1.close()
+
+    var c2 = dial("127.0.0.1", 8196)
+    c2.write("again")
+    println(c2.read(1024))
+    c2.close()
+}

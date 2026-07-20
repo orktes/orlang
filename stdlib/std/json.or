@@ -1,0 +1,122 @@
+// std/json — JSON parsing and building on top of the embedded runtime.
+//
+//   import { parse, object, number, text } from "std/json.or"
+//
+//   var v = parse("{\"name\": \"or\", \"tags\": [1, 2]}")
+//   var name = v.get("name").str()          // "or"
+//   var first = v.get("tags").at(0).num()   // 1.0
+//
+//   var out = object()
+//   out.set("ok", boolean(true))
+//   out.set("count", number(2.0))
+//   var encoded = out.stringify()           // {"ok":true,"count":2}
+//
+// Kinds: 0=invalid 1=null 2=bool 3=number 4=string 5=array 6=object
+
+extern json_parse(text: string) => &int8
+extern json_type(value: &int8) => int32
+extern json_number(value: &int8) => float64
+extern json_string(value: &int8) => string
+extern json_bool(value: &int8) => int32
+extern json_len(value: &int8) => int32
+extern json_get(value: &int8, key: string) => &int8
+extern json_index(value: &int8, index: int32) => &int8
+extern json_key(value: &int8, index: int32) => string
+extern json_new_object() => &int8
+extern json_new_array() => &int8
+extern json_new_string(s: string) => &int8
+extern json_new_number(d: float64) => &int8
+extern json_new_bool(b: int32) => &int8
+extern json_new_null() => &int8
+extern json_set(obj: &int8, key: string, value: &int8) => void
+extern json_push(arr: &int8, value: &int8) => void
+extern json_stringify(value: &int8) => string
+
+// Json is a JSON value: the result of parsing, a lookup, or a builder.
+// Lookups on missing keys/indexes return an invalid value (kind 0), so
+// chained access like v.get("a").at(0).str() is always safe.
+export struct Json {
+    var handle: &int8
+
+    // kind returns the value's type: 0=invalid 1=null 2=bool 3=number
+    // 4=string 5=array 6=object
+    fn kind() => int32 {
+        return json_type(this.handle)
+    }
+
+    fn valid() => bool {
+        return json_type(this.handle) != 0
+    }
+
+    fn str() => string {
+        return json_string(this.handle)
+    }
+
+    fn num() => float64 {
+        return json_number(this.handle)
+    }
+
+    fn flag() => bool {
+        return json_bool(this.handle) != 0
+    }
+
+    fn count() => int32 {
+        return json_len(this.handle)
+    }
+
+    fn get(key: string) => Json {
+        return Json{handle: json_get(this.handle, key)}
+    }
+
+    fn at(index: int32) => Json {
+        return Json{handle: json_index(this.handle, index)}
+    }
+
+    fn key(index: int32) => string {
+        return json_key(this.handle, index)
+    }
+
+    fn set(k: string, value: Json) {
+        json_set(this.handle, k, value.handle)
+    }
+
+    fn push(value: Json) {
+        json_push(this.handle, value.handle)
+    }
+
+    fn stringify() => string {
+        return json_stringify(this.handle)
+    }
+}
+
+// parse decodes a JSON document. Check .valid() to detect parse errors.
+export fn parse(input: string) => Json {
+    return Json{handle: json_parse(input)}
+}
+
+export fn object() => Json {
+    return Json{handle: json_new_object()}
+}
+
+export fn array() => Json {
+    return Json{handle: json_new_array()}
+}
+
+export fn text(s: string) => Json {
+    return Json{handle: json_new_string(s)}
+}
+
+export fn number(d: float64) => Json {
+    return Json{handle: json_new_number(d)}
+}
+
+export fn boolean(b: bool) => Json {
+    if b {
+        return Json{handle: json_new_bool(1)}
+    }
+    return Json{handle: json_new_bool(0)}
+}
+
+export fn null_value() => Json {
+    return Json{handle: json_new_null()}
+}

@@ -1,0 +1,40 @@
+fn main() {
+    var a: float64 = 1.5
+    var b: float64 = 2.5
+    if a < b {
+        println("f64 lt")
+    }
+    if b > a {
+        println("f64 gt")
+    }
+    if a != b {
+        println("f64 ne")
+    }
+    println("sum:", a + b)
+    println("div:", b / a)
+
+    var f: float32 = 1.25
+    var g: float32 = 1.25
+    if f == g {
+        println("f32 eq")
+    }
+    var neg: float32 = -f
+    println("neg:", neg)
+
+    // int -> float promotion in mixed expressions
+    var x: int32 = 2
+    println("mixed:", a * 2.0, b + 1.0, float64(x) + a)
+
+    // str() on floats and wide ints
+    println("str float:", str(2.75))
+    println("str i64:", str(1234567890123))
+
+    switch a {
+        case 1.5 {
+            println("switch f64 works")
+        }
+        default {
+            println("BAD")
+        }
+    }
+}

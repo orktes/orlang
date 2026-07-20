@@ -1,6 +1,9 @@
 package analyser
 
 import (
+	"os"
+	"fmt"
+
 	"github.com/orktes/orlang/ast"
 	"github.com/orktes/orlang/scanner"
 	"github.com/orktes/orlang/types"
@@ -35,6 +38,17 @@ func (analyser *Analyser) AddExternalFunc(name string, typ types.Type) {
 }
 
 func (analyser *Analyser) Analyse() (info *Info, err error) {
+	// Analyser bugs must not crash the compiler process; surface them as
+	// ordinary errors instead. (ORLANG_PANIC=1 re-panics for debugging.)
+	defer func() {
+		if r := recover(); r != nil {
+			if os.Getenv("ORLANG_PANIC") == "1" {
+				panic(r)
+			}
+			err = fmt.Errorf("internal analyser error: %v", r)
+		}
+	}()
+
 	fileInfo := NewFileInfo()
 
 	info = &Info{

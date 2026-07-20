@@ -3,9 +3,11 @@ package scanner
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
 	"math"
 	"strconv"
+	"strings"
 )
 
 // TokenChannelSize how many tokens can be buffered into the scan channel (default to 10)
@@ -419,7 +421,7 @@ loop:
 			}
 
 			switch next {
-			case start:
+			case '"', '\'':
 				val.WriteRune(next)
 
 			case '\\':
@@ -437,6 +439,16 @@ loop:
 				t, v := s.scanDigits(16, 2)
 				checkRune(v)
 				buf.Write(t)
+				continue loop
+
+			case 'a':
+				val.WriteRune('\a')
+
+			case 'b':
+				val.WriteRune('\b')
+
+			case 'f':
+				val.WriteRune('\f')
 
 			case 'n':
 				val.WriteRune('\n')
@@ -446,6 +458,9 @@ loop:
 
 			case 'r':
 				val.WriteRune('\r')
+
+			case 'v':
+				val.WriteRune('\v')
 
 			case 'u':
 				buf.WriteRune(next)
@@ -462,6 +477,7 @@ loop:
 				continue loop
 
 			default:
+				s.error(fmt.Sprintf("unknown escape sequence \\%c", next))
 				val.WriteRune(ch)
 				val.WriteRune(next)
 			}
@@ -551,6 +567,10 @@ func (s *Scanner) scanIdent() (t TokenType, text string, val interface{}) {
 		t = TokenTypeDefault
 	case "defer":
 		t = TokenTypeDefer
+	case "go":
+		t = TokenTypeGo
+	case "select":
+		t = TokenTypeSelect
 	}
 
 	return
@@ -560,47 +580,95 @@ func isHexDigit(ch rune) bool {
 	return isNumber(ch) || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')
 }
 
+func isBinaryDigit(ch rune) bool {
+	return ch == '0' || ch == '1'
+}
+
+func isOctalDigit(ch rune) bool {
+	return ch >= '0' && ch <= '7'
+}
+
+// scanRadixDigits scans digits of a prefixed integer literal (0x/0b/0o),
+// allowing underscore separators between digits.
+func (s *Scanner) scanRadixDigits(prefix string, isDigit func(rune) bool, base int) (t TokenType, text string, val interface{}) {
+	var buf bytes.Buffer
+	for {
+		ch := s.read()
+		if isDigit(ch) {
+			buf.WriteRune(ch)
+		} else if ch == '_' && buf.Len() > 0 && isDigit(s.peek()) {
+			buf.WriteRune(ch)
+		} else {
+			s.unread()
+			break
+		}
+	}
+	text = prefix + buf.String()
+	digits := strings.ReplaceAll(buf.String(), "_", "")
+	if digits == "" {
+		s.error(fmt.Sprintf("invalid number literal %q: missing digits", text))
+		return TokenTypeNumber, text, int64(0)
+	}
+	val, err := strconv.ParseInt(digits, base, 64)
+	if err != nil {
+		s.error(err.Error())
+	}
+	return TokenTypeNumber, text, val
+}
+
 func (s *Scanner) scanNumber(ch rune) (t TokenType, text string, val interface{}) {
 	var buf bytes.Buffer
 	t = TokenTypeNumber
 
-	// Check for hex literal: 0x or 0X
-	if ch == '0' {
-		next := s.read()
-		if next == 'x' || next == 'X' {
-			// Scan hex digits
-			for {
-				ch = s.read()
-				if isHexDigit(ch) {
-					buf.WriteRune(ch)
-				} else {
-					s.unread()
-					break
-				}
-			}
-			text = "0x" + buf.String()
-			var err error
-			val, err = strconv.ParseInt(buf.String(), 16, 64)
-			if err != nil {
-				s.error(err.Error())
-			}
-			return t, text, val
-		}
-		s.unread()
-		buf.WriteRune(ch)
-	} else {
-		buf.WriteRune(ch)
+	// A leading dot means this is a float like .5
+	if ch == '.' {
+		t = TokenTypeFloat
 	}
 
+	// Check for prefixed literals: hex 0x, binary 0b, octal 0o
+	if ch == '0' {
+		switch next := s.read(); next {
+		case 'x', 'X':
+			return s.scanRadixDigits("0"+string(next), isHexDigit, 16)
+		case 'b', 'B':
+			return s.scanRadixDigits("0"+string(next), isBinaryDigit, 2)
+		case 'o', 'O':
+			return s.scanRadixDigits("0"+string(next), isOctalDigit, 8)
+		default:
+			s.unread()
+		}
+	}
+	buf.WriteRune(ch)
+
+	expSeen := false
 loop:
 	for {
 		ch = s.read()
 		switch {
 		case isNumber(ch):
 			buf.WriteRune(ch)
-		case ch == '.' && t == TokenTypeNumber:
+		case ch == '_' && isNumber(s.peek()):
+			// Digit separator: 1_000_000
+			buf.WriteRune(ch)
+		case ch == '.' && t == TokenTypeNumber && isNumber(s.peek()):
 			t = TokenTypeFloat
 			buf.WriteRune(ch)
+		case (ch == 'e' || ch == 'E') && !expSeen:
+			// Exponent: 1e10, 2.5e-3, 1E+5. Look ahead without consuming
+			// (bufio only supports a single unread) to make sure digits
+			// follow before committing to the exponent form.
+			ahead, _ := s.r.Peek(2)
+			hasExp := len(ahead) >= 1 && ahead[0] >= '0' && ahead[0] <= '9'
+			hasSignedExp := len(ahead) >= 2 && (ahead[0] == '+' || ahead[0] == '-') &&
+				ahead[1] >= '0' && ahead[1] <= '9'
+			if !hasExp && !hasSignedExp {
+				s.unread()
+				break loop
+			}
+			t = TokenTypeFloat
+			expSeen = true
+			buf.WriteRune(ch)
+			buf.WriteRune(s.read()) // sign or first exponent digit
 		default:
 			s.unread()
 			break loop
@@ -608,15 +676,16 @@ loop:
 	}
 
 	text = buf.String()
+	clean := strings.ReplaceAll(text, "_", "")
 
 	var err error
 	if t == TokenTypeNumber {
-		val, err = strconv.ParseInt(text, 10, 64)
+		val, err = strconv.ParseInt(clean, 10, 64)
 		if err != nil {
 			s.error(err.Error())
 		}
 	} else {
-		val, err = strconv.ParseFloat(text, 64)
+		val, err = strconv.ParseFloat(clean, 64)
 		if err != nil {
 			s.error(err.Error())
 		}

@@ -1,0 +1,11 @@
+fn main() {
+    println("hello", "world")
+    println("int:", 42, "negative:", -7)
+    println("int64:", 1234567890123 + 1)
+    println("float:", 2.5, "bool:", true, "and", false)
+    print("no")
+    print("newline")
+    println()
+    var s: string = "from var"
+    println(s)
+}

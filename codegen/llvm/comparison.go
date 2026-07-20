@@ -42,6 +42,12 @@ func (lcg *LLVMCodeGen) visitComparisonExpression(n *ast.ComparisonExpression) {
 		}
 	}
 
+	preds, knownOp := comparisonPredicates[n.Operator.Text]
+	if !knownOp {
+		lcg.errorf(n, "unsupported comparison operator %q", n.Operator.Text)
+		return
+	}
+
 	if isString {
 		// Use strcmp for string comparison
 		var strcmpFn *ir.Func
@@ -54,39 +60,77 @@ func (lcg *LLVMCodeGen) visitComparisonExpression(n *ast.ComparisonExpression) {
 			lcg.functions["strcmp"] = strcmpFn
 		}
 		cmpResult := lcg.currentBlock.NewCall(strcmpFn, leftVal, rightVal)
-
-		switch n.Operator.Text {
-		case "==":
-			val = lcg.currentBlock.NewICmp(enum.IPredEQ, cmpResult, constant.NewInt(types.I32, 0))
-		case "!=":
-			val = lcg.currentBlock.NewICmp(enum.IPredNE, cmpResult, constant.NewInt(types.I32, 0))
-		case "<":
-			val = lcg.currentBlock.NewICmp(enum.IPredSLT, cmpResult, constant.NewInt(types.I32, 0))
-		case "<=":
-			val = lcg.currentBlock.NewICmp(enum.IPredSLE, cmpResult, constant.NewInt(types.I32, 0))
-		case ">":
-			val = lcg.currentBlock.NewICmp(enum.IPredSGT, cmpResult, constant.NewInt(types.I32, 0))
-		case ">=":
-			val = lcg.currentBlock.NewICmp(enum.IPredSGE, cmpResult, constant.NewInt(types.I32, 0))
-		}
+		val = lcg.currentBlock.NewICmp(preds.signed, cmpResult, constant.NewInt(types.I32, 0))
+	} else if isFloatLLVMType(leftVal.Type()) || isFloatLLVMType(rightVal.Type()) {
+		leftVal, rightVal = lcg.unifyNumericOperands(leftVal, rightVal, n.Left, n.Right)
+		val = lcg.currentBlock.NewFCmp(preds.float, leftVal, rightVal)
+	} else if lcg.operandsUnsigned(n.Left, n.Right) {
+		leftVal, rightVal = lcg.unifyNumericOperands(leftVal, rightVal, n.Left, n.Right)
+		val = lcg.currentBlock.NewICmp(preds.unsigned, leftVal, rightVal)
 	} else {
-		switch n.Operator.Text {
-		case "==":
-			val = lcg.currentBlock.NewICmp(enum.IPredEQ, leftVal, rightVal)
-		case "!=":
-			val = lcg.currentBlock.NewICmp(enum.IPredNE, leftVal, rightVal)
-		case "<":
-			val = lcg.currentBlock.NewICmp(enum.IPredSLT, leftVal, rightVal)
-		case "<=":
-			val = lcg.currentBlock.NewICmp(enum.IPredSLE, leftVal, rightVal)
-		case ">":
-			val = lcg.currentBlock.NewICmp(enum.IPredSGT, leftVal, rightVal)
-		case ">=":
-			val = lcg.currentBlock.NewICmp(enum.IPredSGE, leftVal, rightVal)
-		}
+		leftVal, rightVal = lcg.unifyNumericOperands(leftVal, rightVal, n.Left, n.Right)
+		val = lcg.currentBlock.NewICmp(preds.signed, leftVal, rightVal)
 	}
 
 	lcg.values[n] = val
+}
+
+// unifyNumericOperands makes both operands of an arithmetic or comparison
+// operation the same LLVM type: ints are converted to the float side's type
+// when mixed, the narrower float is extended, and mixed-width ints widen to
+// the wider operand (constants are simply retyped).
+func (lcg *LLVMCodeGen) unifyNumericOperands(left, right value.Value, leftNode, rightNode ast.Node) (value.Value, value.Value) {
+	lf := isFloatLLVMType(left.Type())
+	rf := isFloatLLVMType(right.Type())
+
+	switch {
+	case lf && !rf:
+		right = lcg.numericConvert(right, left.Type(), rightNode)
+	case rf && !lf:
+		left = lcg.numericConvert(left, right.Type(), leftNode)
+	case lf && rf && !left.Type().Equal(right.Type()):
+		if left.Type().Equal(types.Double) {
+			right = lcg.currentBlock.NewFPExt(right, types.Double)
+		} else {
+			left = lcg.currentBlock.NewFPExt(left, types.Double)
+		}
+	case !lf && !rf:
+		lInt, lok := left.Type().(*types.IntType)
+		rInt, rok := right.Type().(*types.IntType)
+		if lok && rok && lInt.BitSize != rInt.BitSize {
+			if lInt.BitSize < rInt.BitSize {
+				left = lcg.numericConvert(left, right.Type(), leftNode)
+			} else {
+				right = lcg.numericConvert(right, left.Type(), rightNode)
+			}
+		}
+	}
+	return left, right
+}
+
+// numericConvert converts a value to the target LLVM numeric type, retyping
+// integer/float constants directly and using signedness-aware casts for
+// non-constant values.
+func (lcg *LLVMCodeGen) numericConvert(val value.Value, target types.Type, node ast.Node) value.Value {
+	if val.Type().Equal(target) {
+		return val
+	}
+	if c, ok := val.(*constant.Int); ok {
+		if intType, ok := target.(*types.IntType); ok {
+			return constant.NewInt(intType, c.X.Int64())
+		}
+		if floatType, ok := target.(*types.FloatType); ok {
+			return constant.NewFloat(floatType, float64(c.X.Int64()))
+		}
+	}
+	if c, ok := val.(*constant.Float); ok {
+		if floatType, ok := target.(*types.FloatType); ok {
+			f, _ := c.X.Float64()
+			return constant.NewFloat(floatType, f)
+		}
+	}
+	signed := !isUnsignedType(lcg.semanticType(node))
+	return lcg.castValue(val, target, signed, signed)
 }
 
 // visitLogicalAnd implements short-circuit && evaluation

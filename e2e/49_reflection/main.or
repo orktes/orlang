@@ -1,0 +1,71 @@
+struct Point {
+    var x: int32 = 0
+    var y: int32 = 0
+
+    fn describe() => string {
+        return "point"
+    }
+}
+
+struct Circle {
+    var r: float64 = 1.0
+
+    fn describe() => string {
+        return "circle"
+    }
+}
+
+interface Shape {
+    fn describe() => string
+}
+
+fn inspect(v: anything) => string {
+    return typename(v)
+}
+
+fn kind(v: anything) => string {
+    if v is Point {
+        return "a point"
+    } else if v is Circle {
+        return "a circle"
+    } else if v is int32 {
+        return "an int32"
+    }
+    return "no idea"
+}
+
+fn main() {
+    // typeof: static type names
+    var i: int32 = 1
+    var f: float64 = 2.5
+    var s = "hi"
+    var m = map[string]int32{"a": 1}
+    var ch: chan int32 = channel(0)
+    var arr = []int32{1, 2}
+    println(typeof(i), "/", typeof(f), "/", typeof(s))
+    println(typeof(m))
+    println(typeof(ch))
+    println(typeof(arr))
+    println(len(arr))
+    println(typeof(Point{}))
+    println(typeof(i + 1))
+
+    // typename: dynamic names through anything
+    println(inspect(Point{}))
+    println(inspect(Circle{}))
+    println(inspect(42))
+
+    // typename through a declared interface, across reassignment
+    var shape: Shape = Point{}
+    println(typename(shape), "=", shape.describe())
+    shape = Circle{}
+    println(typename(shape), "=", shape.describe())
+
+    // typename on a non-interface value is the static name
+    println(typename(i))
+
+    // is-assertions on struct types
+    println(kind(Point{}))
+    println(kind(Circle{}))
+    println(kind(7))
+}

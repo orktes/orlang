@@ -117,6 +117,16 @@ func Walk(v Visitor, node Node) {
 	case *ContinueStatement:
 	case *DeferStatement:
 		Walk(v, n.Call)
+	case *GoStatement:
+		Walk(v, n.Call)
+	case *SelectStatement:
+		for _, c := range n.Cases {
+			Walk(v, c)
+		}
+	case *SelectCase:
+		Walk(v, n.Channel)
+		Walk(v, n.Value)
+		Walk(v, n.Block)
 	case *Enum:
 		Walk(v, n.Name)
 	case *SwitchStatement:
@@ -156,6 +166,8 @@ func Walk(v Visitor, node Node) {
 	case *MapType:
 		Walk(v, n.KeyType)
 		Walk(v, n.ValueType)
+	case *ChannelType:
+		Walk(v, n.Type)
 	case *PointerType:
 		if n.Type != nil {
 			Walk(v, n.Type)

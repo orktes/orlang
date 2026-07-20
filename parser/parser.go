@@ -364,8 +364,10 @@ func (p *Parser) peekMultiple(amount int) (tokens []scanner.Token) {
 		tokens[i] = p.read()
 	}
 
-	p.tokenBuffer = append(p.tokenBuffer, tokens...)
-	p.lastTokens = []scanner.Token{}
+	// Return the peeked tokens to the FRONT of the buffer. Appending them
+	// instead would reorder the stream whenever the buffer already holds
+	// tokens (e.g. a macro expansion), corrupting subsequent parsing.
+	p.returnToBuffer(tokens)
 	return
 }
 
@@ -387,11 +389,17 @@ func (p *Parser) commit() {
 }
 
 func (p *Parser) error(err string) {
+	p.errorAtToken(p.lastToken(), err)
+}
+
+// errorAtToken reports an error positioned at a specific token instead of
+// whatever token happens to have been consumed last.
+func (p *Parser) errorAtToken(token scanner.Token, err string) {
 	if p.parserError == "" {
 		p.parserError = err
-		p.errorToken = p.lastToken()
+		p.errorToken = token
 	}
 	if p.Error != nil {
-		p.Error(p.readTokens-len(p.tokenBuffer), ast.StartPositionFromToken(p.lastToken()), ast.EndPositionFromToken(p.lastToken()), err)
+		p.Error(p.readTokens-len(p.tokenBuffer), ast.StartPositionFromToken(token), ast.EndPositionFromToken(token), err)
 	}
 }

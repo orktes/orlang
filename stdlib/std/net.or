@@ -1,0 +1,72 @@
+// std/net — TCP sockets on the embedded runtime.
+//
+//   import { listen, dial, Listener, Conn } from "std/net.or"
+//
+//   var l = listen(9000)
+//   for {
+//       var conn = l.accept()
+//       go fn () => void {
+//           conn.write("hello\n")
+//           conn.close()
+//       }()
+//   }
+//
+// All IO cooperates with green threads: a blocked read/write/accept
+// parks the current task and lets others run.
+
+extern tcp_listen(port: int32) => int32
+extern tcp_accept(fd: int32) => int32
+extern tcp_connect(host: string, port: int32) => int32
+extern tcp_read(fd: int32, max: int32) => string
+extern tcp_write(fd: int32, data: string) => int32
+extern tcp_close(fd: int32) => void
+
+// Conn is a TCP connection.
+export struct Conn {
+    var fd: int32 = -1
+
+    fn ok() => bool {
+        return this.fd >= 0
+    }
+
+    // read returns up to max bytes ("" on EOF or error).
+    fn read(max: int32) => string {
+        return tcp_read(this.fd, max)
+    }
+
+    // write sends the whole string; returns bytes written or -1.
+    fn write(data: string) => int32 {
+        return tcp_write(this.fd, data)
+    }
+
+    fn close() {
+        tcp_close(this.fd)
+    }
+}
+
+// Listener accepts incoming TCP connections.
+export struct Listener {
+    var fd: int32 = -1
+
+    fn ok() => bool {
+        return this.fd >= 0
+    }
+
+    fn accept() => Conn {
+        return Conn{fd: tcp_accept(this.fd)}
+    }
+
+    fn close() {
+        tcp_close(this.fd)
+    }
+}
+
+// listen starts a TCP listener on the given port. Check .ok().
+export fn listen(port: int32) => Listener {
+    return Listener{fd: tcp_listen(port)}
+}
+
+// dial opens a TCP connection to host:port. Check .ok().
+export fn dial(host: string, port: int32) => Conn {
+    return Conn{fd: tcp_connect(host, port)}
+}

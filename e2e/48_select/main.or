@@ -1,0 +1,71 @@
+fn main() {
+    var a: chan int32 = channel(1)
+    var b: chan string = channel(0)
+
+    // default fires when nothing is ready
+    select {
+        case var v = recv(a) {
+            println("BAD", v)
+        }
+        default {
+            println("nothing ready")
+        }
+    }
+
+    // buffered ready case
+    send(a, 5)
+    select {
+        case var v = recv(a) {
+            println("got a:", v)
+        }
+        case var s = recv(b) {
+            println("BAD", s)
+        }
+    }
+
+    // blocking select released by a goroutine sending on b
+    go fn () => void {
+        send(b, "from goroutine")
+    }()
+    select {
+        case var v = recv(a) {
+            println("BAD", v)
+        }
+        case var s = recv(b) {
+            println("got b:", s)
+        }
+    }
+
+    // send case: goroutine receives what select sends
+    var out: chan int32 = channel(0)
+    var ack: chan int32 = channel(0)
+    go fn () => void {
+        var got = recv(out)
+        send(ack, got + 1)
+    }()
+    select {
+        case send(out, 41) {
+            println("sent 41")
+        }
+    }
+    println("ack:", recv(ack))
+
+    // closed channels are ready with zero values
+    close(a)
+    select {
+        case var v = recv(a) {
+            println("closed a gives:", v)
+        }
+    }
+
+    // recv without binding
+    go fn () => void {
+        send(b, "discard me")
+    }()
+    select {
+        case recv(b) {
+            println("discarded")
+        }
+    }
+}
+

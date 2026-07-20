@@ -22,6 +22,8 @@ func (p *Parser) parseStatement(block bool) (node ast.Statement, ok bool) {
 	case block && check(p.parseIfStatement()):
 	case block && check(p.parseSwitchStatement()):
 	case block && check(p.parseDeferStatement()):
+	case block && check(p.parseGoStatement()):
+	case block && check(p.parseSelectStatement()):
 	case check(p.parseMacroSubstitutionStatement()):
 	case check(p.parseVarDecl()):
 	default:
@@ -486,6 +488,136 @@ func (p *Parser) parseDeferStatement() (stmt *ast.DeferStatement, ok bool) {
 	}
 
 	ok = true
+	return
+}
+
+func (p *Parser) parseGoStatement() (stmt *ast.GoStatement, ok bool) {
+	token := p.read()
+
+	if token.Type != scanner.TokenTypeGo {
+		p.unread()
+		return
+	}
+
+	expr, exprOk := p.parseExpression()
+	if !exprOk {
+		p.error(unexpected(p.read().StringValue(), "function call"))
+		return
+	}
+
+	call, isCall := expr.(*ast.FunctionCall)
+	if !isCall {
+		p.error(unexpected("expression", "function call after go"))
+		return
+	}
+
+	stmt = &ast.GoStatement{
+		Start: ast.StartPositionFromToken(token),
+		Call:  call,
+	}
+
+	ok = true
+	return
+}
+
+func (p *Parser) parseSelectStatement() (node *ast.SelectStatement, ok bool) {
+	token := p.read()
+	if token.Type != scanner.TokenTypeSelect {
+		p.unread()
+		return
+	}
+
+	ok = true
+	node = &ast.SelectStatement{
+		Start: ast.StartPositionFromToken(token),
+	}
+
+	if lbrace, lbraceOk := p.expectToken(scanner.TokenTypeLBRACE); !lbraceOk {
+		p.error(unexpectedToken(lbrace, scanner.TokenTypeLBRACE))
+		return
+	}
+
+	for {
+		token = p.read()
+
+		if token.Type == scanner.TokenTypeRBRACE {
+			node.End = ast.EndPositionFromToken(token)
+			break
+		}
+
+		if token.Type == scanner.TokenTypeDefault {
+			block, blockOk := p.parseBlock()
+			if !blockOk {
+				p.error(unexpected(p.read().StringValue(), "code block"))
+				return
+			}
+			node.Cases = append(node.Cases, &ast.SelectCase{
+				Start:     ast.StartPositionFromToken(token),
+				IsDefault: true,
+				Block:     block,
+			})
+			continue
+		}
+
+		if token.Type != scanner.TokenTypeCase {
+			p.error(unexpected(token.StringValue(), "case, default or }"))
+			return
+		}
+
+		selectCase := &ast.SelectCase{
+			Start: ast.StartPositionFromToken(token),
+		}
+
+		// Optional receive binding: case var name = recv(ch)
+		if varToken, varOk := p.expectToken(scanner.TokenTypeIdent); varOk && varToken.Text == keywordVar {
+			nameToken, nameOk := p.expectToken(scanner.TokenTypeIdent)
+			if !nameOk || isKeyword(nameToken.Text) {
+				p.error(unexpected(nameToken.StringValue(), "variable name"))
+				return
+			}
+			selectCase.VarName = &ast.Identifier{Token: nameToken}
+			if assignToken, assignOk := p.expectToken(scanner.TokenTypeASSIGN); !assignOk {
+				p.error(unexpectedToken(assignToken, scanner.TokenTypeASSIGN))
+				return
+			}
+		} else {
+			p.unread()
+		}
+
+		// The operation: recv(ch) or send(ch, value)
+		opExpr, opOk := p.parseExpression()
+		if !opOk {
+			p.error(unexpected(p.read().StringValue(), "recv(...) or send(...)"))
+			return
+		}
+		opCall, isCall := opExpr.(*ast.FunctionCall)
+		var opName string
+		if isCall {
+			if ident, isIdent := opCall.Callee.(*ast.Identifier); isIdent {
+				opName = ident.Text
+			}
+		}
+		switch {
+		case opName == "recv" && len(opCall.Arguments) == 1:
+			selectCase.Channel = opCall.Arguments[0].Expression
+		case opName == "send" && len(opCall.Arguments) == 2 && selectCase.VarName == nil:
+			selectCase.IsSend = true
+			selectCase.Channel = opCall.Arguments[0].Expression
+			selectCase.Value = opCall.Arguments[1].Expression
+		default:
+			p.error(unexpected("expression", "recv(channel) or send(channel, value)"))
+			return
+		}
+
+		block, blockOk := p.parseBlock()
+		if !blockOk {
+			p.error(unexpected(p.read().StringValue(), "code block"))
+			return
+		}
+		selectCase.Block = block
+		node.Cases = append(node.Cases, selectCase)
+	}
+
 	return
 }
 

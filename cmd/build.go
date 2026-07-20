@@ -7,12 +7,8 @@ import (
 	"path"
 	"path/filepath"
 
-	"github.com/orktes/orlang/ast"
-
-	"github.com/orktes/orlang/analyser"
 	"github.com/orktes/orlang/codegen/js"
 	"github.com/orktes/orlang/codegen/llvm"
-	"github.com/orktes/orlang/parser"
 	"github.com/spf13/cobra"
 )
 
@@ -62,32 +58,7 @@ Use --target to emit intermediate formats only (no linking):
 // buildJS compiles .or files to JavaScript (legacy behavior).
 func buildJS(files []string) error {
 	for _, filePath := range files {
-		file, err := os.Open(filePath)
-		if err != nil {
-			return err
-		}
-
-		fileNode, err := parser.Parse(file)
-		if err != nil {
-			return err
-		}
-
-		an, err := analyser.New(fileNode)
-		if err != nil {
-			return err
-		}
-		basePath := path.Dir(filePath)
-		an.FileLoader = func(importPath string) (*ast.File, error) {
-			fullPath := path.Join(basePath, importPath)
-			f, err := os.Open(fullPath)
-			if err != nil {
-				return nil, err
-			}
-			defer f.Close()
-			return parser.Parse(f)
-		}
-
-		fileInfo, err := an.Analyse()
+		fileNode, fileInfo, err := analyseSourceFile(filePath)
 		if err != nil {
 			return err
 		}
@@ -106,32 +77,7 @@ func buildJS(files []string) error {
 // buildLLVMIR compiles .or files to .ll only (no clang/linking).
 func buildLLVMIR(files []string) error {
 	for _, filePath := range files {
-		file, err := os.Open(filePath)
-		if err != nil {
-			return err
-		}
-
-		fileNode, err := parser.Parse(file)
-		if err != nil {
-			return err
-		}
-
-		an, err := analyser.New(fileNode)
-		if err != nil {
-			return err
-		}
-		basePath := filepath.Dir(filePath)
-		an.FileLoader = func(importPath string) (*ast.File, error) {
-			fullPath := filepath.Join(basePath, importPath)
-			f, err := os.Open(fullPath)
-			if err != nil {
-				return nil, err
-			}
-			defer f.Close()
-			return parser.Parse(f)
-		}
-
-		fileInfo, err := an.Analyse()
+		fileNode, fileInfo, err := analyseSourceFile(filePath)
 		if err != nil {
 			return err
 		}
@@ -142,6 +88,12 @@ func buildLLVMIR(files []string) error {
 		moduleName := baseName[0 : len(baseName)-len(ext)]
 		llvmcg.SetModuleName(moduleName)
 		code := llvmcg.Generate(fileNode)
+		if errs := llvmcg.Errors(); len(errs) > 0 {
+			for _, e := range errs {
+				fmt.Fprintf(os.Stderr, "%s: %s\n", filePath, e)
+			}
+			return fmt.Errorf("code generation failed with %d error(s)", len(errs))
+		}
 		outfile := filePath[0:len(filePath)-len(ext)] + ".ll"
 		if err := os.WriteFile(outfile, []byte(code), 0644); err != nil {
 			return err

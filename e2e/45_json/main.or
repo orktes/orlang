@@ -1,0 +1,33 @@
+import { parse, object, array, text, number, boolean, null_value, Json } from "std/json.or"
+
+fn main() {
+    var v = parse("{\"name\": \"orlang\", \"version\": 2.5, \"ok\": true, \"tags\": [\"fast\", \"small\"], \"nested\": {\"deep\": 42}}")
+    println("valid:", v.valid())
+    println("name:", v.get("name").str())
+    println("version:", v.get("version").num())
+    println("ok:", v.get("ok").flag())
+    println("tags:", v.get("tags").count(), v.get("tags").at(0).str(), v.get("tags").at(1).str())
+    println("deep:", v.get("nested").get("deep").num())
+    println("missing:", v.get("nope").valid(), v.get("a").get("b").at(3).str())
+    println("bad:", parse("{invalid").valid())
+    println("escaped:", parse("{\"s\": \"tab\\there \\u0041\"}").get("s").str())
+
+    var out = object()
+    out.set("ok", boolean(true))
+    out.set("count", number(3))
+    out.set("name", text("built"))
+    out.set("nothing", null_value())
+    var list = array()
+    list.push(number(1))
+    list.push(text("two"))
+    out.set("items", list)
+    println("built:", out.stringify())
+
+    // round trip
+    var again = parse(out.stringify())
+    println("round:", again.get("count").num(), again.get("items").at(1).str())
+
+    for var i = 0; i < v.count(); i++ {
+        println("key:", v.key(i))
+    }
+}

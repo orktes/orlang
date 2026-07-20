@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/orktes/orlang/ast"
+	"github.com/orktes/orlang/cheader"
 	"github.com/orktes/orlang/scanner"
 	"github.com/orktes/orlang/types"
 )
@@ -96,6 +97,10 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			KeyType:   v.getTypeForNode(n.KeyType),
 			ValueType: v.getTypeForNode(n.ValueType),
 		}
+	case *ast.ChannelType:
+		return &types.ChannelType{
+			Elem: v.getTypeForNode(n.Type),
+		}
 	case *ast.ArrayExpression:
 		length := int64(len(n.Expressions))
 		if n.Type.Length != nil {
@@ -140,7 +145,8 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 		case scanner.TokenTypeBoolean:
 			return types.BoolType
 		default:
-			panic(fmt.Errorf("Could not resolve type for token %s", n.Token.String()))
+			v.emitError(n, fmt.Sprintf("could not resolve type for token %s", n.Token.String()), true)
+			return types.UnknownType("unresolved")
 		}
 	case *ast.FunctionCall:
 		// check if function calls is a typecast
@@ -155,6 +161,41 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			}
 			if ident.Text == "len" {
 				return types.Int32Type
+			}
+			if ident.Text == "contains" {
+				return types.BoolType
+			}
+			if ident.Text == "print" || ident.Text == "println" || ident.Text == "delete" {
+				return types.VoidType
+			}
+			if ident.Text == "channel" {
+				return &types.ChannelType{}
+			}
+			if ident.Text == "recv" {
+				if len(n.Arguments) == 1 {
+					if ch, ok := types.LazyResolve(v.getTypeForNode(n.Arguments[0].Expression)).(*types.ChannelType); ok && ch.Elem != nil {
+						return ch.Elem
+					}
+				}
+				return types.UnknownType("recv")
+			}
+			if ident.Text == "closed" {
+				return types.BoolType
+			}
+			if ident.Text == "send" || ident.Text == "close" || ident.Text == "yield" {
+				return types.VoidType
+			}
+			if ident.Text == "typeof" || ident.Text == "typename" {
+				return types.StringType
+			}
+			if ident.Text == "append" {
+				// append returns a dynamic slice of the input's element type
+				if len(n.Arguments) > 0 {
+					if arrType, ok := types.LazyResolve(v.getTypeForNode(n.Arguments[0].Expression)).(*types.ArrayType); ok {
+						return &types.ArrayType{Type: arrType.Type, Length: -1}
+					}
+				}
+				return types.UnknownType("append")
 			}
 		}
 
@@ -195,6 +236,11 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			if parentFunc != operatorOverload {
 				return v.getTypeForNode(operatorOverload).(*types.SignatureType).ReturnType
 			}
+		}
+
+		// Mixed numeric operands take the unified (wider / non-literal) type.
+		if ok, unified := numericOperandsCompatible(n.Left, n.Right, leftType, rightType); ok {
+			return unified
 		}
 
 		return leftType
@@ -321,7 +367,7 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 			n.Property.Text,
 		), true)
 	case *ast.IndexExpression:
-		// Get the type of the target (should be an array or map)
+		// Get the type of the target (should be an array, map, or string)
 		targetType := v.getTypeForNode(n.Target)
 		if arrayType, ok := targetType.(*types.ArrayType); ok {
 			// Return the element type
@@ -329,6 +375,10 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 		}
 		if mapType, ok := targetType.(*types.MapType); ok {
 			return mapType.ValueType
+		}
+		if targetType != nil && targetType.GetName() == "string" {
+			// Indexing a string yields the byte at that position
+			return types.UInt8Type
 		}
 
 		v.emitError(n, fmt.Sprintf(
@@ -349,7 +399,9 @@ func (v *visitor) resolveTypeForNode(node ast.Node) types.Type {
 	case *ast.CastExpression:
 		return v.getTypeForNode(n.Type)
 	default:
-		panic("Could not resolve type for " + reflect.TypeOf(n).String())
+		// Previously this panicked, crashing the whole compiler; a fatal
+		// diagnostic keeps the process alive and points at the location.
+		v.emitError(node, fmt.Sprintf("internal: cannot resolve type for %s", reflect.TypeOf(n).String()), true)
 	}
 
 	return types.UnknownType("undefined")
@@ -371,7 +423,20 @@ func (v *visitor) getTypeForNode(node ast.Node) types.Type {
 		return nodeInfo.Type
 	}
 
+	// Break self-referential resolution cycles (e.g. a struct whose method
+	// signatures mention the struct itself) with a lazy reference to the
+	// eventually-resolved type.
+	if v.info.resolving[node] {
+		return &types.LazyType{Resolver: func() types.Type {
+			if info := v.info.NodeInfo[node]; info != nil && info.Type != nil {
+				return info.Type
+			}
+			return types.UnknownType("recursive type")
+		}}
+	}
+	v.info.resolving[node] = true
 	typ := v.resolveTypeForNode(node)
+	delete(v.info.resolving, node)
 	nodeInfo.Type = typ
 
 	return typ
@@ -646,10 +711,14 @@ typeCheck:
 		scopeItem := v.scope.Get(n.Text, true)
 		if scopeItem == nil {
 			// Skip error for builtin functions
-			if n.Text == "len" || n.Text == "append" || n.Text == "str" {
+			switch n.Text {
+			case "len", "append", "str", "print", "println", "delete", "contains",
+				"channel", "send", "recv", "close", "closed", "yield",
+				"typeof", "typename":
 				break
+			default:
+				v.emitError(n, fmt.Sprintf("undefined: %s", n), true)
 			}
-			v.emitError(n, fmt.Sprintf("undefined: %s", n), true)
 			break
 		}
 
@@ -673,15 +742,166 @@ typeCheck:
 			v.Visit(arg.Expression)
 
 			// Check argument type
-			argType := v.getTypeForNode(arg.Expression)
-			if _, isArray := argType.(*types.ArrayType); !isArray {
-				if argType.GetName() != "string" {
-					v.emitError(arg.Expression, "len() argument must be array or string", true)
-				}
+			argType := types.LazyResolve(v.getTypeForNode(arg.Expression))
+			_, isArray := argType.(*types.ArrayType)
+			_, isMap := argType.(*types.MapType)
+			if !isArray && !isMap && argType.GetName() != "string" {
+				v.emitError(arg.Expression, "len() argument must be array, map, or string", true)
 			}
 
 			// Set return type to int32
 			nodeInfo.Type = types.Int32Type
+			break
+		}
+
+		if ident, ok := n.Callee.(*ast.Identifier); ok && (ident.Text == "print" || ident.Text == "println") &&
+			v.scope.Get(ident.Text, true) == nil {
+			for _, arg := range n.Arguments {
+				v.Visit(arg.Expression)
+				argType := types.LazyResolve(v.getTypeForNode(arg.Expression))
+				switch {
+				case argType == nil:
+				case argType.GetName() == "string" || argType.GetName() == "bool":
+				default:
+					if _, numeric := numericKinds[argType.GetName()]; !numeric {
+						v.emitError(arg.Expression, fmt.Sprintf(
+							"%s() cannot print value of type %s",
+							ident.Text,
+							argType.GetName(),
+						), true)
+					}
+				}
+			}
+			nodeInfo.Type = types.VoidType
+			break
+		}
+
+		if ident, ok := n.Callee.(*ast.Identifier); ok && (ident.Text == "delete" || ident.Text == "contains") &&
+			v.scope.Get(ident.Text, true) == nil {
+			if len(n.Arguments) != 2 {
+				v.emitError(n, fmt.Sprintf("%s() takes exactly two arguments (map, key)", ident.Text), true)
+				break
+			}
+			mapArg := n.Arguments[0]
+			keyArg := n.Arguments[1]
+			v.Visit(mapArg.Expression)
+			v.Visit(keyArg.Expression)
+
+			mapType, isMap := types.LazyResolve(v.getTypeForNode(mapArg.Expression)).(*types.MapType)
+			if !isMap {
+				v.emitError(mapArg.Expression, fmt.Sprintf("%s() first argument must be a map", ident.Text), true)
+				break
+			}
+			keyType := types.LazyResolve(v.getTypeForNode(keyArg.Expression))
+			if keyType != nil && !keyType.IsEqual(mapType.KeyType) {
+				v.emitError(keyArg.Expression, fmt.Sprintf(
+					"cannot use %s (type %s) as type %s map key",
+					keyArg.Expression,
+					keyType.GetName(),
+					mapType.KeyType.GetName(),
+				), true)
+			}
+
+			if ident.Text == "contains" {
+				nodeInfo.Type = types.BoolType
+			} else {
+				nodeInfo.Type = types.VoidType
+			}
+			break
+		}
+
+		if ident, ok := n.Callee.(*ast.Identifier); ok && ident.Text == "channel" &&
+			v.scope.Get(ident.Text, true) == nil {
+			if len(n.Arguments) != 1 {
+				v.emitError(n, "channel() takes exactly one argument (capacity)", true)
+				break
+			}
+			v.Visit(n.Arguments[0].Expression)
+			capType := types.LazyResolve(v.getTypeForNode(n.Arguments[0].Expression))
+			if capType != nil && !strings.HasPrefix(capType.GetName(), "int") && !strings.HasPrefix(capType.GetName(), "uint") {
+				v.emitError(n.Arguments[0].Expression, "channel() capacity must be an integer", true)
+			}
+			nodeInfo.Type = &types.ChannelType{}
+			break
+		}
+
+		if ident, ok := n.Callee.(*ast.Identifier); ok && ident.Text == "send" &&
+			v.scope.Get(ident.Text, true) == nil {
+			if len(n.Arguments) != 2 {
+				v.emitError(n, "send() takes exactly two arguments (channel, value)", true)
+				break
+			}
+			v.Visit(n.Arguments[0].Expression)
+			v.Visit(n.Arguments[1].Expression)
+			ch, isChan := types.LazyResolve(v.getTypeForNode(n.Arguments[0].Expression)).(*types.ChannelType)
+			if !isChan {
+				v.emitError(n.Arguments[0].Expression, "send() first argument must be a channel", true)
+				break
+			}
+			valType := types.LazyResolve(v.getTypeForNode(n.Arguments[1].Expression))
+			if ch.Elem != nil && valType != nil && !valType.IsEqual(ch.Elem) &&
+				!isAssignable(n.Arguments[1].Expression, valType, ch.Elem) {
+				v.emitError(n.Arguments[1].Expression, fmt.Sprintf(
+					"cannot send %s (type %s) on channel of %s",
+					n.Arguments[1].Expression,
+					valType.GetName(),
+					ch.Elem.GetName(),
+				), true)
+			}
+			nodeInfo.Type = types.VoidType
+			break
+		}
+
+		if ident, ok := n.Callee.(*ast.Identifier); ok &&
+			(ident.Text == "recv" || ident.Text == "close" || ident.Text == "closed") &&
+			v.scope.Get(ident.Text, true) == nil {
+			if len(n.Arguments) != 1 {
+				v.emitError(n, fmt.Sprintf("%s() takes exactly one argument (channel)", ident.Text), true)
+				break
+			}
+			v.Visit(n.Arguments[0].Expression)
+			ch, isChan := types.LazyResolve(v.getTypeForNode(n.Arguments[0].Expression)).(*types.ChannelType)
+			if !isChan {
+				v.emitError(n.Arguments[0].Expression, fmt.Sprintf("%s() argument must be a channel", ident.Text), true)
+				break
+			}
+			switch ident.Text {
+			case "recv":
+				if ch.Elem == nil {
+					v.emitError(n.Arguments[0].Expression, "cannot receive from an untyped channel; annotate the channel declaration", true)
+					break
+				}
+				nodeInfo.Type = ch.Elem
+			case "closed":
+				nodeInfo.Type = types.BoolType
+			default:
+				nodeInfo.Type = types.VoidType
+			}
+			break
+		}
+
+		if ident, ok := n.Callee.(*ast.Identifier); ok &&
+			(ident.Text == "typeof" || ident.Text == "typename") &&
+			v.scope.Get(ident.Text, true) == nil {
+			if len(n.Arguments) != 1 {
+				v.emitError(n, fmt.Sprintf("%s() takes exactly one argument", ident.Text), true)
+				break
+			}
+			v.Visit(n.Arguments[0].Expression)
+			// Resolve (and cache) the argument type so codegen can read the
+			// static type off the expression node.
+			v.getTypeForNode(n.Arguments[0].Expression)
+			nodeInfo.Type = types.StringType
+			break
+		}
+
+		if ident, ok := n.Callee.(*ast.Identifier); ok && ident.Text == "yield" &&
+			v.scope.Get(ident.Text, true) == nil {
+			if len(n.Arguments) != 0 {
+				v.emitError(n, "yield() takes no arguments", true)
+				break
+			}
+			nodeInfo.Type = types.VoidType
 			break
 		}
 
@@ -720,7 +940,8 @@ typeCheck:
 			for i := 1; i < len(n.Arguments); i++ {
 				v.Visit(n.Arguments[i].Expression)
 				argType := v.getTypeForNode(n.Arguments[i].Expression)
-				if !argType.IsEqual(arrayType.Type) {
+				if !argType.IsEqual(arrayType.Type) &&
+					!isAssignable(n.Arguments[i].Expression, argType, arrayType.Type) {
 					v.emitError(n.Arguments[i].Expression, fmt.Sprintf("append() argument type mismatch: expected %s, got %s", arrayType.Type.GetName(), argType.GetName()), true)
 				}
 			}
@@ -818,12 +1039,9 @@ typeCheck:
 						}
 					}
 
-					// Allow int literal to be promoted to int64
-					if !equal && exprType.GetName() == "int32" && fnArgType.GetName() == "int64" {
-						if _, ok := callArg.Expression.(*ast.ValueExpression); ok {
-							// It's a literal (simplification, ideally check value range)
-							equal = true
-						}
+					// Allow safe numeric widening and in-range literals
+					if !equal && isAssignable(callArg.Expression, exprType, fnArgType) {
+						equal = true
 					}
 
 					if !equal {
@@ -920,7 +1138,8 @@ typeCheck:
 
 					structArgType := structType.Variables[i].Type
 					exprType := v.getTypeForNode(callArg.Expression)
-					equal := structArgType.IsEqual(exprType)
+					equal := structArgType.IsEqual(exprType) ||
+						isAssignable(callArg.Expression, exprType, structArgType)
 
 					if !equal {
 						v.emitError(callArg.Expression, fmt.Sprintf(
@@ -965,7 +1184,8 @@ typeCheck:
 		}
 
 		returnType := v.getTypeForNode(n.Expression)
-		equal := funcDeclType.ReturnType.IsEqual(returnType)
+		equal := funcDeclType.ReturnType.IsEqual(returnType) ||
+			isAssignable(n.Expression, returnType, funcDeclType.ReturnType)
 
 		if !equal {
 			v.emitError(n.Expression, fmt.Sprintf(
@@ -995,17 +1215,59 @@ typeCheck:
 		// Walk is handled by ast.Walk
 		break
 
+	case *ast.IfStatement:
+		v.checkBoolCondition(n.Condition)
+
 	case *ast.ForLoop:
+		v.checkBoolCondition(n.Condition)
 		// Create a subscope so init variables (e.g., var i = 0) don't leak
 		// into the parent scope. This prevents the bug where reusing the same
 		// variable name across multiple for-loops references the wrong alloca.
 		return v.subVisitor(node, v.scope.SubScope(node))
 
+	case *ast.SelectStatement:
+		for _, c := range n.Cases {
+			caseScope := v.scope.SubScope(c)
+			sub := v.subVisitor(c, caseScope)
+
+			if !c.IsDefault {
+				ast.Walk(sub, c.Channel)
+				ch, isChan := types.LazyResolve(sub.getTypeForNode(c.Channel)).(*types.ChannelType)
+				if !isChan {
+					v.emitError(c.Channel, "select case operand must be a channel", true)
+					ast.Walk(sub, c.Block)
+					continue
+				}
+				if c.IsSend {
+					ast.Walk(sub, c.Value)
+					valType := types.LazyResolve(sub.getTypeForNode(c.Value))
+					if ch.Elem != nil && valType != nil && !valType.IsEqual(ch.Elem) &&
+						!isAssignable(c.Value, valType, ch.Elem) {
+						v.emitError(c.Value, fmt.Sprintf(
+							"cannot send %s (type %s) on channel of %s",
+							c.Value,
+							valType.GetName(),
+							ch.Elem.GetName(),
+						), true)
+					}
+				} else if c.VarName != nil {
+					if ch.Elem == nil {
+						v.emitError(c.Channel, "cannot receive from an untyped channel; annotate the channel declaration", true)
+					} else {
+						caseScope.Set(c.VarName, c.VarName)
+						v.info.NodeInfo[c.VarName] = &NodeInfo{Type: ch.Elem}
+					}
+				}
+			}
+			ast.Walk(sub, c.Block)
+		}
+		return nil
+
 	case *ast.ForRangeLoop:
 		// Create a subscope for iteration variables
 		loopScope := v.scope.SubScope(node)
 		// Register iteration variables in the new scope
-		iterableType := v.getTypeForNode(n.Iterable)
+		iterableType := types.LazyResolve(v.getTypeForNode(n.Iterable))
 		if arrType, ok := iterableType.(*types.ArrayType); ok {
 			// Register value variable: scope item is ForRangeLoop, type is element type
 			loopScope.Set(n.ValueName, n)
@@ -1016,6 +1278,28 @@ typeCheck:
 			if n.IndexName != nil {
 				loopScope.Set(n.IndexName, n.IndexName)
 				v.info.NodeInfo[n.IndexName] = &NodeInfo{Type: types.Int32Type}
+			}
+		} else if mapType, ok := iterableType.(*types.MapType); ok {
+			if n.IndexName != nil {
+				// for var k, v in m — first variable is the key, second the value
+				loopScope.Set(n.IndexName, n.IndexName)
+				v.info.NodeInfo[n.IndexName] = &NodeInfo{Type: mapType.KeyType}
+				loopScope.Set(n.ValueName, n)
+				v.info.NodeInfo[n.ValueName] = &NodeInfo{Type: mapType.ValueType}
+				v.getNodeInfo(n).Type = mapType.ValueType
+			} else {
+				// for var k in m — iterates over the keys
+				loopScope.Set(n.ValueName, n)
+				v.info.NodeInfo[n.ValueName] = &NodeInfo{Type: mapType.KeyType}
+				v.getNodeInfo(n).Type = mapType.KeyType
+			}
+		} else if iterableType != nil {
+			if _, unknown := iterableType.(types.UnknownType); !unknown {
+				v.emitError(n.Iterable, fmt.Sprintf(
+					"cannot range over %s (type %s)",
+					n.Iterable,
+					iterableType.GetName(),
+				), true)
 			}
 		}
 		return v.subVisitor(node, loopScope)
@@ -1060,6 +1344,9 @@ typeCheck:
 					break
 				}
 			}
+			if ok, _ := numericOperandsCompatible(n.Left, n.Right, aType, bType); ok {
+				break
+			}
 			v.emitError(n, fmt.Sprintf(
 				"invalid operation: %s (mismatched types %s and %s)",
 				n,
@@ -1072,6 +1359,11 @@ typeCheck:
 		equal, aType, bType := v.isEqualType(n.Left, n.Right)
 
 		if !equal {
+			if n.Operator.Text != "&&" && n.Operator.Text != "||" {
+				if ok, _ := numericOperandsCompatible(n.Left, n.Right, aType, bType); ok {
+					break
+				}
+			}
 			v.emitError(n, fmt.Sprintf(
 				"invalid operation: %s (mismatched types %s and %s)",
 				n,
@@ -1087,7 +1379,7 @@ typeCheck:
 			if n.Type != nil {
 				equal, aType, bType := v.isEqualType(n, n.DefaultValue)
 
-				if !equal {
+				if !equal && !isAssignable(n.DefaultValue, bType, aType) {
 					v.emitError(n.DefaultValue, fmt.Sprintf(
 						"cannot use %s (type %s) as type %s in assigment",
 						n.DefaultValue,
@@ -1130,10 +1422,22 @@ typeCheck:
 		}
 		importedAnalyser.FileLoader = v.fileLoader
 
-		_, err = importedAnalyser.Analyse()
+		importedInfo, err := importedAnalyser.Analyse()
 		if err != nil {
 			v.emitError(n, fmt.Sprintf("failed to analyse import: %s", err), true)
 			break
+		}
+
+		// Make the imported module's type declarations resolvable here even
+		// when not explicitly imported: an imported function may mention
+		// them in its signature (e.g. server() => Server). Locally declared
+		// names take precedence.
+		if importedFileInfo := importedInfo.FileInfo[importedFile]; importedFileInfo != nil {
+			for name, typNode := range importedFileInfo.Types {
+				if _, exists := v.info.Types[name]; !exists {
+					v.info.Types[name] = typNode
+				}
+			}
 		}
 
 		// Import symbols
@@ -1178,6 +1482,11 @@ typeCheck:
 			v.info.NodeInfo[localIdent] = &NodeInfo{Type: typ}
 		}
 
+		// Don't descend into the import items: the original symbol names
+		// are not identifiers in this file's scope (only aliases are), so
+		// walking them would produce bogus "undefined" errors.
+		return nil
+
 	case *ast.ExportStatement:
 		ast.Walk(v, n.Declaration)
 
@@ -1204,9 +1513,31 @@ typeCheck:
 		return nil
 
 	case *ast.IncludeStatement:
-		// For now, we don't validate include statements
-		// The functions will be declared as extern by codegen
-		break
+		// Harvest function declarations from the C header so included
+		// functions resolve during analysis (codegen declares the same set).
+		headerPath := n.Path.Token.Value.(string)
+		funcs, err := cheader.ParseFile(headerPath)
+		if err != nil {
+			v.emitError(n, fmt.Sprintf("cannot read included header %s: %s", headerPath, err), true)
+			break
+		}
+		for _, cfn := range funcs {
+			ident := &ast.Identifier{Token: scanner.Token{Text: cfn.Name}}
+			sig := &types.SignatureType{
+				ReturnType: cTypeToOrlangType(cfn.ReturnType),
+			}
+			for _, p := range cfn.Params {
+				sig.ArgumentNames = append(sig.ArgumentNames, "")
+				sig.ArgumentTypes = append(sig.ArgumentTypes, cTypeToOrlangType(p))
+			}
+			item := &CustomTypeResolvingScopeItem{ResolvedType: sig}
+			v.scope.Set(ident, item)
+			v.scope.MarkUsage(item, ident)
+			if details := v.scope.GetDetails(cfn.Name, false); details != nil {
+				details.Initialized = true
+			}
+		}
+		return nil
 
 	case *ast.LinkStatement:
 		// Link directives are handled by the compile pipeline
@@ -1229,11 +1560,12 @@ typeCheck:
 				break
 			}
 
-			if structParentOk {
-				break
+			// Struct member functions are not added to the scope, but they
+			// still need their own subscope below so parameters of sibling
+			// methods don't collide.
+			if !structParentOk {
+				v.scope.Set(n.Signature.Identifier, n)
 			}
-
-			v.scope.Set(n.Signature.Identifier, n)
 
 		} else if n.Signature.Operator != nil {
 			argCount := len(n.Signature.Arguments)
@@ -1308,7 +1640,7 @@ typeCheck:
 			if n.Type != nil {
 				equal, aType, bType := v.isEqualType(n, n.DefaultValue)
 
-				if !equal {
+				if !equal && !isAssignable(n.DefaultValue, bType, aType) {
 					v.emitError(n.DefaultValue, fmt.Sprintf(
 						"cannot use %s (type %s) as type %s in assigment",
 						n.DefaultValue,
@@ -1337,7 +1669,7 @@ typeCheck:
 		}
 	case *ast.Assigment:
 		equal, leftType, rightType := v.isEqualType(n.Left, n.Right)
-		if !equal {
+		if !equal && !isAssignable(n.Right, rightType, leftType) {
 			v.emitError(n.Right, fmt.Sprintf(
 				"cannot use %s (type %s) as type %s in assigment expression",
 				n.Right,
@@ -1347,13 +1679,23 @@ typeCheck:
 		}
 
 		if ident, ok := n.Left.(*ast.Identifier); ok {
+			v.checkConstAssignment(n, ident)
 			v.scope.SetInitialized(ident.Text, true)
+		}
+	case *ast.UnaryExpression:
+		// ++ and -- mutate their operand
+		if n.Operator.Type == scanner.TokenTypeIncrement || n.Operator.Type == scanner.TokenTypeDecrement {
+			if ident, ok := n.Expression.(*ast.Identifier); ok {
+				v.checkConstAssignment(n, ident)
+			}
 		}
 	case *ast.Struct:
 		nodeInfo.Type = v.getTypeForNode(node)
-		// TODO check that it is not redeclared
-		// TODO check that no property or function is double declared
 		if n.Name != nil {
+			if _, exists := v.info.Types[n.Name.Text]; exists {
+				v.emitError(n, fmt.Sprintf("%s already declared", n.Name.Text), true)
+				break
+			}
 			v.info.Types[n.Name.Text] = n
 			v.scope.Set(n.Name, n)
 		}
@@ -1364,10 +1706,12 @@ typeCheck:
 			v.scope.Set(n.Name, n)
 		}
 	case *ast.Interface:
-		// TODO check that it is not redeclared
-		// TODO check that no property or function is double declared
 		nodeInfo.Type = v.getTypeForNode(node)
 		if n.Name != nil {
+			if _, exists := v.info.Types[n.Name.Text]; exists {
+				v.emitError(n, fmt.Sprintf("%s already declared", n.Name.Text), true)
+				break
+			}
 			v.info.Types[n.Name.Text] = n
 			v.scope.Set(n.Name, n)
 		}
@@ -1388,11 +1732,12 @@ typeCheck:
 		), true)
 	case *ast.IndexExpression:
 		nodeInfo.Type = v.getTypeForNode(node)
-		// Verify target is indexable (array or map type)
+		// Verify target is indexable (array, map, or string)
 		targetType := v.getTypeForNode(n.Target)
 		_, isArray := targetType.(*types.ArrayType)
 		_, isMap := targetType.(*types.MapType)
-		if !isArray && !isMap {
+		isString := targetType != nil && targetType.GetName() == "string"
+		if !isArray && !isMap && !isString {
 			v.emitError(n, fmt.Sprintf(
 				"invalid operation: %s (type %s does not support indexing)",
 				n,
@@ -1440,6 +1785,13 @@ func (v *visitor) processUnusedVariables() {
 			break
 		}
 
+		// Type declarations are not "unused variables" — they are part of
+		// the file's public shape even when nothing references them yet.
+		switch scopeItemInfo.ScopeItem.(type) {
+		case *ast.Struct, *ast.Interface, *ast.Enum:
+			continue
+		}
+
 		v.emitError(scopeItemInfo.DefineIdentifier,
 			fmt.Sprintf("%s declared but not used", scopeItemInfo.DefineIdentifier.Text),
 			false)
@@ -1459,6 +1811,11 @@ func (v *visitor) Leave(node ast.Node) {
 				for scopeItem, refs := range v.scope.GetReferencedItems() {
 					ref := refs[0]
 					definingScope := v.scope.GetDefiningScope(ref.Text)
+					if definingScope == nil {
+						// Defined in a subscope of this function (e.g. a
+						// for-loop variable): local, not a captured reference.
+						continue
+					}
 					if _, ok := definingScope.node.(*ast.File); !ok {
 						// Not defined in root scope so reference needed
 						closure.Env = append(closure.Env, scopeItem)

@@ -126,6 +126,9 @@ func (am *ArgumentMatcher) handleCast(val value.Value, expr ast.Expression, targ
 	}
 
 	if sourceTyp != nil && targetTyp != nil {
+		sourceTyp = ortypes.LazyResolve(sourceTyp)
+		targetTyp = ortypes.LazyResolve(targetTyp)
+
 		// Special handling for struct-to-interface casts
 		// We need to pass the address of the struct, not the loaded value
 		if _, isTargetIface := targetTyp.(*ortypes.InterfaceType); isTargetIface {
@@ -137,6 +140,17 @@ func (am *ArgumentMatcher) handleCast(val value.Value, expr ast.Expression, targ
 				}
 			}
 		}
+
+		// Struct parameters are passed as pointers; a call returning a
+		// struct produces a value, so spill it to a stack slot first.
+		if _, isTargetStruct := targetTyp.(*ortypes.StructType); isTargetStruct && val != nil {
+			if _, isPtr := val.Type().(*types.PointerType); !isPtr {
+				slot := am.lcg.currentBlock.NewAlloca(val.Type())
+				am.lcg.currentBlock.NewStore(val, slot)
+				val = slot
+			}
+		}
+
 		return am.lcg.castIfNeeded(val, sourceTyp, targetTyp)
 	}
 

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,6 +13,8 @@ import (
 	"github.com/orktes/orlang/ast"
 	"github.com/orktes/orlang/codegen/llvm"
 	"github.com/orktes/orlang/parser"
+	"github.com/orktes/orlang/runtimelib"
+	"github.com/orktes/orlang/stdlib"
 )
 
 // compileResult holds the output of a full compilation pipeline.
@@ -29,7 +32,8 @@ type linkDirective struct {
 }
 
 // compileLLVM takes .or source files, generates LLVM IR, compiles to object
-// files with clang, links with bdw-gc, and returns the path to the binary.
+// files with clang, links them with the embedded runtime (GC + built-in map),
+// and returns the path to the binary.
 // outputPath is the desired binary name (empty = derived from first source file).
 // Automatically discovers sibling .or files in the same directory.
 func compileLLVM(sourceFiles []string, outputPath string) (*compileResult, error) {
@@ -65,8 +69,10 @@ func compileLLVM(sourceFiles []string, outputPath string) (*compileResult, error
 
 	var objectFiles []string
 	var allDirectives []linkDirective
+	var stdImports []string
 
 	// 1. Compile each .or file to .ll then to .o, collecting link directives
+	// and standard library imports
 	for _, srcFile := range sourceFiles {
 		llFile, fileNode, err := compileOrToLL(srcFile)
 		if err != nil {
@@ -81,6 +87,7 @@ func compileLLVM(sourceFiles []string, outputPath string) (*compileResult, error
 			srcDir = absSrcDir
 		}
 		allDirectives = append(allDirectives, extractLinkDirectives(fileNode, srcDir)...)
+		stdImports = append(stdImports, extractStdImports(fileNode)...)
 
 		oFile, err := compileLLToObj(llFile, result.ClangTarget)
 		if err != nil {
@@ -90,6 +97,56 @@ func compileLLVM(sourceFiles []string, outputPath string) (*compileResult, error
 		}
 		objectFiles = append(objectFiles, oFile)
 		result.TempFiles = append(result.TempFiles, oFile)
+	}
+
+	// 1b. Compile imported standard library modules (recursively: std
+	// modules may import other std modules). Sources are materialized into
+	// a temporary directory since they live inside the compiler binary.
+	if len(stdImports) > 0 {
+		stdDir, err := os.MkdirTemp("", "orlang-std-")
+		if err != nil {
+			cleanupFiles(result.TempFiles)
+			return nil, fmt.Errorf("creating std build dir: %w", err)
+		}
+		defer os.RemoveAll(stdDir)
+
+		compiled := map[string]bool{}
+		queue := stdImports
+		for len(queue) > 0 {
+			stdPath := queue[0]
+			queue = queue[1:]
+			if compiled[stdPath] {
+				continue
+			}
+			compiled[stdPath] = true
+
+			src, ok := stdlib.Load(stdPath)
+			if !ok {
+				cleanupFiles(result.TempFiles)
+				return nil, fmt.Errorf("unknown standard library module %q (available: %s)",
+					stdPath, strings.Join(stdlib.Modules(), ", "))
+			}
+
+			srcFile := filepath.Join(stdDir, filepath.Base(stdPath))
+			if err := os.WriteFile(srcFile, src, 0644); err != nil {
+				cleanupFiles(result.TempFiles)
+				return nil, fmt.Errorf("materializing %s: %w", stdPath, err)
+			}
+
+			llFile, stdNode, err := compileOrToLL(srcFile)
+			if err != nil {
+				cleanupFiles(result.TempFiles)
+				return nil, fmt.Errorf("compiling %s: %w", stdPath, err)
+			}
+			queue = append(queue, extractStdImports(stdNode)...)
+
+			oFile, err := compileLLToObj(llFile, result.ClangTarget)
+			if err != nil {
+				cleanupFiles(result.TempFiles)
+				return nil, fmt.Errorf("assembling %s: %w", stdPath, err)
+			}
+			objectFiles = append(objectFiles, oFile)
+		}
 	}
 
 	// 2. Gather pkg-config --cflags for C compilation
@@ -146,6 +203,20 @@ func compileLLVM(sourceFiles []string, outputPath string) (*compileResult, error
 	return result, nil
 }
 
+// extractStdImports collects the standard library import paths (std/...)
+// referenced by an AST file.
+func extractStdImports(fileNode *ast.File) []string {
+	var paths []string
+	for _, node := range fileNode.Body {
+		if imp, ok := node.(*ast.ImportStatement); ok {
+			if path, ok := imp.Path.Token.Value.(string); ok && stdlib.IsStdPath(path) {
+				paths = append(paths, path)
+			}
+		}
+	}
+	return paths
+}
+
 // extractLinkDirectives collects all link statements from an AST file.
 func extractLinkDirectives(fileNode *ast.File, sourceDir string) []linkDirective {
 	var directives []linkDirective
@@ -161,27 +232,42 @@ func extractLinkDirectives(fileNode *ast.File, sourceDir string) []linkDirective
 	return directives
 }
 
-// compileOrToLL parses, analyses, and generates LLVM IR for a single .or file.
-// Returns the .ll file path and the parsed AST (for extracting link directives).
-func compileOrToLL(srcFile string) (string, *ast.File, error) {
+// analyseSourceFile parses and analyses a single .or file, returning the
+// AST and analyser info. Fatal analyser diagnostics fail the compilation —
+// previously `orlang build` silently ignored type errors and generated
+// broken code from the partial analysis.
+func analyseSourceFile(srcFile string) (*ast.File, *analyser.Info, error) {
 	file, err := os.Open(srcFile)
 	if err != nil {
-		return "", nil, err
+		return nil, nil, err
 	}
 	defer file.Close()
 
 	fileNode, err := parser.Parse(file)
 	if err != nil {
-		return "", nil, err
+		return nil, nil, err
 	}
 
 	an, err := analyser.New(fileNode)
 	if err != nil {
-		return "", nil, err
+		return nil, nil, err
+	}
+
+	var diagnostics []string
+	an.Error = func(node ast.Node, msg string, fatal bool) {
+		if !fatal {
+			return
+		}
+		pos := node.StartPos()
+		diagnostics = append(diagnostics, fmt.Sprintf("%s:%d:%d: %s", srcFile, pos.Line+1, pos.Column+1, msg))
 	}
 
 	basePath := filepath.Dir(srcFile)
 	an.FileLoader = func(importPath string) (*ast.File, error) {
+		// Standard library modules are embedded in the compiler binary
+		if src, ok := stdlib.Load(importPath); ok {
+			return parser.Parse(bytes.NewReader(src))
+		}
 		fullPath := filepath.Join(basePath, importPath)
 		f, err := os.Open(fullPath)
 		if err != nil {
@@ -193,6 +279,19 @@ func compileOrToLL(srcFile string) (string, *ast.File, error) {
 
 	fileInfo, err := an.Analyse()
 	if err != nil {
+		return nil, nil, err
+	}
+	if len(diagnostics) > 0 {
+		return nil, nil, fmt.Errorf("%s", strings.Join(diagnostics, "\n"))
+	}
+	return fileNode, fileInfo, nil
+}
+
+// compileOrToLL parses, analyses, and generates LLVM IR for a single .or file.
+// Returns the .ll file path and the parsed AST (for extracting link directives).
+func compileOrToLL(srcFile string) (string, *ast.File, error) {
+	fileNode, fileInfo, err := analyseSourceFile(srcFile)
+	if err != nil {
 		return "", nil, err
 	}
 
@@ -203,6 +302,13 @@ func compileOrToLL(srcFile string) (string, *ast.File, error) {
 	llvmcg.SetModuleName(moduleName)
 
 	code := llvmcg.Generate(fileNode)
+	if errs := llvmcg.Errors(); len(errs) > 0 {
+		msgs := make([]string, len(errs))
+		for i, e := range errs {
+			msgs[i] = fmt.Sprintf("%s: %s", srcFile, e)
+		}
+		return "", nil, fmt.Errorf("%s", strings.Join(msgs, "\n"))
+	}
 	llFile := strings.TrimSuffix(srcFile, ext) + ".ll"
 	if err := os.WriteFile(llFile, []byte(code), 0644); err != nil {
 		return "", nil, err
@@ -264,13 +370,74 @@ func collectPkgConfigCflags(directives []linkDirective) []string {
 	return flags
 }
 
-// linkObjects links object files into a binary, including bdw-gc and
-// any libraries specified by link directives.
-func linkObjects(objectFiles []string, outputPath string, clangTarget string, directives []linkDirective) error {
-	// Always link bdw-gc (GC is required by all orlang programs)
-	gcFlags, err := exec.Command("pkg-config", "--libs", "bdw-gc").Output()
+// runtimeObjects returns the paths to the compiled orlang runtime objects
+// (GC + map, HTTP, JSON), compiling the embedded C sources on first use.
+// Results are cached in the user cache directory keyed by source hash and
+// target, so repeated builds don't recompile them.
+func runtimeObjects(clangTarget string) ([]string, error) {
+	targetKey := clangTarget
+	if targetKey == "" {
+		targetKey = "native"
+	}
+	targetKey = strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '-' || r == '_' {
+			return r
+		}
+		return '-'
+	}, targetKey)
+
+	cacheDir, err := os.UserCacheDir()
 	if err != nil {
-		return fmt.Errorf("pkg-config --libs bdw-gc: %w (is libgc/bdw-gc installed?)", err)
+		cacheDir = os.TempDir()
+	}
+	cacheDir = filepath.Join(cacheDir, "orlang")
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return nil, fmt.Errorf("creating runtime cache dir: %w", err)
+	}
+
+	var objects []string
+	for _, name := range runtimelib.SourceNames {
+		base := strings.TrimSuffix(name, ".c")
+		oFile := filepath.Join(cacheDir, fmt.Sprintf("%s-%s-%s.o", base, runtimelib.Hash(), targetKey))
+		objects = append(objects, oFile)
+		if _, err := os.Stat(oFile); err == nil {
+			continue
+		}
+
+		cFile := filepath.Join(cacheDir, fmt.Sprintf("%s-%s.c", base, runtimelib.Hash()))
+		if err := os.WriteFile(cFile, runtimelib.Sources[name], 0644); err != nil {
+			return nil, fmt.Errorf("writing runtime source: %w", err)
+		}
+
+		// Compile to a temp name first so a concurrent build never sees a
+		// half-written object at the final path.
+		tmpO := oFile + ".tmp"
+		args := []string{"-O2", "-w", "-c", "-o", tmpO, cFile}
+		if clangTarget != "" {
+			args = append([]string{"-target", clangTarget}, args...)
+		}
+		cmd := exec.Command("clang", args...)
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			os.Remove(tmpO)
+			os.Remove(cFile)
+			return nil, fmt.Errorf("compiling orlang runtime %s: %w", name, err)
+		}
+		os.Remove(cFile)
+		if err := os.Rename(tmpO, oFile); err != nil {
+			os.Remove(tmpO)
+			return nil, fmt.Errorf("installing orlang runtime object: %w", err)
+		}
+	}
+	return objects, nil
+}
+
+// linkObjects links object files into a binary together with the embedded
+// orlang runtime and any libraries specified by link directives.
+func linkObjects(objectFiles []string, outputPath string, clangTarget string, directives []linkDirective) error {
+	runtimeObjs, err := runtimeObjects(clangTarget)
+	if err != nil {
+		return err
 	}
 
 	args := []string{"-Wno-override-module", "-o", outputPath}
@@ -278,10 +445,10 @@ func linkObjects(objectFiles []string, outputPath string, clangTarget string, di
 		args = append([]string{"-target", clangTarget}, args...)
 	}
 	args = append(args, objectFiles...)
-	args = append(args, strings.Fields(strings.TrimSpace(string(gcFlags)))...)
+	args = append(args, runtimeObjs...)
 
 	// Process link directives for additional libraries
-	seenPkg := map[string]bool{"bdw-gc": true} // deduplicate, bdw-gc already added
+	seenPkg := map[string]bool{}
 	seenLib := map[string]bool{}
 
 	for _, dir := range directives {
@@ -303,6 +470,10 @@ func linkObjects(objectFiles []string, outputPath string, clangTarget string, di
 			seenLib[dir.Path] = true
 			args = append(args, "-l"+dir.Path)
 		}
+	}
+
+	if runtime.GOOS == "linux" {
+		args = append(args, "-lm")
 	}
 
 	cmd := exec.Command("clang", args...)

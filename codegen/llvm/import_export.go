@@ -32,7 +32,7 @@ func (lcg *LLVMCodeGen) visitImportStatement(n *ast.ImportStatement) {
 		}
 
 		// If it's a struct type, register the LLVM type
-		if structTyp, ok := nodeInfo.Type.(*ortypes.StructType); ok {
+		if structTyp, ok := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.StructType); ok {
 			// Create the LLVM struct type from the semantic type
 			if _, exists := lcg.structs[item.Name.Text]; !exists {
 				var fields []types.Type
@@ -51,7 +51,7 @@ func (lcg *LLVMCodeGen) visitImportStatement(n *ast.ImportStatement) {
 		}
 
 		// If it's a function, declare it as external
-		if sig, ok := nodeInfo.Type.(*ortypes.SignatureType); ok {
+		if sig, ok := ortypes.LazyResolve(nodeInfo.Type).(*ortypes.SignatureType); ok {
 			// The LLVM function name should be MANGLED if it's from a non-main module
 			// Format: modulename__functionname
 			llvmFuncName := item.Name.Text

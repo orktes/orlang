@@ -1,23 +1,42 @@
 - [x] warn about uninitialized variables (linter)
+- [x] map type (built-in runtime with len/contains/delete/iteration)
+- [x] LLVM codegen
+- [x] self-contained binaries (embedded GC + map runtime, no external deps)
+- [x] proper operator precedence (Go-style levels)
+- [x] implicit safe numeric widening + literal adaptation
+- [x] const immutability enforcement
+- [x] bool-typed conditions for if/for
+- [x] print/println/str builtins
+- [x] float exponent / binary / octal / digit-separator literals
+- [x] standard library: std/http (Express-style server), std/json, std/net (TCP)
+- [x] green threads (cooperative scheduler, GC-integrated stacks)
+- [x] CSP: go statement, chan T, channel/send/recv/close/closed/yield
+- [x] struct literal field defaults
+- [x] runtime-initialized globals
+- [x] variable zero values
+- [x] select over multiple channels (with default, send/recv cases)
+- [x] reflection: typeof (static) and typename (dynamic via itable)
+- [x] is/as type assertions on user-defined struct types
 - tuple member access expressions
 - tuple extract in assignments
 - pass by value (pointers?)?
-- map type
 - code formatting utility
 - IR?
 - JSCodegen map support
-- variable zero values
 - interfaces containing other interfaces
 - templated string literals
-- type assertion
-- closures and escape analysis
+- type assertion for arbitrary expressions
+- closures and escape analysis improvements (stack promotion)
 - implicit returns
-- ARC
-- Make JSCodegen fake "heap" allocation to an global object to better test closures, arc and stack escape.
+- uint64 literals above int64 max
+- generational / incremental GC (current: conservative mark-and-sweep)
 - make macros hygienic
 - make variadic arguments work (required for INLINE_JS and other compiler instructions)
-- import and export statements
+- missing-return-on-all-paths control flow analysis
 - JSCodegen numbertypes?
-- Proper extern support
-- [x] LLVM codegen
 - VM?
+- stdlib: UDP sockets, file IO, time, env/args
+- preemption / multicore parallelism for green threads
+- go statement on method calls (workaround: wrap in a lambda)
+- HTTP: TLS, streaming bodies, keep-alive connections
+- route path parameters (/todos/:id)

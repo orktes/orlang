@@ -1,0 +1,22 @@
+fn main() {
+    var u: uint32 = 4294967290
+    println("udiv:", u / 2)
+    println("urem:", u % 7)
+    println("ushr:", u >> 1)
+
+    var big: uint32 = 3000000000
+    var small: uint32 = 5
+    if big > small {
+        println("ucmp gt")
+    }
+    if small < big {
+        println("ucmp lt")
+    }
+
+    var u64: uint64 = 9000000000000000000
+    println("u64:", u64)
+    println("u64 shr:", u64 >> 32)
+
+    var u8: uint8 = 200
+    println("u8:", u8, "u8+50:", u8 + 50)
+}

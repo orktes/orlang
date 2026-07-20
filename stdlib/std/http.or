@@ -1,0 +1,155 @@
+// std/http — Express-style HTTP server on top of the embedded runtime.
+//
+//   import { server } from "std/http.or"
+//
+//   fn main() {
+//       var app = server()
+//       app.get("/", fn (req: Request, res: Response) => void {
+//           res.send("Hello, world!")
+//       })
+//       app.listen(8080)
+//   }
+
+extern http_server_create(port: int32) => &int8
+extern http_server_accept_conn(server: &int8) => int32
+extern http_read_request(conn: int32) => &int8
+extern http_request_method(req: &int8) => string
+extern http_request_path(req: &int8) => string
+extern http_request_query(req: &int8) => string
+extern http_request_header(req: &int8, name: string) => string
+extern http_request_body(req: &int8) => string
+extern http_response_status(req: &int8, code: int32) => void
+extern http_response_header(req: &int8, name: string, value: string) => void
+extern http_response_send(req: &int8, body: string) => void
+
+// Request is an incoming HTTP request.
+export struct Request {
+    var handle: &int8
+
+    fn method() => string {
+        return http_request_method(this.handle)
+    }
+
+    fn path() => string {
+        return http_request_path(this.handle)
+    }
+
+    fn query() => string {
+        return http_request_query(this.handle)
+    }
+
+    fn header(name: string) => string {
+        return http_request_header(this.handle, name)
+    }
+
+    fn body() => string {
+        return http_request_body(this.handle)
+    }
+}
+
+// Response builds and sends the HTTP response for a request. Exactly one
+// send()/json() call should be made per request.
+export struct Response {
+    var handle: &int8
+
+    fn status(code: int32) {
+        http_response_status(this.handle, code)
+    }
+
+    fn header(name: string, value: string) {
+        http_response_header(this.handle, name, value)
+    }
+
+    fn send(body: string) {
+        http_response_send(this.handle, body)
+    }
+
+    fn json(body: string) {
+        http_response_header(this.handle, "Content-Type", "application/json")
+        http_response_send(this.handle, body)
+    }
+}
+
+// Server routes incoming requests to registered handlers.
+export struct Server {
+    var route_methods: []string
+    var route_paths: []string
+    var route_handlers: [](Request, Response) => void
+
+    fn route(method: string, path: string, handler: (Request, Response) => void) {
+        this.route_methods = append(this.route_methods, method)
+        this.route_paths = append(this.route_paths, path)
+        this.route_handlers = append(this.route_handlers, handler)
+    }
+
+    fn get(path: string, handler: (Request, Response) => void) {
+        this.route("GET", path, handler)
+    }
+
+    fn post(path: string, handler: (Request, Response) => void) {
+        this.route("POST", path, handler)
+    }
+
+    fn put(path: string, handler: (Request, Response) => void) {
+        this.route("PUT", path, handler)
+    }
+
+    fn delete(path: string, handler: (Request, Response) => void) {
+        this.route("DELETE", path, handler)
+    }
+
+    fn all(path: string, handler: (Request, Response) => void) {
+        this.route("ALL", path, handler)
+    }
+
+    // handle dispatches one request to the first matching route and
+    // returns whether a route matched. ALL-method routes match any verb.
+    fn handle(req: Request, res: Response) => bool {
+        for var i = 0; i < len(this.route_paths); i++ {
+            if this.route_paths[i] == req.path() {
+                if this.route_methods[i] == req.method() || this.route_methods[i] == "ALL" {
+                    var handler = this.route_handlers[i]
+                    handler(req, res)
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    // serve_conn reads and dispatches one request; runs on its own green
+    // thread so slow clients don't block the accept loop.
+    fn serve_conn(conn: int32) {
+        var handle = http_read_request(conn)
+        // read_request returns a null handle for dropped/malformed
+        // connections; the accessors are null-safe and return ""
+        if http_request_method(handle) != "" {
+            var req = Request{handle: handle}
+            var res = Response{handle: handle}
+            if !this.handle(req, res) {
+                res.status(404)
+                res.send("Not Found")
+            }
+        }
+    }
+
+    // listen serves requests forever on the given port, handling each
+    // connection on its own green thread.
+    fn listen(port: int32) {
+        var srv = http_server_create(port)
+        var self = this
+        for {
+            var conn = http_server_accept_conn(srv)
+            if conn >= 0 {
+                go fn () => void {
+                    self.serve_conn(conn)
+                }()
+            }
+        }
+    }
+}
+
+// server creates a new HTTP server.
+export fn server() => Server {
+    return Server{}
+}

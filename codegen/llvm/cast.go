@@ -1,7 +1,10 @@
 package llvm
 
 import (
-	"github.com/llir/llvm/ir/types" // Added import for types
+	"math/big"
+
+	"github.com/llir/llvm/ir/constant"
+	"github.com/llir/llvm/ir/types"
 	"github.com/llir/llvm/ir/value"
 	ortypes "github.com/orktes/orlang/types"
 )
@@ -54,11 +57,75 @@ func (lcg *LLVMCodeGen) castIfNeeded(val value.Value, sourceTyp, targetTyp ortyp
 	return val
 }
 
+// numericTypeInfo describes an orlang numeric primitive for promotion
+// purposes.
+var numericTypeInfo = map[string]struct {
+	bits     int
+	unsigned bool
+	float    bool
+}{
+	"int8":    {8, false, false},
+	"int16":   {16, false, false},
+	"int32":   {32, false, false},
+	"int64":   {64, false, false},
+	"uint8":   {8, true, false},
+	"uint16":  {16, true, false},
+	"uint32":  {32, true, false},
+	"uint64":  {64, true, false},
+	"float32": {32, false, true},
+	"float64": {64, false, true},
+}
+
+// promoteNumeric performs the implicit numeric conversions the analyser
+// permits: widening between ints, float32 to float64, int to float, and
+// retyping in-range literals (which the analyser has already range-checked)
+// to smaller or differently-signed targets.
 func (lcg *LLVMCodeGen) promoteNumeric(val value.Value, sourceTyp, targetTyp ortypes.Type) (value.Value, bool) {
-	// Handle int32 -> int64 promotion
-	if sourceTyp.GetName() == "int32" && targetTyp.GetName() == "int64" {
-		return lcg.currentBlock.NewSExt(val, types.I64), true
+	src, srcOk := numericTypeInfo[sourceTyp.GetName()]
+	dst, dstOk := numericTypeInfo[targetTyp.GetName()]
+	if !srcOk || !dstOk {
+		return nil, false
 	}
+	if sourceTyp.GetName() == targetTyp.GetName() {
+		return val, true
+	}
+
+	dstLLVM := lcg.getLLVMTypeFromSemantic(targetTyp)
+	if val.Type().Equal(dstLLVM) {
+		return val, true
+	}
+
+	// Constants (literals) are simply re-emitted at the target type; the
+	// analyser has verified the value is in range.
+	if c, ok := val.(*constant.Int); ok {
+		if intType, ok := dstLLVM.(*types.IntType); ok {
+			return constant.NewInt(intType, c.X.Int64()), true
+		}
+		if floatType, ok := dstLLVM.(*types.FloatType); ok {
+			f, _ := new(big.Float).SetInt(c.X).Float64()
+			return constant.NewFloat(floatType, f), true
+		}
+	}
+	if c, ok := val.(*constant.Float); ok {
+		if floatType, ok := dstLLVM.(*types.FloatType); ok {
+			f, _ := c.X.Float64()
+			return constant.NewFloat(floatType, f), true
+		}
+	}
+
+	// Non-constant safe widening conversions.
+	switch {
+	case !src.float && dst.float:
+		return lcg.castValue(val, dstLLVM, !src.unsigned, true), true
+	case src.float && dst.float && src.bits < dst.bits:
+		return lcg.currentBlock.NewFPExt(val, dstLLVM), true
+	case !src.float && !dst.float && src.bits < dst.bits:
+		if src.unsigned {
+			return lcg.currentBlock.NewZExt(val, dstLLVM), true
+		}
+		return lcg.currentBlock.NewSExt(val, dstLLVM), true
+	}
+
 	return nil, false
 }
 

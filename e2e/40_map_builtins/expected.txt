@@ -1,0 +1,6 @@
+len: 3
+has a: true
+has x: false
+after delete: 2 false
+sum: 4 keylen: 2
+count: 2
